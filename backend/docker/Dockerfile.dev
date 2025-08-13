@@ -1,0 +1,11 @@
+FROM mes_master:latest
+
+ENV TZ=Asia/Kolkata
+
+WORKDIR /app
+
+RUN pip install debugpy
+
+COPY ./src/extras/supervisord.local /etc/supervisor/conf.d/supervisord.conf
+
+CMD supervisord -n

@@ -1,0 +1,7 @@
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px}
+.h3{margin:0 0 6px;font-size:14px}
+.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0 12px}
+.select{background:#0f1433;color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 8px}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{background:var(--chip);padding:4px 8px;border-radius:999px;font-size:12px}
+button{background:#1f254d;border:1px solid #2f397a;color:var(--text);border-radius:8px;padding:8px 12px;cursor:pointer}

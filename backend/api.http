@@ -1,0 +1,12 @@
+cam_deduction_cmd_check@hostname = http://127.0.0.1
+@hostname = http://127.0.0.1:8008
+@host = {{hostname}}
+@baseUrl = {{host}}
+@contentType = application/json
+@csrfToken=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6Ijk5ODI4NTI5NjAiLCJvcmlnX2lhdCI6MTczNjc0OTQwNywidXNlcl9pZCI6MTMzMzI0LCJlbWFpbCI6InRlc3RpbmdAZ21haWwuY29tIiwiZXhwIjoxNzM5MzQxNDA3fQ.5HepefQOBA7uE4MbwQwgk78YcdhSw_jTs4Lo0ghFo7s
+
+
+
+### Sync all meter in redis
+GET {{baseUrl}}
+

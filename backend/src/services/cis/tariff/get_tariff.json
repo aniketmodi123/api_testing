@@ -1,0 +1,129 @@
+﻿{
+    "meta": {
+        "name": "Tariff GET API",
+        "method": "GET",
+        "endpoint": "/cis/tariff"
+    },
+    "cases": [
+        {
+            "name": "GET all – has data",
+            "expect": {
+                "status": 200,
+                "json": {
+                    "checks": [
+                        {
+                            "path": "response_code",
+                            "equals": 200
+                        },
+                        {
+                            "path": "errors",
+                            "absent": true
+                        },
+                        {
+                            "path": "data",
+                            "present": true
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "name": "GET by id=1 – found exactly one",
+            "endpoint": "/cis/tariff?id=1",
+            "expect": {
+                "status": 200,
+                "json": {
+                    "checks": [
+                        {
+                            "path": "response_code",
+                            "equals": 200
+                        },
+                        {
+                            "path": "errors",
+                            "absent": true
+                        },
+                        {
+                            "path": "data",
+                            "length": 1
+                        },
+                        {
+                            "path": "data[0].id",
+                            "equals": 1
+                        },
+                        {
+                            "path": "data[0].tariff_type",
+                            "equals": "SLAB"
+                        },
+                        {
+                            "path": "data[0].unit_type",
+                            "equals": "KW"
+                        },
+                        {
+                            "path": "data[0].tariff[0].rate",
+                            "gt": 0
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "name": "GET by id=999999 – not found",
+            "endpoint": "/cis/tariff?id=999999",
+            "expect": {
+                "status": 206,
+                "text_contains": "No Data Found.",
+                "json": {
+                    "checks": [
+                        {
+                            "path": "response_code",
+                            "equals": 206
+                        },
+                        {
+                            "path": "error_message",
+                            "equals": "No Data Found."
+                        },
+                        {
+                            "path": "data",
+                            "absent": true
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "name": "GET by id='abc' – validation error (422, custom envelope)",
+            "endpoint": "/cis/tariff?id=abc",
+            "expect": {
+                "status": 422,
+                "json": {
+                    "checks": [
+                        {
+                            "path": "response_code",
+                            "equals": 422
+                        },
+                        {
+                            "path": "error_message",
+                            "regex": "(?i)^validation error$"
+                        },
+                        {
+                            "path": "errors",
+                            "present": true
+                        },
+                        {
+                            "path": "errors[0].field",
+                            "equals": "query.id"
+                        },
+                        {
+                            "path": "errors[0].message",
+                            "regex": "(?i)valid integer"
+                        },
+                        {
+                            "path": "detail",
+                            "absent": true
+                        }
+                    ]
+                }
+            }
+        }
+    ]
+}

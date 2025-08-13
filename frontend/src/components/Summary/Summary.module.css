@@ -1,0 +1,3 @@
+.summary{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px;margin:12px 0}
+.ok{color:var(--ok)}
+.bad{color:var(--bad)}

@@ -1,0 +1,38 @@
+{
+  "generated_at": "2025-08-12T13:14:39.208413Z",
+  "total": 2,
+  "passed": 2,
+  "failed": 0,
+  "results": [
+    {
+      "service": "cis/tariff/create_tariff",
+      "name": "SLAB - valid contiguous",
+      "url": "http://192.168.1.8:8001/cis/tariff",
+      "status_code": 201,
+      "passed": true,
+      "expected": {
+        "status": 201,
+        "text_contains": "Tariff created successfully",
+        "json_checks": [
+          {
+            "path": "response_code",
+            "equals": 201
+          }
+        ]
+      },
+      "response_snippet": "{\"response_code\":201,\"data\":{\"message\":\"Tariff created successfully\"}}"
+    },
+    {
+      "service": "cis/tariff/create_tariff",
+      "name": "SLAB - FAIL first start != 0",
+      "url": "http://192.168.1.8:8001/cis/tariff",
+      "status_code": 400,
+      "passed": true,
+      "expected": {
+        "status": 400,
+        "text_contains": "first row 'start' must be 0"
+      },
+      "response_snippet": "{\"response_code\":400,\"error_message\":\"Invalid value provided: first row 'start' must be 0\"}"
+    }
+  ]
+}

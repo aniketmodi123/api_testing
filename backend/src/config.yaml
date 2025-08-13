@@ -1,0 +1,7 @@
+﻿base_url: "http://192.168.1.8:8001"
+default_headers:
+  project: "gp-admin"
+  Authorization: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX25hbWUiOiI5OTgyODUyOTYwIiwidXNlcl90eXBlIjoiYWRtaW4iLCJleHAiOjE3NTU1MTcwOTd9._pOgcN2IXZaJGZ_mKODagtRytDD8gLZHteqRdEailrY"
+  username: "9982852960"
+  user-type: "admin"
+timeout: 180

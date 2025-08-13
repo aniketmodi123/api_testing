@@ -1,0 +1,20 @@
+version: '3.8'
+
+networks:
+    mes_network:
+        external: true
+
+services:
+    api-testing:
+        build:
+            context: .
+            dockerfile: ./docker/Dockerfile.dev
+        image: api_testing
+        container_name: api_testing
+        ports:
+            - 8000:8000
+            - 5000:5000
+        volumes:
+            - ./src:/app
+        networks:
+            - mes_network

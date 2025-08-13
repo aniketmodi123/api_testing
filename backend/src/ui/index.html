@@ -1,0 +1,732 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>API Test Runner UI</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root{
+    --bg:#0b1021;--panel:#121735;--text:#e7e9f0;--muted:#98a2b3;
+    --ok:#2ecc71;--bad:#ff6b6b;--chip:#1f254d;--border:#1d2347;--line:#26306b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+  .layout{display:flex;min-height:100vh}
+  .left{width:360px;background:var(--panel);border-right:1px solid var(--border);padding:12px;overflow:auto}
+  .right{flex:1;padding:16px;overflow:auto}
+  h1{margin:0 0 10px;font-size:18px}
+  h2{margin:16px 0 8px;font-size:16px}
+  .tree .node{margin-left:10px}
+  .row{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px}
+  .row:hover{background:#1a2045}
+  .row .label{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .caret{width:0;height:0;border-left:6px solid #778;border-top:6px solid transparent;border-bottom:6px solid transparent;transition:transform .15s}
+  .open>.row .caret{transform:rotate(90deg);border-left-color:#ccd}
+  .children{margin-left:16px;border-left:1px dashed #25306d;padding-left:8px}
+  .file .muted,.folder .muted{color:var(--muted);font-size:12px}
+  .controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+  .chips{display:flex;gap:8px;flex-wrap:wrap}
+  .chip{background:var(--chip);padding:4px 8px;border-radius:999px;font-size:12px}
+  button{background:#1f254d;border:1px solid #2f397a;color:var(--text);border-radius:8px;padding:8px 12px;cursor:pointer}
+  button:disabled{opacity:.6;cursor:not-allowed}
+  select,meter,input,textarea{background:#0f1433;color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 8px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .summary,.panel,.card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px}
+  .summary b{margin-right:8px}
+  .ok{color:var(--ok)} .bad{color:var(--bad)}
+  .cases{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(360px,1fr))}
+  .card h3{margin:0 0 6px;font-size:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .small{font-size:12px;color:var(--muted)}
+  .fail{white-space:pre-wrap;color:var(--bad);background:#1a2045;padding:8px;border-radius:6px;border:1px solid #2a3473;margin-top:6px}
+  .json{white-space:pre-wrap;background:#0f1433;padding:8px;border-radius:6px;border:1px solid var(--border);overflow:auto;max-height:340px}
+  details summary{cursor:pointer}
+  .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0 12px}
+  .right h2 .muted{font-weight:400}
+  .legend{display:flex;gap:10px;align-items:center}
+  .legend .dot{width:10px;height:10px;border-radius:999px;display:inline-block}
+  .dot.pass{background:var(--ok)} .dot.fail{background:var(--bad)}
+  .tag{display:inline-block;padding:2px 6px;border:1px solid var(--line);border-radius:999px;font-size:12px;margin-left:6px}
+  .nowrap{white-space:nowrap}
+  .warn{color:#f1c40f}
+  .inline{display:inline-flex;gap:6px;align-items:center}
+  .w100{width:100%}
+
+  /* ------- Focus (full-screen) modal ------- */
+  .backdrop{
+  position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:999; display:none;
+}
+.modal{
+  position:fixed; inset:24px;
+  background:var(--panel); border:1px solid var(--border); border-radius:14px;
+  z-index:1000; display:none;          /* HIDDEN by default */
+  flex-direction:column; padding:16px;
+  overflow:hidden;                      /* scrolling handled inside */
+  box-shadow:0 20px 60px rgba(0,0,0,.5);
+}
+.modal.open{ display:flex; }            /* only visible when opened */
+.backdrop.open{ display:block; }
+  .modal .head{
+    display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:8px;
+  }
+  .modal h3{margin:0; font-size:18px}
+  .modal .meta{font-size:12px; color:var(--muted)}
+  .modal .btns{display:flex; gap:8px; align-items:center}
+  .btn-ghost{background:transparent;border:1px solid #314083}
+  .btn-focus{padding:4px 8px; font-size:12px; border-radius:999px}
+
+  /* ----- two-column area fills remaining height equally ----- */
+  .cols{
+    display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:8px;
+    flex:1;                 /* take the rest of the modal */
+    min-height:0;           /* allow children to size/scroll properly */
+  }
+  .col{
+    display:flex; flex-direction:column; gap:8px;
+    min-height:0;
+  }
+  .section-title{font-size:13px; color:var(--muted)}
+
+  /* code panes inside modal: equal height and independent scroll */
+  .modal .json{
+    flex:1;
+    min-height:0;
+    overflow:auto;
+    white-space:pre-wrap;
+    max-height:none;        /* override page card cap */
+    font-size:13.5px;
+  }
+
+  @media (max-width: 1100px){
+    .cols{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="left">
+    <h1>Services</h1>
+
+    <div class="panel" style="margin-bottom:10px">
+      <div class="inline w100">
+        <input id="api-base" placeholder="Backend base (e.g. http://localhost:8765)" class="w100" autocomplete="off" spellcheck="false">
+        <button id="btn-save-base" type="button">Save</button>
+      </div>
+      <div id="base-tip" class="small muted" style="margin-top:6px"></div>
+      <div class="toolbar" style="margin-top:8px">
+        <button id="btn-load-tree" type="button">Load Tree</button>
+        <button id="btn-load-config" type="button">Load Config</button>
+      </div>
+      <div id="cfg" class="json" style="display:none;margin-top:6px"></div>
+    </div>
+
+    <div id="tree" class="tree"></div>
+
+    <div class="toolbar">
+      <button id="btn-run-project" type="button">Run Project</button>
+      <button id="btn-run-selected" type="button">Run Selected</button>
+    </div>
+    <div class="panel small">
+      <div><b>Tips</b></div>
+      <div>✓ Click a card title or its Request/Response to open a full-screen reader (left: Request, right: Response)</div>
+      <div>✓ Hold <b>SHIFT</b> while clicking to expand inline instead</div>
+    </div>
+  </aside>
+
+  <main class="right">
+    <h2>Runner <span class="muted">(select scope, then Run)</span></h2>
+    <div class="controls">
+      <label>Scope:
+        <select id="scope">
+          <option value="project">Project</option>
+          <option value="folder">Folder(s)</option>
+          <option value="file">File(s)</option>
+          <option value="api">API (method+path)</option>
+          <option value="case">Cases (from a single file)</option>
+        </select>
+      </label>
+
+      <span id="scope-help" class="small muted"></span>
+      <button id="btn-run" type="button" class="nowrap">Run</button>
+    </div>
+
+    <div class="two">
+      <div class="panel">
+        <h3>API Picker</h3>
+        <div class="toolbar">
+          <select id="api-picker" multiple size="8" style="min-width:320px"></select>
+          <div class="chips" id="api-chips"></div>
+        </div>
+        <button id="btn-run-apis" type="button">Run Selected API(s)</button>
+      </div>
+
+      <div class="panel">
+        <h3>Case Picker (select exactly one file in tree)</h3>
+        <div class="toolbar">
+          <select id="case-picker" multiple size="8" style="min-width:320px"></select>
+          <div class="chips" id="case-chips"></div>
+        </div>
+        <button id="btn-run-cases" type="button">Run Selected Case(s)</button>
+      </div>
+    </div>
+
+    <div class="summary" id="summary" style="display:none"></div>
+
+    <h2>Results <span id="breadcrumb" class="muted"></span></h2>
+    <div id="results" class="cases"></div>
+  </main>
+</div>
+
+<!-- Focus modal -->
+<div id="backdrop" class="backdrop" hidden></div>
+<div id="focus" class="modal" role="dialog" aria-modal="true" aria-labelledby="focus-title" hidden>
+  <div class="head">
+    <div>
+      <h3 id="focus-title"></h3>
+      <div id="focus-meta" class="meta"></div>
+    </div>
+    <div class="btns">
+      <button id="btn-close" class="btn-ghost">Close</button>
+    </div>
+  </div>
+  <!-- failures (if any) -->
+  <div id="focus-fail" class="fail" style="display:none"></div>
+
+  <!-- side-by-side columns -->
+  <div class="cols">
+    <div class="col">
+      <div class="section-title">Request</div>
+      <div id="focus-req" class="json"></div>
+    </div>
+    <div class="col">
+      <div class="section-title">Response</div>
+      <div id="focus-res" class="json"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $  = (sel) => document.querySelector(sel);
+const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+
+let API_BASE = "";
+let TREE = null;
+let API_INDEX = new Map();
+let LAST_REPORT = null;
+let _isLoadingTree = false;
+
+// guard against unwanted submits
+window.addEventListener("submit", (e)=>{ e.preventDefault(); e.stopPropagation(); }, true);
+document.addEventListener("click", (e)=>{
+  const a = e.target.closest('a[href="#"]');
+  if(a){ e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); }
+}, true);
+document.addEventListener("keydown", (e)=>{
+  if(e.key === "Enter" && e.target && e.target.id === "api-base"){
+    e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+  }
+}, true);
+
+// base url
+function setApiBase(url){
+  API_BASE = (url || "").replace(/\/+$/,'');
+  localStorage.setItem('apiBase', API_BASE);
+  $("#api-base").value = API_BASE;
+  $("#base-tip").textContent = API_BASE
+    ? `Using backend: ${API_BASE}`
+    : "Backend not set. Set to your FastAPI server (e.g. http://localhost:8765).";
+}
+(function initBase(){
+  const fromQS = new URLSearchParams(location.search).get("api_base");
+  const fromStorage = localStorage.getItem("apiBase");
+  const sameOrigin = (location.origin && /^https?:\/\//i.test(location.origin)) ? location.origin : "";
+  setApiBase(fromQS || fromStorage || sameOrigin);
+})();
+$("#btn-save-base").addEventListener("click", (e)=>{
+  e.preventDefault(); e.stopPropagation();
+  setApiBase($("#api-base").value.trim());
+});
+
+// config viewer
+$("#btn-load-config").addEventListener("click", async (e)=>{
+  e.preventDefault(); e.stopPropagation();
+  $("#cfg").style.display = "block";
+  if(!API_BASE){ $("#cfg").textContent = "Set backend base first."; return; }
+  try{
+    const res = await fetch(`${API_BASE}/config`, { cache:"no-store", redirect:"follow", mode:"cors" });
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const cfg = await res.json();
+    $("#cfg").textContent = JSON.stringify(cfg, null, 2);
+  }catch(err){
+    $("#cfg").textContent = `Could not load /config from ${API_BASE}\n` + err;
+  }
+});
+
+// tree
+function makeCheckbox(id, checked=false){
+  const cb = document.createElement("input");
+  cb.type = "checkbox"; cb.checked = checked; cb.id = id;
+  return cb;
+}
+function nodeId(parts){ return "n-" + parts.join("__"); }
+
+function buildTree(container, tree, parts=[]){
+  container.innerHTML = "";
+  if(!Object.keys(tree||{}).length){
+    container.innerHTML = `<div class="small">No services discovered. Is your /services directory populated?</div>`;
+    return;
+  }
+  Object.keys(tree).sort().forEach(key => {
+    const node = tree[key];
+    const row = document.createElement("div");
+    row.className = "row";
+    const isFile = node && node.meta && node.cases;
+
+    if(isFile){
+      const id = nodeId(node.meta.service_parts);
+      const cb = makeCheckbox(id);
+      cb.dataset.type = "file";
+      cb.dataset.path = node.meta.service;
+      const label = document.createElement("span");
+      label.className = "label";
+      label.textContent = key;
+      const meta = document.createElement("span");
+      meta.className = "muted";
+      meta.textContent = `${node.cases.length} case(s)`;
+      row.append(cb, label, meta);
+      const fileDiv = document.createElement("div");
+      fileDiv.className = "file";
+      fileDiv.append(row);
+      container.append(fileDiv);
+      cb.addEventListener("change", syncPickers);
+      row.addEventListener("click", (e) => {
+        if(e.target.tagName.toLowerCase() === "input") return;
+        cb.checked = !cb.checked;
+        syncPickers();
+      });
+    } else {
+      const folderDiv = document.createElement("div");
+      folderDiv.className = "folder";
+      const caret = document.createElement("span");
+      caret.className = "caret";
+      const id = nodeId(parts.concat([key]));
+      const cb = makeCheckbox(id);
+      cb.dataset.type = "folder";
+      cb.dataset.parts = JSON.stringify(parts.concat([key]));
+      const label = document.createElement("span");
+      label.className = "label";
+      label.textContent = key;
+      const meta = document.createElement("span");
+      meta.className = "muted";
+      meta.textContent = Object.keys(node).length + " item(s)";
+      row.append(caret, cb, label, meta);
+      folderDiv.append(row);
+      const kids = document.createElement("div");
+      kids.className = "children";
+      folderDiv.append(kids);
+      container.append(folderDiv);
+
+      row.addEventListener("click", (e) => {
+        if(e.target.tagName.toLowerCase() === "input") return;
+        folderDiv.classList.toggle("open");
+      });
+      cb.addEventListener("change", ()=>{
+        kids.querySelectorAll('input[type="checkbox"]').forEach(c => c.checked = cb.checked);
+        syncPickers();
+      });
+
+      buildTree(kids, node, parts.concat([key]));
+    }
+  });
+}
+
+// pickers
+function collectSelectedFiles(){
+  const cbs = $$('#tree input[type="checkbox"][data-type="file"]:checked');
+  return cbs.map(cb => cb.dataset.path);
+}
+function collectSelectedFolders(){
+  const cbs = $$('#tree input[type="checkbox"][data-type="folder"]:checked');
+  return cbs.map(cb => JSON.parse(cb.dataset.parts));
+}
+function listAllApis(tree){
+  const apis = new Set();
+  (function walk(n){
+    Object.keys(n||{}).forEach(k=>{
+      const v = n[k];
+      if(v && v.meta && v.cases){
+        (v.apis || []).forEach(sig => apis.add(sig));
+      }else if(v && typeof v === "object"){
+        walk(v);
+      }
+    });
+  })(tree||{});
+  return Array.from(apis).sort();
+}
+function getSingleSelectedFileNode(){
+  const files = collectSelectedFiles();
+  if(files.length !== 1) return null;
+  const path = files[0].split("/");
+  let node = TREE;
+  for(let i=0;i<path.length-1;i++) node = node[path[i]];
+  return node[path[path.length-1]] || null;
+}
+function syncPickers(){
+  const apiPicker = $("#api-picker");
+  const apiChips = $("#api-chips");
+  apiPicker.innerHTML = "";
+  apiChips.innerHTML = "";
+  listAllApis(TREE).forEach(sig=>{
+    const opt = document.createElement("option");
+    opt.value = sig; opt.textContent = sig;
+    apiPicker.append(opt);
+  });
+
+  const casePicker = $("#case-picker");
+  const caseChips = $("#case-chips");
+  casePicker.innerHTML = "";
+  caseChips.innerHTML = "";
+  const node = getSingleSelectedFileNode();
+  if(node){
+    node.cases.forEach(name=>{
+      const opt = document.createElement("option");
+      opt.value = name; opt.textContent = name;
+      casePicker.append(opt);
+    });
+  }
+  renderBreadcrumb();
+}
+function renderBreadcrumb(){
+  const files = collectSelectedFiles();
+  const folders = collectSelectedFolders().map(x=>x.join("/"));
+  const parts = [];
+  if(folders.length) parts.push(`folders: ${folders.join(", ")}`);
+  if(files.length) parts.push(`files: ${files.join(", ")}`);
+  $("#breadcrumb").textContent = parts.length ? `(${parts.join(" · ")})` : "";
+}
+
+// helpers
+function selectedValues(selectEl){
+  return Array.from(selectEl.selectedOptions).map(o=>o.value);
+}
+function showSummary(summary){
+  const el = $("#summary");
+  if(!summary){ el.style.display="none"; return; }
+  el.style.display="block";
+  el.innerHTML = `
+    <div><b>Total:</b> ${summary.total}
+      &nbsp;|&nbsp;<b>Passed:</b> <span class="ok">${summary.passed}</span>
+      &nbsp;|&nbsp;<b>Failed:</b> <span class="bad">${summary.failed}</span>
+      &nbsp;|&nbsp;<b>Pass rate:</b> ${summary.pass_rate}%</div>
+  `;
+}
+function pretty(obj){
+  try{ return JSON.stringify(obj, null, 2); }catch{ return String(obj); }
+}
+function escapeHtml(s){
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+// focus modal (ALWAYS show both sides; no single-section mode)
+function openFocus(item){
+  $("#focus-title").textContent = item.case + (item.api?.signature ? ` — ${item.api.signature}` : "");
+  $("#focus-meta").textContent = `status: ${item.status_code} · duration: ${item.duration_ms} ms · ${item.ok?'PASS':'FAIL'}`;
+
+  const fail = $("#focus-fail");
+  if(item.failures && item.failures.length){
+    fail.style.display = "block";
+    fail.textContent = "• " + item.failures.join("\n• ");
+  }else{
+    fail.style.display = "none";
+    fail.textContent = "";
+  }
+  $("#focus-req").textContent = pretty(item.request);
+  $("#focus-res").textContent = pretty(item.response);
+
+  $("#backdrop").classList.add("open");
+  $("#focus").classList.add("open");
+  $("#backdrop").hidden = false;
+  $("#focus").hidden = false;
+
+}
+function closeFocus(){
+  $("#focus").classList.remove("open");
+  $("#backdrop").classList.remove("open");
+  $("#focus").hidden = true;
+  $("#backdrop").hidden = true;
+}
+$("#btn-close").addEventListener("click", closeFocus);
+$("#backdrop").addEventListener("click", closeFocus);
+document.addEventListener("keydown", (e)=>{ if(e.key === "Escape") closeFocus(); });
+
+// cards
+function makeFocusButton(onClick){
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "btn-focus";
+  btn.textContent = "Focus";
+  btn.addEventListener("click", (e)=>{ e.stopPropagation(); onClick(); });
+  return btn;
+}
+function caseCard(item){
+  const ok = !!item.ok;
+  const div = document.createElement("div");
+  div.className = "card";
+
+  const header = document.createElement("h3");
+  header.innerHTML = `
+    <span class="card-title">${item.case} ${ok?'<span class="ok">PASS</span>':'<span class="bad">FAIL</span>'}</span>
+    <span class="tag">${item.api?.signature||""}</span>
+  `;
+  header.appendChild(makeFocusButton(()=> openFocus(item)));
+
+  const meta = document.createElement("div");
+  meta.className = "small";
+  meta.innerHTML = `status: <b class="${ok?'ok':'bad'}">${item.status_code}</b>
+      · duration: ${item.duration_ms} ms`;
+
+  const failures = (item.failures && item.failures.length)
+    ? `<div class="fail">• ${item.failures.join("\n• ")}</div>`
+    : "";
+
+  const body = document.createElement("div");
+  body.innerHTML = `
+    ${failures}
+    <details data-kind="request">
+      <summary>Request</summary>
+      <div class="json">${escapeHtml(pretty(item.request))}</div>
+    </details>
+    <details data-kind="response">
+      <summary>Response</summary>
+      <div class="json">${escapeHtml(pretty(item.response))}</div>
+    </details>
+  `;
+
+  div.__item = item;
+  header.querySelector(".card-title").addEventListener("click", (e)=>{ e.preventDefault(); openFocus(item); });
+
+  div.append(header, meta, body);
+  return div;
+}
+
+function renderResults(report){
+  const box = $("#results");
+  box.innerHTML = "";
+  LAST_REPORT = report;
+  showSummary(report.summary);
+
+  const fileNode = getSingleSelectedFileNode();
+  if(fileNode){
+    const parts = fileNode.meta.service.split("/");
+    let node = report.by_folder || {};
+    for(let i=0;i<parts.length-1;i++){ node = node?.[parts[i]] || {}; }
+    const file = node?.[parts[parts.length-1]];
+    const list = file?.cases || [];
+    list.forEach(c => box.append(caseCard(c)));
+  }else{
+    (report.flat || []).forEach(c => box.append(caseCard(c)));
+  }
+}
+
+// clicking Request/Response opens FULL modal (SHIFT = inline)
+$("#results").addEventListener("click", (e)=>{
+  const sum = e.target.closest("summary");
+  if(!sum) return;
+  const details = sum.parentElement;
+  if(!details || !details.hasAttribute("data-kind")) return;
+
+  if(e.shiftKey){
+    return; // allow inline expand when SHIFT is held
+  }
+  e.preventDefault();
+  e.stopPropagation();
+
+  const card = details.closest(".card");
+  const item = card && card.__item;
+  if(!item) return;
+
+  openFocus(item);
+});
+
+// API index + backend
+function indexApis(tree){
+  const map = new Map();
+  (function walk(n){
+    Object.keys(n||{}).forEach(k=>{
+      const v = n[k];
+      if(v && v.meta && v.cases){
+        (v.apis || []).forEach(sig=>{
+          if(!map.has(sig)) map.set(sig, new Set());
+          map.get(sig).add(v.meta.service);
+        });
+      }else if(v && typeof v === "object"){
+        walk(v);
+      }
+    });
+  })(tree||{});
+  return map;
+}
+async function fetchTree(){
+  if(_isLoadingTree) return;
+  _isLoadingTree = true;
+  try{
+    if(!API_BASE){
+      $("#tree").innerHTML = `<div class="small warn">Backend base not set. Enter it above (e.g. http://localhost:8765) and click Save.</div>`;
+      return;
+    }
+    const res = await fetch(`${API_BASE}/api/tree`, { cache:"no-store", redirect:"follow", mode:"cors" });
+    if(!res.ok){
+      $("#tree").innerHTML = `<div class="small">Failed to load tree from ${API_BASE} (HTTP ${res.status}).</div>`;
+      return;
+    }
+    const data = await res.json();
+    TREE = data.tree || {};
+    API_INDEX = indexApis(TREE);
+    buildTree($("#tree"), TREE);
+    syncPickers();
+  }catch(err){
+    console.error(err);
+    $("#tree").innerHTML = `<div class="small">Failed to load tree. Check backend & CORS.</div>`;
+  }finally{
+    _isLoadingTree = false;
+  }
+}
+
+function expandApisToFileFilters(apiSignatures){
+  const filters = [];
+  const seen = new Set();
+  apiSignatures.forEach(sig=>{
+    const files = API_INDEX.get(sig);
+    if(!files) return;
+    files.forEach(f=>{
+      if(seen.has(f)) return;
+      seen.add(f);
+      filters.push({ scope: "file", file_service: f });
+    });
+  });
+  return filters;
+}
+function listCasesForApi(sig){
+  const files = Array.from((API_INDEX.get(sig) || new Set()).values());
+  const names = new Set();
+  files.forEach(f=>{
+    const parts = f.split("/");
+    let node = TREE;
+    for(let i=0;i<parts.length-1;i++) node = node?.[parts[i]];
+    const fileNode = node?.[parts[parts.length-1]];
+    (fileNode?.cases || []).forEach(c=>names.add(c));
+  });
+  return Array.from(names);
+}
+
+// run
+function buildFiltersForScope(scope){
+  const filters = [];
+  if(scope === "project"){
+    filters.push({ scope: "project" });
+  } else if(scope === "folder"){
+    const folders = collectSelectedFolders();
+    if(!folders.length) alert("Select at least one folder in the tree.");
+    folders.forEach(parts=>filters.push({ scope:"folder", folder_parts: parts }));
+  } else if(scope === "file"){
+    const files = collectSelectedFiles();
+    if(!files.length) alert("Select at least one file in the tree.");
+    files.forEach(f=>filters.push({ scope:"file", file_service: f }));
+  } else if(scope === "api"){
+    const apis = selectedValues($("#api-picker"));
+    if(!apis.length) alert("Select at least one API in the picker.");
+    return expandApisToFileFilters(apis);
+  } else if(scope === "case"){
+    const fileNode = getSingleSelectedFileNode();
+    if(!fileNode) { alert("Select exactly one file in the tree to pick cases."); return []; }
+    const file = fileNode.meta.service;
+    const names = selectedValues($("#case-picker"));
+    if(!names.length) alert("Pick one or more cases in the case picker.");
+    filters.push({ scope:"case", case_file:file, case_names:names });
+  }
+  return filters;
+}
+
+async function runWithFilters(filters){
+  if(!API_BASE){ alert("Set backend base first."); return; }
+  const payload = { filters, concurrency: 4 };
+  $("#results").innerHTML = "";
+  showSummary(null);
+  const res = await fetch(`${API_BASE}/api/run`, {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify(payload),
+    cache:"no-store", redirect:"follow", mode:"cors"
+  });
+  if(!res.ok){
+    const txt = await res.text().catch(()=> "");
+    $("#results").innerHTML = `<div class="panel">Run failed (HTTP ${res.status}). ${escapeHtml(txt)}</div>`;
+    return;
+  }
+  const data = await res.json();
+  renderResults(data);
+}
+
+// wires
+$("#btn-run-project").addEventListener("click", ()=> runWithFilters([{scope:"project"}]));
+$("#btn-run-selected").addEventListener("click", ()=>{
+  const files = collectSelectedFiles();
+  const folders = collectSelectedFolders();
+  const filters = [];
+  folders.forEach(parts=>filters.push({scope:"folder", folder_parts: parts}));
+  files.forEach(f=>filters.push({scope:"file", file_service: f}));
+  if(!filters.length){ alert("Check some folders/files on the left, or use Run Project."); return; }
+  runWithFilters(filters);
+});
+$("#btn-run").addEventListener("click", ()=>{
+  const scope = $("#scope").value;
+  const filters = buildFiltersForScope(scope);
+  if(filters.length) runWithFilters(filters);
+});
+$("#btn-run-apis").addEventListener("click", ()=>{
+  const apis = selectedValues($("#api-picker"));
+  if(!apis.length) return alert("Select API(s).");
+  const filters = expandApisToFileFilters(apis);
+  if(!filters.length){
+    return alert("No files mapped to the selected API(s). Check /api/tree payload for 'apis' per file.");
+  }
+  runWithFilters(filters);
+});
+$("#api-picker").addEventListener("change", ()=>{
+  const sel = selectedValues($("#api-picker"));
+  const casePicker = $("#case-picker");
+  const caseChips = $("#case-chips");
+  casePicker.innerHTML = "";
+  caseChips.innerHTML = "";
+  if(sel.length === 1){
+    listCasesForApi(sel[0]).forEach(name=>{
+      const opt = document.createElement("option");
+      opt.value = name; opt.textContent = name;
+      casePicker.append(opt);
+    });
+  }else{
+    syncPickers();
+  }
+});
+$("#btn-run-cases").addEventListener("click", ()=>{
+  const node = getSingleSelectedFileNode();
+  if(!node) return alert("Select exactly one file in the tree.");
+  const file = node.meta.service;
+  const names = selectedValues($("#case-picker"));
+  if(!names.length) return alert("Pick one or more cases.");
+  runWithFilters([{scope:"case", case_file:file, case_names:names}]);
+});
+$("#scope").addEventListener("change", ()=>{
+  const val = $("#scope").value;
+  const help = {
+    project: "Runs everything in the repository.",
+    folder:  "Check one or more folders in the tree on the left.",
+    file:    "Check one or more files in the tree on the left.",
+    api:     "Pick one or more API signatures from the API picker.",
+    case:    "Select exactly one file in the tree, then pick its cases."
+  }[val];
+  $("#scope-help").textContent = help || "";
+});
+$("#btn-load-tree").addEventListener("click", ()=> fetchTree());
+</script>
+</body>
+</html>
