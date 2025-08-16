@@ -2,7 +2,7 @@
 import httpx
 import time
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 import json
 import yaml
 
@@ -11,12 +11,14 @@ from validator import evaluate_expect  # your light-mode validator
 ROOT = Path(__file__).parent
 CONFIG = ROOT / "config.yaml"
 
+
 # ---------- helper loaders ----------
 def _load_yaml(path: Path) -> dict:
     with open(path, "r", encoding="utf-8-sig") as f:
         return yaml.safe_load(f) or {}
 
-def _load_json(path: Path):
+
+def _load_json(path: Path) -> Tuple[dict, List[dict]]:
     with open(path, "r", encoding="utf-8-sig") as f:
         data = json.load(f)
 
@@ -30,32 +32,62 @@ def _load_json(path: Path):
 
     return meta, cases
 
-def _load_headers_hierarchy(start_dir: Path) -> dict:
+
+def _find_services_boundary(path: Path) -> Path:
     """
-    Loads headers.yaml files from the given directory up to ROOT/services/<service>.
-    Merges them so parent headers are overridden by child headers.
+    Returns the boundary directory to stop header inheritance at.
+    By default this is ROOT/services/<service> if present, else ROOT/services,
+    else ROOT as a last resort. Works no matter how deep the JSON lives.
     """
-    headers_list = []
-    current_dir = start_dir
+    p = path.resolve()
+    parts = p.parts
+    try:
+        idx = parts.index("services")
+        # If there is a service name after "services", stop at services/<service>
+        if idx + 1 < len(parts):
+            return Path(*parts[: idx + 2])
+        return Path(*parts[: idx + 1])  # .../services
+    except ValueError:
+        return ROOT  # no "services" in path; fall back to repo root
+
+
+def _load_headers_hierarchy(start_dir: Path, stop_at: Optional[Path] = None) -> dict:
+    """
+    Walks from start_dir up to and INCLUDING stop_at (default: ROOT), collecting
+    headers.yaml files. Parent headers are applied first; child overrides parent.
+    Accepts either {"headers": {...}} or a raw map at the file root.
+    """
+    if stop_at is None:
+        stop_at = ROOT
+
+    headers_list: List[Dict[str, str]] = []
+    current = start_dir.resolve()
+    stop_at = stop_at.resolve()
 
     while True:
-        header_file = current_dir / "headers.yaml"
+        header_file = current / "headers.yaml"
         if header_file.exists():
             try:
-                headers_list.append(_load_yaml(header_file).get("headers", {}))
+                data = _load_yaml(header_file)
+                if isinstance(data, dict):
+                    # allow {"headers": {...}} or raw map
+                    headers_list.append(data.get("headers", data) or {})
+                else:
+                    headers_list.append({})
             except Exception:
                 headers_list.append({})
 
-        # Stop at repo root or services root
-        if current_dir == ROOT or current_dir.parent == ROOT:
+        if current == stop_at:
             break
+        if current == current.parent:
+            break  # safety at filesystem root
+        current = current.parent
 
-        current_dir = current_dir.parent
-
-    merged = {}
+    merged: Dict[str, str] = {}
     for h in reversed(headers_list):  # parent → child
         merged.update(h)
     return merged
+
 
 # ---------- API runner ----------
 async def _run_case(
@@ -80,12 +112,17 @@ async def _run_case(
                 return {k: replace_ts(v) for k, v in val.items()}
             return val
 
+        # Apply ${ts} to case first (endpoint/body/etc.)
         case = replace_ts(case)
 
         # Merge meta defaults into case
         method = (case.get("method") or "GET").upper()
         url = f"{base_url}{case.get('endpoint', '')}"
+
+        # Merge headers from global → service → case, then apply ${ts} into headers as well
         headers = {**global_headers, **svc_headers, **case.get("headers", {})}
+        headers = replace_ts(headers)
+
         body = case.get("body")
 
         print(f"[RUN] {service_path} | {case['name']} | {method} {url}")
@@ -102,6 +139,12 @@ async def _run_case(
             resp = await client.put(url, headers=headers, json=body, timeout=timeout)
         elif method == "DELETE":
             resp = await client.delete(url, headers=headers, timeout=timeout)
+        elif method == "PATCH":
+            resp = await client.patch(url, headers=headers, json=body, timeout=timeout)
+        elif method == "HEAD":
+            resp = await client.head(url, headers=headers, timeout=timeout)
+        elif method == "OPTIONS":
+            resp = await client.options(url, headers=headers, timeout=timeout)
         else:
             raise ValueError(f"Unsupported method: {method}")
 
@@ -114,9 +157,9 @@ async def _run_case(
         status_match = resp.status_code == expect.get("status", resp.status_code)
         text_contains = expect.get("text_contains")
         text_contains_match = (
-            "text_contains" not in expect or
-            (isinstance(text_contains, list) and all(s in (resp.text or "") for s in text_contains)) or
-            (isinstance(text_contains, str) and text_contains in (resp.text or ""))
+            "text_contains" not in expect
+            or (isinstance(text_contains, list) and all(s in (resp.text or "") for s in text_contains))
+            or (isinstance(text_contains, str) and text_contains in (resp.text or ""))
         )
         json_checks_match = True  # legacy no-op in light mode
 
@@ -178,57 +221,77 @@ async def _run_case(
             }
         }
 
+
 # ---------- main runner ----------
-async def run_tests(service: Optional[str] = None, case_name: Optional[str] = None, concurrency: int = 1) -> Dict[str, Any]:
+async def run_tests(
+    service: Optional[str] = None,
+    case_name: Optional[str] = None,
+    concurrency: int = 1
+) -> Dict[str, Any]:
+    """
+    Run tests by discovering JSON files under services/ at any depth.
+
+    Args:
+        service: Optional subtree under services/ to restrict discovery.
+                 Examples: "cis", "cis/tariff/v2"
+        case_name: If provided, only run the case with this exact name from each file.
+        concurrency: Max number of in-flight requests.
+
+    Returns:
+        Dict with "by_folder", "by_api", and "flat" result views.
+    """
     cfg = _load_yaml(CONFIG)
     base_url = cfg.get("base_url", "")
     global_headers = cfg.get("default_headers", {})
     timeout = cfg.get("timeout", 10)
 
-    services = [service] if service else [
-        p.name for p in (ROOT / "services").iterdir() if p.is_dir()
-    ]
+    services_root = ROOT / "services"
+    search_root = (services_root / service) if service else services_root
     ts = int(time.time() * 1000)
 
     sem = asyncio.Semaphore(concurrency)
     tasks: List[asyncio.Task] = []
 
-    # IMPORTANT: build tasks AND await them before leaving the context
     async with httpx.AsyncClient() as client:
-        for srv in services:
-            srv_dir = ROOT / "services" / srv
-            for json_file in srv_dir.rglob("*.json"):
-                if json_file.name.lower() == "headers.json":
+        for json_file in search_root.rglob("*.json"):
+            if json_file.name.lower() == "headers.json":
+                continue
+
+            # Build header inheritance chain up to a sensible boundary
+            boundary = _find_services_boundary(json_file.parent)
+            svc_headers = _load_headers_hierarchy(json_file.parent, stop_at=boundary)
+
+            meta, cases = _load_json(json_file)
+            for case in cases:
+                if case_name and case.get("name") != case_name:
                     continue
 
-                svc_headers = _load_headers_hierarchy(json_file.parent)
-                meta, cases = _load_json(json_file)
+                merged_case = {**meta, **case}
 
-                for case in cases:
-                    if case_name and case.get("name") != case_name:
-                        continue
+                # For grouping, keep the path relative to services/
+                try:
+                    relative_from_services = json_file.relative_to(services_root)
+                    service_path = str(relative_from_services).replace("\\", "/")
+                except ValueError:
+                    # If JSON not under services/ (edge case), fall back to project-relative
+                    service_path = str(json_file.relative_to(ROOT)).replace("\\", "/")
 
-                    merged_case = {**meta, **case}
-                    tasks.append(
-                        _run_case(
-                            client,
-                            base_url,
-                            global_headers,
-                            svc_headers,
-                            f"{srv}/{json_file.relative_to(srv_dir)}",
-                            merged_case,
-                            ts,
-                            timeout,
-                            sem,
-                        )
+                tasks.append(
+                    _run_case(
+                        client,
+                        base_url,
+                        global_headers,
+                        svc_headers,
+                        service_path,
+                        merged_case,
+                        ts,
+                        timeout,
+                        sem,
                     )
+                )
 
         # ✅ Await here, while the client is still open
         results: List[Dict[str, Any]] = await asyncio.gather(*tasks) if tasks else []
-
-    # ... keep your existing grouping (by_folder/by_api/flat) that uses `results`
-    # (no other changes needed)
-
 
     # ---- Group into folder-like hierarchy (with common meta per file) ----
     by_folder: Dict[str, Any] = {}
@@ -280,13 +343,13 @@ async def run_tests(service: Optional[str] = None, case_name: Optional[str] = No
         if isinstance(node, dict):
             for k, v in node.items():
                 if k == "cases" and isinstance(v, list):
-                    v.sort(key=lambda x: (x.get("ok") is True, x.get("case","")))
+                    v.sort(key=lambda x: (x.get("ok") is True, x.get("case", "")))
                 else:
                     _sort_inplace(v)
 
     _sort_inplace(by_folder)
     for sig, lst in by_api.items():
-        lst.sort(key=lambda x: (x.get("ok") is True, x.get("case","")))
+        lst.sort(key=lambda x: (x.get("ok") is True, x.get("case", "")))
 
     return {
         "by_folder": by_folder,

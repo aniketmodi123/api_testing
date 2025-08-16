@@ -1,3 +1,0 @@
-﻿# Optional headers that apply to ONLY this service (merged after global)
-headers:
-    module: "cis"
