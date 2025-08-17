@@ -15,7 +15,8 @@ from schema import (
 )
 from utils import (
     ExceptionHandler,
-    create_response
+    create_response,
+    value_correction
 )
 
 router = APIRouter()
@@ -37,7 +38,7 @@ async def update_node(
         # Verify node ownership
         node = await verify_node_ownership(db, node_id, user.id)
         if not node:
-            return create_response(404, error_message="Node not found or access denied")
+            return create_response(206, error_message="Node not found or access denied")
 
         # If moving the node, validate the new parent
         if node_data.parent_id is not None:
@@ -73,8 +74,18 @@ async def update_node(
             node.parent_id = node_data.parent_id
 
         await db.commit()
+        await db.refresh(node)
+        data = {
+            "id": node.id,
+            "workspace_id": node.workspace_id,
+            "name": node.name,
+            "type": node.type,
+            "parent_id": node.parent_id,
+            "created_at": str(node.created_at),
+            "children": []
+        }
 
-        return create_response(200, {"message":"Node updated successfully"})
+        return create_response(200, value_correction(data))
 
     except Exception as e:
         await db.rollback()

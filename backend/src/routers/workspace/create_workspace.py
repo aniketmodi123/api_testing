@@ -1,12 +1,9 @@
 from fastapi import APIRouter, Depends, Header
-from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
-from typing import List, Optional
 
 from config import get_db, get_user_by_username
-from models import User, Workspace, Node
-from schema import WorkspaceCreateRequest, WorkspaceUpdateRequest
+from models import Workspace
+from schema import WorkspaceCreateRequest
 from utils import (
     ExceptionHandler,
     create_response,
@@ -38,7 +35,18 @@ async def create_workspace(
 
         db.add(new_workspace)
         await db.commit()
-        return create_response(201, {"message":"Workspace created successfully"})
+        await db.refresh(new_workspace)
+
+        data = {
+            "id": new_workspace.id,
+            "user_id": new_workspace.user_id,
+            "name": new_workspace.name,
+            "description": new_workspace.description,
+            "created_at": str(new_workspace.created_at),
+            "nodes": []
+        }
+
+        return create_response(201, value_correction(data))
 
     except Exception as e:
         await db.rollback()

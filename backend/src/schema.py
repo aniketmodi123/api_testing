@@ -1,6 +1,6 @@
 # schemas.py
-from pydantic import BaseModel, EmailStr
-from typing import Optional
+from pydantic import BaseModel, Field, validator, EmailStr
+from typing import Optional, Dict, Any
 
 
 class PaginationRes(BaseModel):
@@ -241,8 +241,7 @@ class NodeWithPathResponse(BaseModel):
 # Header Management Schemas - Add these to your existing schemas.py
 
 from pydantic import BaseModel, Field, validator
-from typing import Optional, List, Any, Dict, Union
-from datetime import datetime
+from typing import Optional, List, Any, Dict
 
 
 # ===========================================
@@ -473,3 +472,105 @@ class HeaderInheritancePreviewResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+
+# Pydantic schemas for API management
+class ApiCreateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255, description="API name")
+    method: str = Field(..., description="HTTP method (GET, POST, PUT, DELETE, PATCH)")
+    endpoint: str = Field(..., description="API endpoint path")
+    description: Optional[str] = Field(None, description="API description")
+    version: Optional[str] = Field("v1", max_length=50, description="API version")
+    is_active: bool = Field(True, description="API active status")
+    extra_meta: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
+
+    @validator('name')
+    def validate_name(cls, v):
+        if not v or not v.strip():
+            raise ValueError('API name cannot be empty')
+        return v.strip()
+
+    @validator('endpoint')
+    def validate_endpoint(cls, v):
+        if not v or not v.strip():
+            raise ValueError('Endpoint cannot be empty')
+        # Ensure endpoint starts with /
+        endpoint = v.strip()
+        if not endpoint.startswith('/'):
+            endpoint = '/' + endpoint
+        return endpoint
+
+
+class ApiUpdateRequest(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=255, description="API name")
+    method: Optional[str] = Field(None, description="HTTP method")
+    endpoint: Optional[str] = Field(None, description="API endpoint path")
+    description: Optional[str] = Field(None, description="API description")
+    version: Optional[str] = Field(None, max_length=50, description="API version")
+    is_active: Optional[bool] = Field(None, description="API active status")
+    extra_meta: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
+
+
+    @validator('name', pre=True, always=True)
+    def validate_name(cls, v):
+        if v is not None:
+            if not v or not v.strip():
+                raise ValueError('API name cannot be empty')
+            return v.strip()
+        return v
+
+    @validator('endpoint', pre=True, always=True)
+    def validate_endpoint(cls, v):
+        if v is not None:
+            if not v or not v.strip():
+                raise ValueError('Endpoint cannot be empty')
+            endpoint = v.strip()
+            if not endpoint.startswith('/'):
+                endpoint = '/' + endpoint
+            return endpoint
+        return v
+
+
+# Pydantic schemas for API cases
+class ApiCaseCreateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255, description="Test case name")
+    body: Dict[str, Any] = Field(..., description="Request data (headers, body, params, etc.)")
+    expected: Dict[str, Any] = Field(..., description="Expected response data")
+
+    @validator('name')
+    def validate_name(cls, v):
+        if not v or not v.strip():
+            raise ValueError('Test case name cannot be empty')
+        return v.strip()
+
+    @validator('body')
+    def validate_request(cls, v):
+        if not v:
+            raise ValueError('Request data cannot be empty')
+        return v
+
+    @validator('expected')
+    def validate_response(cls, v):
+        if not v:
+            raise ValueError('Response data cannot be empty')
+        return v
+
+
+class ApiCaseUpdateRequest(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=255, description="Test case name")
+    request: Optional[Dict[str, Any]] = Field(None, description="Request data")
+    response: Optional[Dict[str, Any]] = Field(None, description="Expected response data")
+
+    @validator('name', pre=True, always=True)
+    def validate_name(cls, v):
+        if v is not None:
+            if not v or not v.strip():
+                raise ValueError('Test case name cannot be empty')
+            return v.strip()
+        return v
+
+class UpdateTestCaseRequest(BaseModel):
+    name: Optional[str] = None
+    body: Optional[Dict[Any, Any]] = None
+    expected: Optional[Dict[Any, Any]] = None

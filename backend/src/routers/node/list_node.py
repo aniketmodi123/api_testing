@@ -45,7 +45,7 @@ async def get_node_with_children(
         node = result.scalar_one_or_none()
 
         if not node:
-            return create_response(404, error_message="Node not found or access denied")
+            return create_response(206, error_message="Node not found or access denied")
 
         # Get breadcrumb path
         path = await get_node_path(db, node_id)

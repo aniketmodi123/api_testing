@@ -103,7 +103,7 @@ class Api(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     file_id: Mapped[int] = mapped_column(
-        ForeignKey("nodes.id", ondelete="CASCADE"), nullable=False
+        ForeignKey("nodes.id", ondelete="CASCADE"), unique=True, nullable=False
     )
 
     # ✅ Important searchable fields (instead of only JSON)
@@ -123,8 +123,12 @@ class Api(Base):
 
     # Relationships
     file: Mapped["Node"] = relationship("Node", back_populates="apis")
-    cases: Mapped[list["ApiCase"]] = relationship("ApiCase", back_populates="api")
-
+    cases: Mapped[list["ApiCase"]] = relationship(
+        "ApiCase",
+        back_populates="api",
+        cascade="all, delete-orphan",   # delete children first
+        single_parent=True              # good practice with delete-orphan
+    )
 
 # ---------------------------
 # API Case Model (Cases inside one API JSON)
@@ -135,8 +139,8 @@ class ApiCase(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     api_id: Mapped[int] = mapped_column(ForeignKey("apis.id", ondelete="CASCADE"), nullable=False)
     name: Mapped[str] = mapped_column(String(255))
-    request: Mapped[dict] = mapped_column(JSON, nullable=False)
-    response: Mapped[dict] = mapped_column(JSON, nullable=False)
+    body: Mapped[dict] = mapped_column(JSON, nullable=False)
+    expected: Mapped[dict] = mapped_column(JSON, nullable=False)
     created_at: Mapped[str] = mapped_column(TIMESTAMP, default= datetime.now, server_default=func.now())
 
     api: Mapped["Api"] = relationship("Api", back_populates="cases")

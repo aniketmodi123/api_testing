@@ -1,11 +1,10 @@
-from fastapi import APIRouter, Depends, Header as FastAPIHeader, HTTPException
+from fastapi import APIRouter, Depends, Header as FastAPIHeader
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Optional, List, Dict, Any
+from typing import List, Dict, Any
 
-from config import get_db, get_user_by_username, serialize_data, verify_folder_ownership
-from models import User, Workspace, Node, Header
-from schema import HeaderResponse
+from config import get_db, get_user_by_username, verify_folder_ownership
+from models import Node, Header
 from utils import ExceptionHandler, create_response, value_correction
 
 router = APIRouter()
@@ -138,7 +137,7 @@ async def get_complete_folder_headers(
         # Verify folder ownership
         target_folder = await verify_folder_ownership(db, folder_id, user.id)
         if not target_folder:
-            return create_response(404, error_message="Folder not found or access denied")
+            return create_response(206, error_message="Folder not found or access denied")
 
         # Get path from root to target folder
         folder_path = await get_folder_path_to_root(db, folder_id)
@@ -207,7 +206,7 @@ async def get_headers_inheritance_preview(
         # Verify folder ownership
         target_folder = await verify_folder_ownership(db, folder_id, user.id)
         if not target_folder:
-            return create_response(404, error_message="Folder not found or access denied")
+            return create_response(206, error_message="Folder not found or access denied")
 
         # Get path from root to target folder
         folder_path = await get_folder_path_to_root(db, folder_id)

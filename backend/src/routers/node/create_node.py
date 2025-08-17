@@ -14,7 +14,8 @@ from schema import (
 )
 from utils import (
     ExceptionHandler,
-    create_response
+    create_response,
+    value_correction
 )
 
 router = APIRouter()
@@ -63,8 +64,18 @@ async def create_node(
 
         db.add(new_node)
         await db.commit()
+        await db.refresh(new_node)
+        data = {
+            "id": new_node.id,
+            "workspace_id": new_node.workspace_id,
+            "name": new_node.name,
+            "type": new_node.type,
+            "parent_id": new_node.parent_id,
+            "created_at": str(new_node.created_at),
+            "children": []
+        }
 
-        return create_response(201, {"message":f"{node_data.type.title()} created successfully"})
+        return create_response(201, value_correction(data))
     except Exception as e:
         await db.rollback()
         ExceptionHandler(e)

@@ -37,7 +37,7 @@ async def delete_workspace(
         workspace = result.scalar_one_or_none()
 
         if not workspace:
-            return create_response(404, error_message="Workspace not found or access denied")
+            return create_response(206, error_message="Workspace not found or access denied")
 
         # Delete workspace (cascade will handle related data)
         await db.delete(workspace)

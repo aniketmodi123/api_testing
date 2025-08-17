@@ -32,7 +32,7 @@ async def delete_node(
         # Verify node ownership
         node = await verify_node_ownership(db, node_id, user.id)
         if not node:
-            return create_response(404, error_message="Node not found or access denied")
+            return create_response(206, error_message="Node not found or access denied")
 
         # Count children before deletion (for info)
         children_result = await db.execute(

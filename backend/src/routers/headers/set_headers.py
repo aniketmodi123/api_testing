@@ -13,7 +13,8 @@ from schema import (
 )
 from utils import (
     ExceptionHandler,
-    create_response
+    create_response,
+    value_correction
 )
 
 router = APIRouter()
@@ -55,8 +56,16 @@ async def set_folder_headers(
 
         db.add(new_header)
         await db.commit()
+        await db.refresh(new_header)
 
-        return create_response(201, {"message": "Headers created successfully"})
+        data = {
+            "id": new_header.id,
+            "folder_id": new_header.folder_id,
+            "content": new_header.content,
+            "created_at": new_header.created_at
+        }
+
+        return create_response(201, value_correction(data))
 
     except Exception as e:
         await db.rollback()

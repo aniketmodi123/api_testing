@@ -1,7 +1,7 @@
 version: '3.8'
 
 networks:
-    mes_network:
+    api_testing_network:
         external: true
 
 services:
@@ -9,12 +9,45 @@ services:
         build:
             context: .
             dockerfile: ./docker/Dockerfile.dev
+            args:
+                - PYTHON_VERSION=tiangolo/uvicorn-gunicorn-fastapi:python3.10-slim
         image: api_testing
         container_name: api_testing
         ports:
             - 8000:8000
             - 5000:5000
+        env_file:
+        - .env
         volumes:
             - ./src:/app
         networks:
-            - mes_network
+            - api_testing_network
+
+    postgres:
+        image: postgres:15
+        container_name: postgres_db
+        environment:
+            POSTGRES_DB: testdb
+            POSTGRES_USER: admin
+            POSTGRES_PASSWORD: admin
+        ports:
+            - "5432:5432"  # Exposing PostgreSQL on port 5433
+        volumes:
+            - postgres_data:/var/lib/postgresql/data  # Using named volume for data persistence
+        networks:
+            - api_testing_network
+
+
+    # ngrok:
+    #     image: ngrok/ngrok:latest
+    #     environment:
+    #         - NGROK_AUTHTOKEN=2nSb92XSaWbFWHz0tmRQxunQg9V_3Hb8VBGnYvui2TfnvkHtM
+    #     ports:
+    #         - 4040:4040
+    #     command: http --domain=sharply-integral-sturgeon.ngrok-free.app 192.168.100.54:8014
+    #     networks:
+    #         - api_testing_network
+    #     restart: unless-stopped
+
+volumes:
+    postgres_data:  # Declare a named volume

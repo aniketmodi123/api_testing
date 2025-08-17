@@ -7,7 +7,8 @@ from models import Workspace
 from schema import WorkspaceUpdateRequest
 from utils import (
     ExceptionHandler,
-    create_response
+    create_response,
+    value_correction
 )
 
 router = APIRouter()
@@ -39,7 +40,7 @@ async def update_workspace(
         workspace = result.scalar_one_or_none()
 
         if not workspace:
-            return create_response(404, error_message="Workspace not found or access denied")
+            return create_response(206, error_message="Workspace not found or access denied")
 
         # Update workspace fields
         if workspace_data.name is not None:
@@ -48,8 +49,16 @@ async def update_workspace(
             workspace.description = workspace_data.description
 
         await db.commit()
-
-        return create_response(200, {"message": "Workspace updated successfully"})
+        await db.refresh(workspace)
+        data = {
+            "id": workspace.id,
+            "user_id": workspace.user_id,
+            "name": workspace.name,
+            "description": workspace.description,
+            "created_at": str(workspace.created_at),
+            "nodes": []
+        }
+        return create_response(200, value_correction(data))
 
     except Exception as e:
         await db.rollback()

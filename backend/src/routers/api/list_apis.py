@@ -1,0 +1,93 @@
+from fastapi import APIRouter, Depends, Header
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from config import (
+    get_db,
+    get_user_by_username,
+    verify_node_ownership
+)
+from models import Api, ApiCase
+from utils import (
+    ExceptionHandler,
+    create_response,
+    value_correction
+)
+
+router = APIRouter()
+
+
+@router.get("/file/{file_id}/api")
+async def get_file_api(
+    file_id: int,
+    username: str = Header(...),
+    db: AsyncSession = Depends(get_db),
+    include_cases: bool = False
+):
+    """Get API from a file with optional test cases"""
+    try:
+        # Get user
+        user = await get_user_by_username(db, username)
+        if not user:
+            return create_response(400, error_message="User not found")
+
+        # Verify file ownership
+        file_node = await verify_node_ownership(db, file_id, user.id)
+        if not file_node:
+            return create_response(206, error_message="File not found or access denied")
+
+        if file_node.type != "file":
+            return create_response(400, error_message="Can only get API from files, not folders")
+
+        # Get API from file
+        query = select(Api).where(Api.file_id == file_id)
+
+        if include_cases:
+            query = query.options(selectinload(Api.cases))
+
+        result = await db.execute(query)
+        api = result.scalar_one_or_none()
+
+        if not api:
+            return create_response(206, error_message="No API found in this file")
+
+        data = {
+            "id": api.id,
+            "file_id": api.file_id,
+            "name": api.name,
+            "method": api.method,
+            "endpoint": api.endpoint,
+            "description": api.description,
+            "version": api.version,
+            "is_active": api.is_active,
+            "extra_meta": api.extra_meta,
+            "created_at": api.created_at,
+            "file_name": file_node.name,
+            "workspace_id": file_node.workspace_id
+        }
+
+        if include_cases and hasattr(api, 'cases'):
+            cases_data = []
+            for case in api.cases:
+                cases_data.append({
+                    "id": case.id,
+                    "name": case.name,
+                    "body": case.body,
+                    "expected": case.expected,
+                    "created_at": case.created_at
+                })
+            data["test_cases"] = cases_data
+            data["total_cases"] = len(cases_data)
+        else:
+            # Get case count without loading full cases
+            case_count_result = await db.execute(
+                select(ApiCase.id).where(ApiCase.api_id == api.id)
+            )
+            data["total_cases"] = len(case_count_result.fetchall())
+
+        return create_response(200, value_correction(data))
+
+    except Exception as e:
+        ExceptionHandler(e)
+

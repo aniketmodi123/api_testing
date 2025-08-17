@@ -14,6 +14,8 @@ from routers.sso import create_user, login, logout, update_user, delete_user, us
 from routers.workspace import create_workspace, update_workspace, list_workspace, list_workspace_tree,delete_workspace
 from routers.node import create_node, update_node, list_node, delete_node
 from routers.headers import complete_headers, set_headers,list_headers,delete_headers, update_headers
+from routers.api import create_api, list_apis, create_dup, update_api, delete_api
+from routers.api_cases import create_api_case, delete_case, get_case, list_search_api_case, create_dup_case, update_case
 from security import AuthMiddleware
 
 FASTAPI_CONFIG = {
@@ -146,5 +148,19 @@ app.include_router(delete_headers.router, tags=["Headers"])
 app.include_router(complete_headers.router, tags=["Headers"])
 
 
+# apis
+app.include_router(create_api.router, tags=["APIs"])
+app.include_router(list_apis.router, tags=["APIs"])
+app.include_router(create_dup.router, tags=["APIs"])
+app.include_router(update_api.router, tags=["APIs"])
+app.include_router(delete_api.router, tags=["APIs"])
+
+#api cases
+app.include_router(create_api_case.router, tags=["API Cases"])
+app.include_router(list_search_api_case.router, tags=["API Cases"])
+app.include_router(get_case.router, tags=["API Cases"])
+app.include_router(update_case.router, tags=["API Cases"])
+app.include_router(create_dup_case.router, tags=["API Cases"])
+app.include_router(delete_case.router, tags=["API Cases"])
 
 

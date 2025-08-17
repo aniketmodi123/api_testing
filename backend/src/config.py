@@ -8,11 +8,8 @@ import os
 from sqlalchemy import select, text, and_
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
-from dotenv import load_dotenv
 
 from models import Header, Node, User, VerifyLogin, Workspace
-
-load_dotenv('/etc/env_base')
 
 
 PROD_HOST = os.environ.get('PRODUCTION_POSTGRES_HOST')
