@@ -125,7 +125,6 @@ class ApiResponse(BaseModel):
     error_message: Optional[str] = None
 
 
-
 # file/folder
 
 # Node Management Schemas - Add these to your existing schemas.py
@@ -234,6 +233,243 @@ class NodeWithPathResponse(BaseModel):
     created_at: Any
     path: List[NodePathResponse] = []  # Breadcrumb path from root to current node
     children: List[NodeBasicResponse] = []
+
+    class Config:
+        from_attributes = True
+
+
+# Header Management Schemas - Add these to your existing schemas.py
+
+from pydantic import BaseModel, Field, validator
+from typing import Optional, List, Any, Dict, Union
+from datetime import datetime
+
+
+# ===========================================
+# HEADER MANAGEMENT SCHEMAS
+# ===========================================
+
+class HeaderCreateRequest(BaseModel):
+    content: Dict[str, Any] = Field(..., description="Header content as JSON object")
+    @validator('content')
+    def validate_content(cls, v):
+        if not v:
+            raise ValueError('Header content cannot be empty')
+        # Basic validation for header structure
+        if not isinstance(v, dict):
+            raise ValueError('Header content must be a JSON object')
+        return v
+
+
+class HeaderUpdateRequest(BaseModel):
+    content: Dict[str, Any] = Field(..., description="Updated header content as JSON object")
+
+    @validator('content')
+    def validate_content(cls, v):
+        if not v:
+            raise ValueError('Header content cannot be empty')
+
+        if not isinstance(v, dict):
+            raise ValueError('Header content must be a JSON object')
+
+        return v
+
+
+class HeaderResponse(BaseModel):
+    id: int
+    folder_id: int
+    content: Dict[str, Any]
+    created_at: Any
+
+    class Config:
+        from_attributes = True
+
+
+class HeaderListResponse(BaseModel):
+    headers: List[HeaderResponse]
+    total_count: int = 0
+    folder_info: Dict[str, Any] = {}
+
+    class Config:
+        from_attributes = True
+
+
+class FolderHeadersSummaryResponse(BaseModel):
+    folder_id: int
+    folder_name: str
+    workspace_id: int
+    headers_count: int
+    headers: List[HeaderResponse] = []
+
+    class Config:
+        from_attributes = True
+
+
+# Common header templates/examples that you might want to use
+class CommonHeaderTemplates(BaseModel):
+    """Common header templates for API testing"""
+
+    @staticmethod
+    def get_auth_bearer_template():
+        return {
+            "Authorization": "Bearer {{token}}",
+            "Content-Type": "application/json"
+        }
+
+    @staticmethod
+    def get_basic_auth_template():
+        return {
+            "Authorization": "Basic {{credentials}}",
+            "Content-Type": "application/json"
+        }
+
+    @staticmethod
+    def get_api_key_template():
+        return {
+            "X-API-Key": "{{api_key}}",
+            "Content-Type": "application/json"
+        }
+
+    @staticmethod
+    def get_json_template():
+        return {
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+        }
+
+    @staticmethod
+    def get_form_template():
+        return {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "application/json"
+        }
+
+
+# Header validation helpers
+class HeaderValidationHelper:
+    """Helper class for header validation"""
+
+    @staticmethod
+    def validate_http_headers(headers: Dict[str, Any]) -> List[str]:
+        """Validate HTTP headers and return list of warnings/errors"""
+        warnings = []
+
+        for key, value in headers.items():
+            # Check for valid header names (basic validation)
+            if not isinstance(key, str) or not key.strip():
+                warnings.append(f"Invalid header name: {key}")
+                continue
+
+            # Check for common header name patterns
+            if ' ' in key:
+                warnings.append(f"Header name contains spaces: {key}")
+
+            # Check for valid header values
+            if not isinstance(value, (str, int, float, bool)):
+                warnings.append(f"Invalid header value type for {key}: {type(value)}")
+
+        return warnings
+
+    @staticmethod
+    def normalize_headers(headers: Dict[str, Any]) -> Dict[str, str]:
+        """Normalize headers to string values"""
+        normalized = {}
+        for key, value in headers.items():
+            if isinstance(key, str) and key.strip():
+                normalized[key.strip()] = str(value) if value is not None else ""
+        return normalized
+
+
+# Header search and filter schemas
+class HeaderSearchRequest(BaseModel):
+    query: Optional[str] = Field(None, min_length=1, max_length=100, description="Search query for header content")
+    header_name: Optional[str] = Field(None, description="Filter by specific header name")
+
+    class Config:
+        from_attributes = True
+
+
+# Add these schemas to your existing schemas.py
+
+from pydantic import BaseModel, Field
+from typing import Optional, List, Dict, Any
+
+
+# ===========================================
+# HEADER INHERITANCE SCHEMAS
+# ===========================================
+
+class FolderInPath(BaseModel):
+    id: int
+    name: str
+    has_headers: bool
+
+    class Config:
+        from_attributes = True
+
+
+class HeaderContribution(BaseModel):
+    key: str
+    value: Any
+
+    class Config:
+        from_attributes = True
+
+
+class HeaderOverride(BaseModel):
+    key: str
+    old_value: Any
+    new_value: Any
+
+    class Config:
+        from_attributes = True
+
+
+class FolderHeaderContribution(BaseModel):
+    folder_id: int
+    folder_name: str
+    headers_added: List[HeaderContribution] = []
+    headers_overridden: List[HeaderOverride] = []
+
+    class Config:
+        from_attributes = True
+
+
+class CompleteHeadersResponse(BaseModel):
+    folder_id: int
+    folder_name: str
+    workspace_id: int
+    complete_headers: Dict[str, Any]
+    headers_count: int
+    inheritance_path: List[FolderInPath]
+    folders_with_headers: int
+    inheritance_details: Optional[List[FolderHeaderContribution]] = None
+    raw_headers_by_folder: Optional[Dict[str, Dict[str, Any]]] = None
+
+    class Config:
+        from_attributes = True
+
+
+class FolderHeaderPreview(BaseModel):
+    level: int
+    folder_id: int
+    folder_name: str
+    has_headers: bool
+    headers: Dict[str, Any] = {}
+    headers_count: int = 0
+    header_id: Optional[int] = None
+    created_at: Optional[Any] = None
+
+    class Config:
+        from_attributes = True
+
+
+class HeaderInheritancePreviewResponse(BaseModel):
+    target_folder_id: int
+    target_folder_name: str
+    inheritance_path: List[FolderHeaderPreview]
+    total_levels: int
+    folders_with_headers: int
 
     class Config:
         from_attributes = True

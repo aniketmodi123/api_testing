@@ -17,7 +17,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True)
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
     god: Mapped[bool] = mapped_column(default=False, nullable=False)
-    created_at: Mapped[str] = mapped_column(TIMESTAMP, server_default=func.now())
+    created_at: Mapped[str] = mapped_column(TIMESTAMP, default= datetime.now, server_default=func.now())
 
     workspaces: Mapped[list["Workspace"]] = relationship("Workspace", back_populates="user")
 
@@ -52,7 +52,7 @@ class Workspace(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text)
-    created_at: Mapped[str] = mapped_column(TIMESTAMP, server_default=func.now())
+    created_at: Mapped[str] = mapped_column(TIMESTAMP, default= datetime.now, server_default=func.now())
 
     user: Mapped["User"] = relationship("User", back_populates="workspaces")
     nodes: Mapped[list["Node"]] = relationship("Node", back_populates="workspace")
@@ -69,7 +69,7 @@ class Node(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     type: Mapped[str] = mapped_column(String(10), nullable=False)  # folder | file
     parent_id: Mapped[int | None] = mapped_column(ForeignKey("nodes.id", ondelete="CASCADE"))
-    created_at: Mapped[str] = mapped_column(TIMESTAMP, server_default=func.now())
+    created_at: Mapped[str] = mapped_column(TIMESTAMP, default= datetime.now, server_default=func.now())
 
     __table_args__ = (
         CheckConstraint("type IN ('folder', 'file')", name="check_node_type"),
@@ -88,9 +88,9 @@ class Header(Base):
     __tablename__ = "headers"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    folder_id: Mapped[int] = mapped_column(ForeignKey("nodes.id", ondelete="CASCADE"), nullable=False)
+    folder_id: Mapped[int] = mapped_column(ForeignKey("nodes.id", ondelete="CASCADE"), unique= True, nullable=False)
     content: Mapped[dict] = mapped_column(JSON, nullable=False)
-    created_at: Mapped[str] = mapped_column(TIMESTAMP, server_default=func.now())
+    created_at: Mapped[str] = mapped_column(TIMESTAMP, default= datetime.now, server_default=func.now())
 
     folder: Mapped["Node"] = relationship("Node", back_populates="headers")
 
@@ -137,6 +137,7 @@ class ApiCase(Base):
     name: Mapped[str] = mapped_column(String(255))
     request: Mapped[dict] = mapped_column(JSON, nullable=False)
     response: Mapped[dict] = mapped_column(JSON, nullable=False)
-    created_at: Mapped[str] = mapped_column(TIMESTAMP, server_default=func.now())
+    created_at: Mapped[str] = mapped_column(TIMESTAMP, default= datetime.now, server_default=func.now())
 
     api: Mapped["Api"] = relationship("Api", back_populates="cases")
+

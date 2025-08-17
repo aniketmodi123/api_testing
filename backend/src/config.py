@@ -10,7 +10,7 @@ from sqlalchemy.orm import declarative_base
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from dotenv import load_dotenv
 
-from models import Node, User, VerifyLogin, Workspace
+from models import Header, Node, User, VerifyLogin, Workspace
 
 load_dotenv('/etc/env_base')
 
@@ -257,3 +257,39 @@ async def get_node_path(db: AsyncSession, node_id: int) -> List[dict]:
             break
 
     return path
+
+
+# Helper function to verify folder ownership and type
+async def verify_folder_ownership(db: AsyncSession, folder_id: int, user_id: int) -> Optional[Node]:
+    """Verify that the folder belongs to a workspace owned by the user and is actually a folder"""
+    result = await db.execute(
+        select(Node)
+        .join(Workspace, Node.workspace_id == Workspace.id)
+        .where(
+            and_(
+                Node.id == folder_id,
+                Node.type == "folder",  # Ensure it's a folder
+                Workspace.user_id == user_id
+            )
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+# Helper function to verify header ownership
+async def verify_header_ownership(db: AsyncSession, header_id: int, user_id: int) -> Optional[Header]:
+    """Verify that the header belongs to a folder in a workspace owned by the user"""
+    result = await db.execute(
+        select(Header)
+        .join(Node, Header.folder_id == Node.id)
+        .join(Workspace, Node.workspace_id == Workspace.id)
+        .where(
+            and_(
+                Header.id == header_id,
+                Node.type == "folder",
+                Workspace.user_id == user_id
+            )
+        )
+    )
+    return result.scalar_one_or_none()
+

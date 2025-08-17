@@ -13,6 +13,7 @@ from routers.workspace import list_workspace_tree
 from routers.sso import create_user, login, logout, update_user, delete_user, user_profile
 from routers.workspace import create_workspace, update_workspace, list_workspace, list_workspace_tree,delete_workspace
 from routers.node import create_node, update_node, list_node, delete_node
+from routers.headers import complete_headers, set_headers,list_headers,delete_headers, update_headers
 from security import AuthMiddleware
 
 FASTAPI_CONFIG = {
@@ -135,6 +136,14 @@ app.include_router(create_node.router, prefix="/node", tags=["node"])
 app.include_router(update_node.router, prefix="/node", tags=["node"])
 app.include_router(list_node.router, prefix="/node", tags=["node"])
 app.include_router(delete_node.router, prefix="/node", tags=["node"])
+
+
+# headers
+app.include_router(set_headers.router, tags=["Headers"])
+app.include_router(update_headers.router, tags=["Headers"])
+app.include_router(list_headers.router, tags=["Headers"])
+app.include_router(delete_headers.router, tags=["Headers"])
+app.include_router(complete_headers.router, tags=["Headers"])
 
 
 
