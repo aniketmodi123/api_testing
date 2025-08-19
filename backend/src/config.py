@@ -1,6 +1,6 @@
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.engine.row import Row
 from sqlalchemy.inspection import inspect
@@ -265,7 +265,6 @@ async def verify_folder_ownership(db: AsyncSession, folder_id: int, user_id: int
         .where(
             and_(
                 Node.id == folder_id,
-                Node.type == "folder",  # Ensure it's a folder
                 Workspace.user_id == user_id
             )
         )
@@ -290,3 +289,126 @@ async def verify_header_ownership(db: AsyncSession, header_id: int, user_id: int
     )
     return result.scalar_one_or_none()
 
+
+async def get_folder_path_to_root(db: AsyncSession, folder_id: int) -> List[Dict[str, Any]]:
+    """Get the path from current folder to root (including current folder)"""
+    path = []
+    current_id = folder_id
+    visited = set()
+
+    while current_id is not None and current_id not in visited:
+        visited.add(current_id)
+
+        # Get folder info
+        result = await db.execute(
+            select(Node.id, Node.name, Node.parent_id, Node.workspace_id)
+            .where(and_(Node.id == current_id))
+        )
+        folder_data = result.first()
+
+        if folder_data:
+            path.insert(0, {  # Insert at beginning to get root-to-current order
+                "id": folder_data.id,
+                "name": folder_data.name,
+                "parent_id": folder_data.parent_id,
+                "workspace_id": folder_data.workspace_id
+            })
+            current_id = folder_data.parent_id
+        else:
+            break
+
+    return path
+
+
+async def get_headers_for_folders(db: AsyncSession, folder_ids: List[int]) -> Dict[int, Dict[str, Any]]:
+    """Get headers for multiple folders"""
+    if not folder_ids:
+        return {}
+
+    result = await db.execute(
+        select(Header.folder_id, Header.content, Header.id, Header.created_at)
+        .where(Header.folder_id.in_(folder_ids))
+    )
+    headers_data = result.fetchall()
+
+    headers_map = {}
+    for header_row in headers_data:
+        headers_map[header_row.folder_id] = {
+            "id": header_row.id,
+            "content": header_row.content,
+            "created_at": header_row.created_at
+        }
+
+    return headers_map
+
+
+def merge_headers_with_priority(folder_path: List[Dict], headers_map: Dict[int, Dict]) -> Dict[str, Any]:
+    """
+    Merge headers from root to leaf, with child headers overriding parent headers
+    Priority: Root (lowest) -> ... -> Leaf (highest)
+    """
+    merged_headers = {}
+    inheritance_info = []
+
+    # Process folders from root to leaf (left to right in path)
+    for folder_info in folder_path:
+        folder_id = folder_info["id"]
+        folder_name = folder_info["name"]
+
+        if folder_id in headers_map:
+            header_data = headers_map[folder_id]
+            header_content = header_data["content"]
+
+            # Track which keys come from which folder
+            folder_contribution = {
+                "folder_id": folder_id,
+                "folder_name": folder_name,
+                "headers_added": [],
+                "headers_overridden": []
+            }
+
+            for key, value in header_content.items():
+                if key in merged_headers:
+                    # Key already exists, this folder overrides it
+                    folder_contribution["headers_overridden"].append({
+                        "key": key,
+                        "old_value": merged_headers[key],
+                        "new_value": value
+                    })
+                else:
+                    # New key from this folder
+                    folder_contribution["headers_added"].append({
+                        "key": key,
+                        "value": value
+                    })
+
+                merged_headers[key] = value  # Override or add
+
+            # Only add to inheritance_info if this folder contributed something
+            if folder_contribution["headers_added"] or folder_contribution["headers_overridden"]:
+                inheritance_info.append(folder_contribution)
+
+    return {
+        "merged_headers": merged_headers,
+        "inheritance_info": inheritance_info
+    }
+
+
+async def get_headers(db: AsyncSession, folder_id: int):
+    try:
+        folder_path = await get_folder_path_to_root(db, folder_id)
+
+        if not folder_path:
+            return {}, [], {}, {}
+
+        # Get folder IDs for header lookup
+        folder_ids = [folder["id"] for folder in folder_path]
+
+        # Get headers for all folders in the path
+        headers_map = await get_headers_for_folders(db, folder_ids)
+
+        # Merge headers with proper priority (child overrides parent)
+        merge_result = merge_headers_with_priority(folder_path, headers_map)
+        return folder_path, folder_ids, headers_map, merge_result
+    except Exception as e:
+        raise Exception(str(e))

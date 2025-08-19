@@ -5,6 +5,7 @@ from sqlalchemy.orm import selectinload
 
 from config import (
     get_db,
+    get_headers,
     get_user_by_username,
     verify_node_ownership
 )
@@ -52,12 +53,37 @@ async def get_file_api(
         if not api:
             return create_response(206, error_message="No API found in this file")
 
+        # Get path from root to target folder
+        folder_path, folder_ids, headers_map, merge_result = await get_headers(db, api.file_id)
+        if not folder_path:
+            return create_response(404, error_message="Folder not found")
+
+        inherited_headers = merge_result.get("merged_headers", {})
+
+        # 5) Optional API-level headers override (from api.extra_meta.headers)
+        api_extra_headers = {}
+        try:
+            if getattr(api, "extra_meta", None):
+                meta = api.extra_meta
+                # if stored as JSON string, parse
+                if isinstance(meta, str):
+                    import json
+                    meta = json.loads(meta)
+                if isinstance(meta, dict) and isinstance(meta.get("headers"), dict):
+                    api_extra_headers = meta["headers"]
+        except Exception:
+            # Silently ignore malformed extra_meta; you can log if needed
+            api_extra_headers = {}
+
+        final_headers = {**inherited_headers, **api_extra_headers}
+
         data = {
             "id": api.id,
             "file_id": api.file_id,
             "name": api.name,
             "method": api.method,
             "endpoint": api.endpoint,
+            "headers":final_headers,
             "description": api.description,
             "version": api.version,
             "is_active": api.is_active,
