@@ -235,7 +235,6 @@ async def run_from_list_api(
                 "name": c.get("name") or f"case-{c.get('id')}",
                 "body": c.get("body"),
                 "expected": c.get("expected"),
-                # method/endpoint/headers come from API-level meta:
                 "method": method,
                 "endpoint": endpoint,
                 "headers": api_hdrs,
