@@ -22,12 +22,6 @@ async def sign_up(user_data: UserSignUp, db: AsyncSession = Depends(get_db)):
     Register a new user account.
     """
     try:
-        # Check if username already exists
-        stmt = select(User).where(User.username == user_data.username)
-        result = await db.execute(stmt)
-        if result.scalar_one_or_none():
-            return create_response(400, error_message ="Username already registered")
-
         # Check if email already exists
         stmt = select(User).where(User.email == user_data.email)
         result = await db.execute(stmt)
@@ -37,7 +31,7 @@ async def sign_up(user_data: UserSignUp, db: AsyncSession = Depends(get_db)):
         # Create new user
         hashed_password = get_password_hash(user_data.password)
         new_user = User(
-            username=user_data.username,
+            username=user_data.email,
             email=user_data.email,
             password_hash=hashed_password
         )

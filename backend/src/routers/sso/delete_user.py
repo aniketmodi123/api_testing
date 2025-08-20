@@ -28,7 +28,7 @@ async def delete_user(
             return create_response(400, error_message="User not found")
 
         await blacklist_token(username)
-        await db.delete(user)
+        user.is_active = False
         await db.commit()
 
         return create_response(200 , error_message= "User account successfully deleted")

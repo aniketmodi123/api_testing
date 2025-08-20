@@ -13,7 +13,6 @@ class PaginationRes(BaseModel):
 
 # Pydantic models for request/response
 class UserSignUp(BaseModel):
-    username: str
     email: EmailStr
     password: str
 

@@ -18,9 +18,13 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
     god: Mapped[bool] = mapped_column(default=False, nullable=False)
     created_at: Mapped[str] = mapped_column(TIMESTAMP, default= datetime.now, server_default=func.now())
-
-    workspaces: Mapped[list["Workspace"]] = relationship("Workspace", back_populates="user")
-
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    workspaces: Mapped[list["Workspace"]] = relationship(
+        "Workspace",
+        back_populates="user",
+        cascade="all, delete-orphan",   # <— ORM deletes children
+        single_parent=True,
+    )
 
 
 class VerifyLogin(Base):
