@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import check_db_connection, engine
 from models import Base
 from datetime import datetime
+from routers.runner import run_case
 from routers.workspace import list_workspace_tree
 from routers.sso import create_user, login, logout, update_user, delete_user, user_profile
 from routers.workspace import create_workspace, update_workspace, list_workspace, list_workspace_tree,delete_workspace
@@ -164,3 +165,7 @@ app.include_router(create_dup_case.router, tags=["API Cases"])
 app.include_router(delete_case.router, tags=["API Cases"])
 
 
+#runner
+
+
+app.include_router(run_case.router, tags=["Runner"])

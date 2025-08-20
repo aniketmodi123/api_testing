@@ -14,6 +14,7 @@ from utils import (
     create_response,
     value_correction
 )
+from validator import validate_expected_spec
 
 router = APIRouter()
 
@@ -26,6 +27,10 @@ async def create_test_case_for_file_api(
 ):
     """Create test case for API in a specific file"""
     try:
+        ok, errors = validate_expected_spec(request.expected)
+        if not ok:
+            # Shape errors only (not runtime); return 422 with reasons
+            return create_response(422,error_message= f"Invalid expected schema, reasons: {errors}")
         # Get user
         user = await get_user_by_username(db, username)
         if not user:
