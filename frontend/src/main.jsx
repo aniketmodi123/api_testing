@@ -6,9 +6,13 @@ import AuthGuard from './components/AuthGuard.jsx';
 import { ThemeProvider } from './components/ThemeProvider.jsx';
 import SignIn from './pages/SignIn.jsx';
 import SignUp from './pages/SignUp.jsx';
-import { AuthProvider } from './store/session';
+import { AuthProvider } from './store/session.jsx';
 import './styles/global.css';
 
+import ChangePassword from './features/auth/components/ChangePassword.jsx';
+import DeleteAccount from './features/auth/components/DeleteAccount.jsx';
+import ForgotPassword from './features/auth/components/ForgotPassword.jsx';
+import UserProfile from './features/auth/components/UserProfile.jsx';
 import Home from './pages/Home/Home.jsx';
 
 createRoot(document.getElementById('root')).render(
@@ -33,12 +37,44 @@ createRoot(document.getElementById('root')).render(
                 </App>
               }
             />
+            <Route
+              path="/forgot-password"
+              element={
+                <App>
+                  <ForgotPassword />
+                </App>
+              }
+            />
             <Route element={<AuthGuard />}>
               <Route
                 path="/"
                 element={
                   <App>
                     <Home />
+                  </App>
+                }
+              />
+              <Route
+                path="/profile"
+                element={
+                  <App>
+                    <UserProfile />
+                  </App>
+                }
+              />
+              <Route
+                path="/change-password"
+                element={
+                  <App>
+                    <ChangePassword />
+                  </App>
+                }
+              />
+              <Route
+                path="/delete-account"
+                element={
+                  <App>
+                    <DeleteAccount />
                   </App>
                 }
               />

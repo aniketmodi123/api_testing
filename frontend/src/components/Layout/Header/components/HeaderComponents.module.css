@@ -46,3 +46,28 @@
   font-size: 0.9rem;
   word-break: break-all;
 }
+
+.divider {
+  height: 1px;
+  background-color: rgba(128, 128, 128, 0.2);
+  margin: 0.5rem 0;
+}
+
+.dropdownItem {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem 0;
+  color: var(--text-color);
+  text-decoration: none;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+}
+
+.dropdownItem:hover {
+  color: var(--primary-color);
+}
+
+.menuIcon {
+  margin-right: 0.5rem;
+  font-size: 1rem;
+}

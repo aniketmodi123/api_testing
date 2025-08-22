@@ -5,7 +5,7 @@ import ThemeToggle from './components/ThemeToggle.jsx';
 import UserProfile from './components/UserProfile.jsx';
 
 export default function Header() {
-  const { username, logout } = useAuth();
+  const { user, logout } = useAuth();
 
   const styles = {
     header: {
@@ -37,9 +37,9 @@ export default function Header() {
       <Logo />
       <div style={styles.actionsContainer}>
         <ThemeToggle />
-        {username && (
+        {user && (
           <div style={styles.userContainer}>
-            <UserProfile username={username} />
+            <UserProfile username={user.email || user.username} />
             <LogoutButton onLogout={handleLogout} />
           </div>
         )}

@@ -63,6 +63,11 @@ export default function SignIn() {
                 Create account
               </Link>
             </div>
+            <div className="hint">
+              <Link className={styles.link} to="/forgot-password">
+                Forgot password?
+              </Link>
+            </div>
           </div>
         </form>
       </div>

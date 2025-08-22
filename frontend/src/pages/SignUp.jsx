@@ -27,15 +27,22 @@ export default function SignUp() {
     }
 
     try {
-      // Pass only email and password as the backend schema expects
-      await signup(email, password);
-      // Only set success message if no exception was thrown
-      setOk('Account created successfully! Redirecting to sign in...');
-      // navigation will happen in useEffect only if no error
+      // Create user data object as expected by the enhanced signup function
+      const userData = {
+        email,
+        password,
+      };
+
+      const result = await signup(userData);
+
+      // Only set success message if signup was successful
+      if (result.success) {
+        setOk('Account created successfully! Redirecting to sign in...');
+        // navigation will happen in useEffect
+      }
     } catch (e) {
       // error is handled by context, but won't show success message
       console.log('Signup error in component:', e);
-      // Make sure not to set Ok status when there's an error
     }
   };
 

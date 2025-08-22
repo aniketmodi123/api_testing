@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { FiUser } from 'react-icons/fi';
+import { FiKey, FiUser, FiUserX } from 'react-icons/fi';
+import { Link } from 'react-router-dom';
 import styles from './HeaderComponents.module.css';
 
 const UserProfile = ({ username }) => {
@@ -19,6 +20,10 @@ const UserProfile = ({ username }) => {
     };
   }, []);
 
+  const closeDropdown = () => {
+    setShowDropdown(false);
+  };
+
   return (
     <div
       className={styles.buttonContainer}
@@ -36,6 +41,28 @@ const UserProfile = ({ username }) => {
       {showDropdown && (
         <div className={styles.dropdown}>
           <p className={styles.email}>{username}</p>
+          <div className={styles.divider}></div>
+          <Link
+            to="/profile"
+            className={styles.dropdownItem}
+            onClick={closeDropdown}
+          >
+            <FiUser className={styles.menuIcon} /> Profile
+          </Link>
+          <Link
+            to="/change-password"
+            className={styles.dropdownItem}
+            onClick={closeDropdown}
+          >
+            <FiKey className={styles.menuIcon} /> Change Password
+          </Link>
+          <Link
+            to="/delete-account"
+            className={styles.dropdownItem}
+            onClick={closeDropdown}
+          >
+            <FiUserX className={styles.menuIcon} /> Delete Account
+          </Link>
         </div>
       )}
     </div>
