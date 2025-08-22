@@ -64,8 +64,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         # Routes that don't require authentication
         self.public_routes = {
-            "/auth/sign_up",
-            "/auth/sign_in",
+            "/sign_up",
+            "/sign_in",
+            "/send-otp",
+            "/forgot-password",
             "/swagger",
             "/redoc",
             "/openapi.json",

@@ -2,6 +2,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from psycopg2.errors import UndefinedTable, IntegrityError
 from decimal import Decimal
 import json
+import os
 from dateutil.relativedelta import relativedelta
 from datetime import date, datetime, timedelta
 import logging
@@ -17,7 +18,7 @@ from pydantic import BaseModel, TypeAdapter, ValidationError
 from sqlalchemy import select
 
 from config import JWT_ALGORITHM, JWT_SECRET_KEY, SessionLocal
-from models import Cache
+from models import Cache, OTPAttempt
 from schema import PaginationRes
 
 # Get the base directory
@@ -290,3 +291,133 @@ def create_response(
     response['response_code'] = response_code
 
     return JSONResponse(content=response, status_code=response_code)
+
+
+# OTP Utility Functions
+import random
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+
+
+OTP_EXPIRY_SECONDS = 600
+MAX_ATTEMPTS = 2
+LOCK_DURATION = 10
+
+def generate_otp():
+    return random.randint(100000, 999999)  # Generates a random 6-digit number
+
+
+def email_otp_message(otp, email, use_for):
+    body = f"""
+        <html>
+        <head>
+            <style>
+                body {{
+                    font-family: Arial, sans-serif;
+                    background-color: #f4f6f9;
+                    color: #333;
+                    margin: 0;
+                    padding: 0;
+                }}
+                .container {{
+                    max-width: 600px;
+                    margin: 40px auto;
+                    background: #ffffff;
+                    border-radius: 8px;
+                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+                    padding: 20px;
+                    overflow: hidden;
+                }}
+                .header {{
+                    background: linear-gradient(90deg, #7367f0, #928bfa);
+                    color: #ffffff;
+                    text-align: center;
+                    padding: 20px;
+                    border-top-left-radius: 8px;
+                    border-top-right-radius: 8px;
+                }}
+                .header h1 {{
+                    margin: 0;
+                    font-size: 24px;
+                    font-weight: 600;
+                }}
+                .content {{
+                    padding: 20px;
+                }}
+                .content p {{
+                    font-size: 16px;
+                    line-height: 1.6;
+                    margin: 15px 0;
+                }}
+                .otp {{
+                    background-color: #7367f0;
+                    color: #ffffff;
+                    padding: 15px;
+                    border-radius: 5px;
+                    text-align: center;
+                    font-size: 24px;
+                    font-weight: bold;
+                    margin: 20px 0;
+                }}
+                .footer {{
+                    text-align: center;
+                    font-size: 14px;
+                    color: #777;
+                    margin-top: 30px;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1>Your One-Time Password (OTP)</h1>
+                </div>
+                <div class="content">
+                    <p>Dear User,</p>
+                    <p>Please use the following OTP to complete your <strong>{use_for}</strong> process:</p>
+                    <div class="otp">{otp}</div>
+                    <p>This OTP is valid for the next 10 minutes only. Please do not share it with anyone.</p>
+                    <p>If you have any questions, feel free to contact our support team.</p>
+                </div>
+                <div class="footer">
+                    <p>If you did not request this email, please contact us immediately.</p>
+                    <p>Thank you,<br>The Polaris Team</p>
+                </div>
+            </div>
+        </body>
+    </html>"""
+    try:
+        # Configure these based on your email provider
+        smtp_server = os.environ.get('SMTP_SERVER', 'smtp.gmail.com')
+        smtp_port = int(os.environ.get('SMTP_PORT', '587'))
+        smtp_username = os.environ.get('SMTP_USERNAME', '')
+        smtp_password = os.environ.get('SMTP_PASSWORD', '')
+
+        if not all([smtp_username, smtp_password]):
+            logs("SMTP credentials not configured", type="warning")
+            return False
+
+        # Create message
+        msg = MIMEMultipart()
+        msg['From'] = smtp_username
+        msg['To'] = email
+        msg['Subject'] = "Your One-Time Password (OTP)"
+
+        msg.attach(MIMEText(body, 'plain'))
+
+        # Send email
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls()
+        server.login(smtp_username, smtp_password)
+        text = msg.as_string()
+        server.sendmail(smtp_username, email, text)
+        server.quit()
+
+        logs(f"OTP sent successfully to {email}")
+        return True
+
+    except Exception as e:
+        logs(f"Failed to send OTP email: {e}", type="error")
+        return False

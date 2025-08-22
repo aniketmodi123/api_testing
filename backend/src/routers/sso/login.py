@@ -28,13 +28,13 @@ async def sign_in(user_credentials: UserSignIn, db: AsyncSession = Depends(get_d
     """
     try:
         # Get user by username
-        stmt = select(User).where(User.username == user_credentials.username)
+        stmt = select(User).where(User.username == user_credentials.email)
         result = await db.execute(stmt)
         user = result.scalar_one_or_none()
 
         # Verify user exists and password is correct
-        if not user or not verify_password(user_credentials.password, user.password_hash):
-            await log_failed_attempt(db, user_credentials.username)
+        if not user or not verify_password(user_credentials.password, user.password):
+            await log_failed_attempt(db, user_credentials.email)
             return create_response(401, error_message = "Incorrect username or password")
 
         # Create access token
@@ -54,7 +54,7 @@ async def sign_in(user_credentials: UserSignIn, db: AsyncSession = Depends(get_d
 
         # Log successful login
         await log_success_attempt(db, user.username)
-        return create_response(201, {"access_token": access_token})
+        return create_response(200, {"access_token": access_token})
 
     except Exception as e:
         await db.rollback()

@@ -17,7 +17,7 @@ class UserSignUp(BaseModel):
     password: str
 
 class UserSignIn(BaseModel):
-    username: str
+    email: str
     password: str
 
 class UserUpdate(BaseModel):
@@ -39,6 +39,20 @@ class TokenResponse(BaseModel):
 
 class MessageResponse(BaseModel):
     message: str
+
+
+# Forget Password Schemas
+class ForgetPasswordRequest(BaseModel):
+    email: EmailStr
+
+class VerifyOTPRequest(BaseModel):
+    email: EmailStr
+    otp_code: str = Field(..., min_length=6, max_length=6, description="6-digit OTP code")
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    otp_code: str = Field(..., min_length=6, max_length=6, description="6-digit OTP code")
+    new_password: str = Field(..., min_length=8, description="New password (minimum 8 characters)")
 
 from pydantic import BaseModel, Field, validator
 from typing import Optional, List, Any
@@ -573,3 +587,40 @@ class UpdateTestCaseRequest(BaseModel):
     name: Optional[str] = None
     body: Optional[Dict[Any, Any]] = None
     expected: Optional[Dict[Any, Any]] = None
+
+
+
+class Send_OTP_Request(BaseModel):
+    user: str
+    use_for: Literal['login', 'password_reset']
+
+
+class ChangePassword(BaseModel):
+    old_password: str
+    new_password: str
+    new_password_again: str
+
+    @validator("new_password", "new_password_again", pre=True, always=True)
+    def validate_password(cls, value):
+        """Ensure password is not empty and has a minimum length of 6 characters."""
+        if not value or not value.strip():
+            raise ValueError("Password cannot be empty or just spaces.")
+        if len(value) < 6:
+            raise ValueError("Password must be at least 6 characters long.")
+        return value.strip()
+
+
+class ForgotPassword(BaseModel):
+    otp: int
+    user_name: str
+    new_password: str
+    new_password_again: str
+
+    @validator("new_password", "new_password_again", pre=True, always=True)
+    def validate_password(cls, value):
+        """Ensure password is not empty and has a minimum length of 6 characters."""
+        if not value or not value.strip():
+            raise ValueError("Password cannot be empty or just spaces.")
+        if len(value) < 6:
+            raise ValueError("Password must be at least 6 characters long.")
+        return value.strip()

@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 from sqlalchemy import (
     Boolean, Column, DateTime, Integer, String, Text, ForeignKey, CheckConstraint, JSON, TIMESTAMP, func, text
 )
@@ -15,7 +16,7 @@ class User(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     username: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     email: Mapped[str] = mapped_column(String(255), unique=True)
-    password_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    password: Mapped[str] = mapped_column(Text, nullable=False)
     god: Mapped[bool] = mapped_column(default=False, nullable=False)
     created_at: Mapped[str] = mapped_column(TIMESTAMP, default= datetime.now, server_default=func.now())
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -43,7 +44,6 @@ class Cache(Base):
     token: Mapped[str] = mapped_column(Text, nullable=False)
     black_list: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text('FALSE'))
     timestamp: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
-
 
 
 # ---------------------------
@@ -149,3 +149,14 @@ class ApiCase(Base):
 
     api: Mapped["Api"] = relationship("Api", back_populates="cases")
 
+
+class OTPAttempt(Base):
+    __tablename__ = "sso_otp_attempts"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    user_name: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
+    otp: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    failed_attempts: Mapped[int] = mapped_column(Integer, server_default=text('0'))
+    locked_until: Mapped[Optional[datetime]] = mapped_column(DateTime, server_default=None)
+    expire_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

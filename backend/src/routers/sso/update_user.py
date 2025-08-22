@@ -52,7 +52,7 @@ async def update_user(
 
         # Hash password if it's being updated
         if "password" in update_data:
-            update_data["password_hash"] = get_password_hash(update_data.pop("password"))
+            update_data["password"] = get_password_hash(update_data.pop("password"))
 
         # Update user fields
         for field, value in update_data.items():

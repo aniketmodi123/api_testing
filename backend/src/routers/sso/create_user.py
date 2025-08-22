@@ -33,7 +33,7 @@ async def sign_up(user_data: UserSignUp, db: AsyncSession = Depends(get_db)):
         new_user = User(
             username=user_data.email,
             email=user_data.email,
-            password_hash=hashed_password
+            password=hashed_password
         )
 
         db.add(new_user)

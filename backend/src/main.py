@@ -11,7 +11,7 @@ from models import Base
 from datetime import datetime
 from routers.runner import run_case
 from routers.workspace import list_workspace_tree
-from routers.sso import create_user, login, logout, update_user, delete_user, user_profile
+from routers.sso import create_user, forget_password, login, logout, otp_generation, update_user, delete_user, user_profile
 from routers.workspace import create_workspace, update_workspace, list_workspace, list_workspace_tree,delete_workspace
 from routers.node import create_node, update_node, list_node, delete_node
 from routers.headers import complete_headers, set_headers,list_headers,delete_headers, update_headers
@@ -119,12 +119,14 @@ def welcome():
 
 app.add_middleware(AuthMiddleware)
 # sso
-app.include_router(create_user.router, prefix="/auth", tags=["sso"])
-app.include_router(login.router, prefix="/auth", tags=["sso"])
-app.include_router(logout.router, prefix="/auth", tags=["sso"])
-app.include_router(update_user.router, prefix="/auth", tags=["sso"])
-app.include_router(delete_user.router, prefix="/auth", tags=["sso"])
-app.include_router(user_profile.router, prefix="/auth", tags=["sso"])
+app.include_router(create_user.router, prefix="", tags=["sso"])
+app.include_router(login.router, prefix="", tags=["sso"])
+app.include_router(logout.router, prefix="", tags=["sso"])
+app.include_router(update_user.router, prefix="", tags=["sso"])
+app.include_router(delete_user.router, prefix="", tags=["sso"])
+app.include_router(user_profile.router, prefix="", tags=["sso"])
+app.include_router(forget_password.router, prefix="", tags=["sso"])
+app.include_router(otp_generation.router, prefix="", tags=["sso"])
 
 # workspace
 app.include_router(create_workspace.router, prefix="/workspace", tags=["workspace"])
