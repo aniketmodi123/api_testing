@@ -1,82 +1,60 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../store/session.jsx';
 
 const ChangePassword = () => {
-  const { forgotPassword, resetPassword } = useAuth();
-  const [resetPasswordLoading, setResetPasswordLoading] = useState(false);
-  const [resetPasswordError, setResetPasswordError] = useState(null);
-  const [otpLoading, setOtpLoading] = useState(false);
-  const [otpSent, setOtpSent] = useState(false);
-  const [otpError, setOtpError] = useState(null);
-  const [email, setEmail] = useState('');
-  const [otp, setOtp] = useState('');
+  const { changePassword } = useAuth();
+  const navigate = useNavigate();
+  const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [step, setStep] = useState(1); // 1: Enter Email, 2: Enter OTP, 3: Set New Password
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(false);
   const [validationError, setValidationError] = useState('');
 
-  const handleRequestOTP = async e => {
+  const handleChangePassword = async e => {
     e.preventDefault();
     setValidationError('');
+    setError(null);
+    setSuccess(false);
 
-    if (!email) {
-      setValidationError('Email is required');
+    if (!oldPassword) {
+      setValidationError('Old password is required');
       return;
     }
-
-    setOtpLoading(true);
-    setOtpError(null);
-
-    try {
-      const result = await forgotPassword(email);
-      if (result.success) {
-        setOtpSent(true);
-        setStep(2);
-      } else {
-        setOtpError(result.message);
-      }
-    } catch (error) {
-      setOtpError('Failed to send OTP. Please try again.');
-      console.error('Failed to request OTP:', error);
-    } finally {
-      setOtpLoading(false);
-    }
-  };
-
-  const handleSetNewPassword = async e => {
-    e.preventDefault();
-    setValidationError('');
-
-    if (!otp) {
-      setValidationError('OTP is required');
-      return;
-    }
-
     if (!newPassword) {
       setValidationError('New password is required');
       return;
     }
-
     if (newPassword !== confirmPassword) {
       setValidationError('Passwords do not match');
       return;
     }
 
-    setResetPasswordLoading(true);
-    setResetPasswordError(null);
-
+    setLoading(true);
     try {
-      const result = await resetPassword(email, otp, newPassword);
-      if (result.success) {
-        setStep(3);
+      const result = await changePassword(
+        oldPassword,
+        newPassword,
+        confirmPassword
+      );
+      if (result && result.success) {
+        setSuccess(true);
+        setOldPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+        // Redirect to login after short delay
+        setTimeout(() => {
+          navigate('/signin');
+        }, 1500);
       } else {
-        setResetPasswordError(result.message);
+        setError(result?.message || 'Failed to change password.');
       }
-    } catch (error) {
-      setResetPasswordError('Failed to reset password. Please try again.');
-      console.error('Failed to reset password:', error);
+    } catch (err) {
+      setError('Failed to change password.');
     } finally {
-      setResetPasswordLoading(false);
+      setLoading(false);
     }
   };
 
@@ -139,151 +117,58 @@ const ChangePassword = () => {
       marginTop: '0.5rem',
       textAlign: 'center',
     },
-    stepIndicator: {
-      display: 'flex',
-      justifyContent: 'center',
-      marginBottom: '1.5rem',
-    },
-    step: {
-      width: '30px',
-      height: '30px',
-      borderRadius: '50%',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      margin: '0 0.5rem',
-      backgroundColor: 'var(--border-color)',
-      color: 'var(--text-color)',
-      fontWeight: 'bold',
-      fontSize: '0.875rem',
-    },
-    activeStep: {
-      backgroundColor: 'var(--primary)',
-      color: '#fff',
-    },
-    completedStep: {
-      backgroundColor: '#38a169',
-      color: '#fff',
-    },
   };
 
   return (
     <div style={styles.container}>
-      <h1 style={styles.title}>Reset Password</h1>
-
-      <div style={styles.stepIndicator}>
-        <div
-          style={{
-            ...styles.step,
-            ...(step >= 1 ? styles.activeStep : {}),
-            ...(step > 1 ? styles.completedStep : {}),
-          }}
-        >
-          1
+      <h1 style={styles.title}>Change Password</h1>
+      <form onSubmit={handleChangePassword} style={styles.formSection}>
+        <div style={styles.formGroup}>
+          <label style={styles.label}>Old Password</label>
+          <input
+            style={styles.input}
+            type="password"
+            value={oldPassword}
+            onChange={e => setOldPassword(e.target.value)}
+            placeholder="Enter your old password"
+            required
+          />
         </div>
-        <div
-          style={{
-            ...styles.step,
-            ...(step >= 2 ? styles.activeStep : {}),
-            ...(step > 2 ? styles.completedStep : {}),
-          }}
-        >
-          2
+        <div style={styles.formGroup}>
+          <label style={styles.label}>New Password</label>
+          <input
+            style={styles.input}
+            type="password"
+            value={newPassword}
+            onChange={e => setNewPassword(e.target.value)}
+            placeholder="Enter new password"
+            required
+          />
         </div>
-        <div
-          style={{
-            ...styles.step,
-            ...(step >= 3 ? styles.completedStep : {}),
-          }}
-        >
-          3
+        <div style={styles.formGroup}>
+          <label style={styles.label}>Confirm New Password</label>
+          <input
+            style={styles.input}
+            type="password"
+            value={confirmPassword}
+            onChange={e => setConfirmPassword(e.target.value)}
+            placeholder="Confirm new password"
+            required
+          />
         </div>
-      </div>
-
-      <div style={styles.formSection}>
-        {step === 1 && (
-          <form onSubmit={handleRequestOTP}>
-            <div style={styles.formGroup}>
-              <label style={styles.label}>Email Address</label>
-              <input
-                style={styles.input}
-                type="email"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                placeholder="Enter your email address"
-                required
-              />
-            </div>
-            {otpError && <div style={styles.errorMessage}>{otpError}</div>}
-            {validationError && (
-              <div style={styles.errorMessage}>{validationError}</div>
-            )}
-            <button type="submit" style={styles.button} disabled={otpLoading}>
-              {otpLoading ? 'Sending OTP...' : 'Request OTP'}
-            </button>
-          </form>
+        {validationError && (
+          <div style={styles.errorMessage}>{validationError}</div>
         )}
-
-        {step === 2 && (
-          <form onSubmit={handleSetNewPassword}>
-            <div style={styles.formGroup}>
-              <label style={styles.label}>Enter OTP</label>
-              <input
-                style={styles.input}
-                type="text"
-                value={otp}
-                onChange={e => setOtp(e.target.value)}
-                placeholder="Enter the OTP sent to your email"
-                required
-              />
-            </div>
-            <div style={styles.formGroup}>
-              <label style={styles.label}>New Password</label>
-              <input
-                style={styles.input}
-                type="password"
-                value={newPassword}
-                onChange={e => setNewPassword(e.target.value)}
-                placeholder="Enter new password"
-                required
-              />
-            </div>
-            <div style={styles.formGroup}>
-              <label style={styles.label}>Confirm Password</label>
-              <input
-                style={styles.input}
-                type="password"
-                value={confirmPassword}
-                onChange={e => setConfirmPassword(e.target.value)}
-                placeholder="Confirm new password"
-                required
-              />
-            </div>
-            {resetPasswordError && (
-              <div style={styles.errorMessage}>{resetPasswordError}</div>
-            )}
-            {validationError && (
-              <div style={styles.errorMessage}>{validationError}</div>
-            )}
-            <button
-              type="submit"
-              style={styles.button}
-              disabled={resetPasswordLoading}
-            >
-              {resetPasswordLoading
-                ? 'Resetting Password...'
-                : 'Reset Password'}
-            </button>
-          </form>
-        )}
-
-        {step === 3 && (
+        {error && <div style={styles.errorMessage}>{error}</div>}
+        {success && (
           <div style={styles.successMessage}>
-            <p>Your password has been reset successfully!</p>
-            <p>You can now login with your new password.</p>
+            Password changed successfully!
           </div>
         )}
-      </div>
+        <button type="submit" style={styles.button} disabled={loading}>
+          {loading ? 'Changing Password...' : 'Change Password'}
+        </button>
+      </form>
     </div>
   );
 };

@@ -109,11 +109,11 @@ async def forgot_password(
     db: AsyncSession = Depends(get_db)
 ):
     try:
-        await verify_and_consume_otp(db, request.user_name, request.otp)
+        await verify_and_consume_otp(db, request.email, request.otp)
         if request.new_password != request.new_password_again:
             return create_response(400, error_message="Please enter the same passwords")
 
-        user_name = request.user_name
+        user_name = request.email
 
         result = await db.execute(select(User).where(User.email == user_name))
 

@@ -612,7 +612,7 @@ class ChangePassword(BaseModel):
 
 class ForgotPassword(BaseModel):
     otp: int
-    user_name: str
+    email: EmailStr
     new_password: str
     new_password_again: str
 

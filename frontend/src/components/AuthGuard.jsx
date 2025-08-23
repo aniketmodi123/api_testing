@@ -1,5 +1,5 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
-import { useAuth } from '../store/session';
+import { useAuth } from '../store/session.jsx';
 
 export default function AuthGuard() {
   const { token } = useAuth();

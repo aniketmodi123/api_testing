@@ -6,3 +6,14 @@ api.interceptors.request.use(config => {
   config.headers['accept'] = 'application/json';
   return config;
 });
+
+// Redirect to /signin on 401 Unauthorized from any API response
+api.interceptors.response.use(
+  response => response,
+  error => {
+    if (error.response && error.response.status === 401) {
+      window.location.href = '/signin';
+    }
+    return Promise.reject(error);
+  }
+);

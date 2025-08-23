@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+
 import { useAuth } from '../../../store/session.jsx';
 
 const ForgotPassword = () => {
-  const { forgotPassword, resetPassword } = useAuth();
+  const { requestPasswordReset, resetPassword } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [otp, setOtp] = useState('');
@@ -27,11 +28,11 @@ const ForgotPassword = () => {
     setError(null);
 
     try {
-      const result = await forgotPassword(email);
-      if (result.success) {
+      const result = await requestPasswordReset(email);
+      if (result) {
         setStep(2);
       } else {
-        setError(result.message);
+        setError('Failed to send reset email. Please try again.');
       }
     } catch (err) {
       setError('Failed to send reset email. Please try again.');
@@ -63,11 +64,18 @@ const ForgotPassword = () => {
     setError(null);
 
     try {
-      const result = await resetPassword(email, otp, newPassword);
-      if (result.success) {
+      const result = await resetPassword(
+        email,
+        otp,
+        newPassword,
+        confirmPassword
+      );
+      if (result && result.success) {
         setStep(3);
       } else {
-        setError(result.message);
+        setError(
+          result?.message || 'Failed to reset password. Please try again.'
+        );
       }
     } catch (err) {
       setError('Failed to reset password. Please try again.');

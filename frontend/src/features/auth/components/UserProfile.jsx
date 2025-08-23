@@ -16,10 +16,15 @@ const UserProfile = () => {
     username: '',
     email: '',
   });
+  const [hasLoaded, setHasLoaded] = useState(false);
 
   useEffect(() => {
-    getUserProfile();
-  }, [getUserProfile]);
+    // Only fetch profile once when component mounts
+    if (!hasLoaded) {
+      getUserProfile();
+      setHasLoaded(true);
+    }
+  }, [getUserProfile, hasLoaded]);
 
   useEffect(() => {
     if (user) {

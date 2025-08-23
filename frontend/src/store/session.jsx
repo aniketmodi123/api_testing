@@ -218,7 +218,11 @@ export function AuthProvider({ children }) {
   };
 
   const getUserProfile = async () => {
+    // Prevent /me call if not authenticated
     if (!state.token) return;
+
+    // Prevent duplicate calls if already loading profile
+    if (state.profileLoading) return;
 
     dispatch({ type: PROFILE_START });
     try {
@@ -257,10 +261,11 @@ export function AuthProvider({ children }) {
     }
   };
 
+  // Step 1: Send OTP to email
   const requestPasswordReset = async email => {
     dispatch({ type: PASSWORD_RESET_START });
     try {
-      await api.post('/forgot-password', { email });
+      await api.post('/send-otp', { email });
       dispatch({ type: PASSWORD_RESET_SUCCESS });
       return true;
     } catch (err) {
@@ -272,37 +277,30 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const resetPassword = async (email, otp, newPassword) => {
+  // Step 2: Reset password with OTP
+  const resetPassword = async (email, otp, newPassword, confirmPassword) => {
     dispatch({ type: PASSWORD_RESET_START });
     try {
-      await api.post('/reset-password', {
+      const res = await api.post('/forgot-password', {
         email,
-        otp,
+        otp: Number(otp),
         new_password: newPassword,
+        new_password_again: confirmPassword,
       });
       dispatch({ type: PASSWORD_RESET_SUCCESS });
-      return true;
+      return {
+        success: true,
+        message: res.data?.message || 'Password reset successful',
+      };
     } catch (err) {
       dispatch({
         type: PASSWORD_RESET_ERROR,
         payload: err.response?.data?.error_message || err.message,
       });
-      throw err;
-    }
-  };
-
-  const requestOTP = async email => {
-    dispatch({ type: OTP_START });
-    try {
-      await api.post('/otp-generation', { email });
-      dispatch({ type: OTP_SUCCESS });
-      return true;
-    } catch (err) {
-      dispatch({
-        type: OTP_ERROR,
-        payload: err.response?.data?.error_message || err.message,
-      });
-      throw err;
+      return {
+        success: false,
+        message: err.response?.data?.error_message || err.message,
+      };
     }
   };
 
@@ -327,8 +325,36 @@ export function AuthProvider({ children }) {
     updateUserProfile,
     requestPasswordReset,
     resetPassword,
-    requestOTP,
     deleteAccount,
+    // Change password for logged-in user
+    async changePassword(oldPassword, newPassword, confirmPassword) {
+      try {
+        const res = await api.post(
+          '/change-password',
+          {
+            old_password: oldPassword,
+            new_password: newPassword,
+            new_password_again: confirmPassword,
+          },
+          {
+            headers: {
+              username: state.user?.email || '',
+            },
+          }
+        );
+        // Logout user after successful password change
+        dispatch({ type: LOGOUT });
+        return {
+          success: true,
+          message: res.data?.message || 'Password changed successfully',
+        };
+      } catch (err) {
+        return {
+          success: false,
+          message: err.response?.data?.error_message || err.message,
+        };
+      }
+    },
     // Helper getter for username (backwards compatibility)
     get username() {
       return state.user?.email || null;
