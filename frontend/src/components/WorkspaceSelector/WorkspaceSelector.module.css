@@ -1,0 +1,159 @@
+.workspaceSelector {
+  position: relative;
+}
+
+.selectorButton {
+  display: flex;
+  align-items: center;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text);
+  background-color: var(--background-lighter);
+}
+
+.workspaceName {
+  margin-right: 8px;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dropdownIcon {
+  font-size: 10px;
+  transition: transform 0.2s;
+}
+
+.selectorButton:hover {
+  background-color: var(--hover-background);
+}
+
+.dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 250px;
+  background-color: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 100;
+  margin-top: 4px;
+  overflow: hidden;
+}
+
+.dropdownHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.dropdownHeader h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.newButton {
+  background-color: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 3px;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.newButton:hover {
+  background-color: var(--primary-dark);
+}
+
+.createForm {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.createInput {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background-color: var(--input-background);
+  color: var(--text);
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.createActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.createButton,
+.cancelButton {
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  border: none;
+}
+
+.createButton {
+  background-color: var(--primary);
+  color: white;
+}
+
+.createButton:hover:not(:disabled) {
+  background-color: var(--primary-dark);
+}
+
+.createButton:disabled {
+  background-color: var(--disabled);
+  cursor: not-allowed;
+}
+
+.cancelButton {
+  background-color: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.cancelButton:hover {
+  background-color: var(--hover-background);
+}
+
+.workspaceList {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.loadingItem,
+.emptyItem {
+  padding: 10px 16px;
+  color: var(--text-muted);
+  text-align: center;
+  font-style: italic;
+}
+
+.workspaceItem {
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.workspaceItem:hover {
+  background-color: var(--hover-background);
+}
+
+.workspaceItem.active {
+  background-color: var(--selected-item-background);
+  color: var(--primary);
+  font-weight: 500;
+}

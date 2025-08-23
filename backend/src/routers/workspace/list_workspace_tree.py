@@ -2,11 +2,10 @@ from fastapi import APIRouter, Depends, Header
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from typing import List, Optional
+from typing import List
 
 from config import get_db, get_user_by_username
-from models import User, Workspace, Node
-from schema import WorkspaceCreateRequest, WorkspaceUpdateRequest
+from models import Workspace, Node
 from utils import (
     ExceptionHandler,
     create_response,

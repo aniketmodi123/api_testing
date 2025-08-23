@@ -5,6 +5,8 @@ const Logo = () => {
       fontSize: '1.2rem',
       color: 'var(--text-color)',
       margin: 0,
+      whiteSpace: 'nowrap',
+      flexShrink: 0,
     },
   };
 

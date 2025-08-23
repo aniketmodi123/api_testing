@@ -1,0 +1,42 @@
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  width: 60px;
+  background-color: var(--sidebar-background);
+  border-right: 1px solid var(--border);
+  height: 100%;
+}
+
+.tabs {
+  display: flex;
+  flex-direction: column;
+}
+
+.tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 0;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  border-left: 3px solid transparent;
+}
+
+.tab:hover {
+  background-color: var(--hover-background);
+}
+
+.tab.active {
+  background-color: var(--selected-item-background);
+  border-left-color: var(--primary);
+}
+
+.tabIcon {
+  font-size: 20px;
+  margin-bottom: 4px;
+}
+
+.tabLabel {
+  font-size: 10px;
+  text-align: center;
+}

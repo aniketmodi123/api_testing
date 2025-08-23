@@ -1,39 +1,105 @@
 .homeContainer {
-  max-width: 600px;
-  margin: 48px auto;
-  padding: 32px;
-  background: #fff;
-  border-radius: 12px;
-  box-shadow: 0 2px 16px 0 rgba(0, 0, 0, 0.07);
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--background);
+  color: var(--text);
+}
+
+/* Removed the topNav styles since we moved it to the Header */
+
+/* Main Content Layout */
+.mainContent {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Side Panel (for Collection Tree or Environments) */
+.sidePanel {
+  width: 250px;
+  background-color: var(--background-lighter);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Environment Panel */
+.environmentPanel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.panelHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 15px;
+  border-bottom: 1px solid var(--border);
+}
+
+.panelHeader h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.addButton {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  border: none;
+  background-color: var(--primary);
+  color: white;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.addButton:hover {
+  background-color: var(--primary-dark);
+}
+
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 20px;
   text-align: center;
 }
-.title {
-  font-size: 2.2rem;
-  font-weight: 700;
-  margin-bottom: 0.5em;
-  color: #2563eb;
+
+.emptyState p {
+  color: var(--text-muted);
+  margin-bottom: 15px;
 }
-.subtitle {
-  font-size: 1.2rem;
-  color: #555;
-  margin-bottom: 1.5em;
+
+.createButton {
+  padding: 8px 15px;
+  background-color: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
 }
-.infoBox {
-  background: #f1f5f9;
-  border-radius: 8px;
-  padding: 1.5em;
-  margin-top: 1.5em;
-  text-align: left;
+
+.createButton:hover {
+  background-color: var(--primary-dark);
 }
-.infoBox h2 {
-  margin-top: 0;
-  color: #0ea5e9;
-}
-.infoBox ul {
-  margin: 0;
-  padding-left: 1.2em;
-}
-.infoBox li {
-  margin-bottom: 0.5em;
-  font-size: 1.05em;
+
+/* Content Panel */
+.contentPanel {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  height: 100%;
 }

@@ -1,0 +1,173 @@
+.collectionTree {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 250px;
+  border-right: 1px solid var(--border);
+}
+
+.header {
+  display: flex;
+  padding: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.filterInput {
+  flex-grow: 1;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 13px;
+  background-color: var(--input-background);
+  color: var(--text);
+}
+
+.addButton {
+  width: 28px;
+  height: 28px;
+  margin-left: 8px;
+  border-radius: 4px;
+  border: none;
+  background-color: var(--primary);
+  color: white;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.addButton:hover {
+  background-color: var(--primary-dark);
+}
+
+.treeContainer {
+  overflow-y: auto;
+  flex-grow: 1;
+}
+
+.loadingState,
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 20px;
+  text-align: center;
+}
+
+.loadingState p,
+.emptyState p {
+  color: var(--text-muted);
+  margin-bottom: 15px;
+}
+
+.createButton {
+  padding: 8px 15px;
+  background-color: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.createButton:hover {
+  background-color: var(--primary-dark);
+}
+
+.collection {
+  margin-bottom: 2px;
+}
+
+.collectionHeader {
+  display: flex;
+  align-items: center;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.collectionHeader:hover {
+  background-color: var(--hover-background);
+}
+
+.expansionIcon {
+  font-size: 10px;
+  margin-right: 4px;
+  width: 10px;
+  text-align: center;
+}
+
+.collectionIcon {
+  margin-right: 8px;
+}
+
+.collectionName {
+  font-weight: 500;
+  font-size: 14px;
+}
+
+.collectionItems {
+  margin-left: 10px;
+}
+
+.folderHeader {
+  display: flex;
+  align-items: center;
+  padding: 6px 10px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.folderHeader:hover {
+  background-color: var(--hover-background);
+}
+
+.folderIcon {
+  margin-right: 8px;
+}
+
+.folderName {
+  font-size: 13px;
+}
+
+.folderItems {
+  margin-left: 14px;
+}
+
+.requestItem {
+  display: flex;
+  align-items: center;
+  padding: 6px 10px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  border-radius: 2px;
+}
+
+.requestItem:hover {
+  background-color: var(--hover-background);
+}
+
+.requestItem.selected {
+  background-color: var(--selected-item-background);
+}
+
+.methodBadge {
+  padding: 2px 4px;
+  border-radius: 3px;
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  min-width: 40px;
+  text-align: center;
+  margin-right: 8px;
+}
+
+.requestName {
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

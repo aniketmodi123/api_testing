@@ -7,6 +7,7 @@ import { ThemeProvider } from './components/ThemeProvider.jsx';
 import SignIn from './pages/SignIn.jsx';
 import SignUp from './pages/SignUp.jsx';
 import { AuthProvider } from './store/session.jsx';
+import { WorkspaceProvider } from './store/workspace.jsx';
 import './styles/global.css';
 
 import ChangePassword from './features/auth/components/ChangePassword.jsx';
@@ -19,69 +20,71 @@ createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <ThemeProvider>
       <AuthProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route
-              path="/sign-in"
-              element={
-                <App>
-                  <SignIn />
-                </App>
-              }
-            />
-            <Route
-              path="/sign-up"
-              element={
-                <App>
-                  <SignUp />
-                </App>
-              }
-            />
-            <Route
-              path="/forgot-password"
-              element={
-                <App>
-                  <ForgotPassword />
-                </App>
-              }
-            />
-            <Route element={<AuthGuard />}>
+        <WorkspaceProvider>
+          <BrowserRouter>
+            <Routes>
               <Route
-                path="/"
+                path="/sign-in"
                 element={
                   <App>
-                    <Home />
+                    <SignIn />
                   </App>
                 }
               />
               <Route
-                path="/profile"
+                path="/sign-up"
                 element={
                   <App>
-                    <UserProfile />
+                    <SignUp />
                   </App>
                 }
               />
               <Route
-                path="/change-password"
+                path="/forgot-password"
                 element={
                   <App>
-                    <ChangePassword />
+                    <ForgotPassword />
                   </App>
                 }
               />
-              <Route
-                path="/delete-account"
-                element={
-                  <App>
-                    <DeleteAccount />
-                  </App>
-                }
-              />
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Route>
-          </Routes>
-        </BrowserRouter>
+              <Route element={<AuthGuard />}>
+                <Route
+                  path="/"
+                  element={
+                    <App>
+                      <Home />
+                    </App>
+                  }
+                />
+                <Route
+                  path="/profile"
+                  element={
+                    <App>
+                      <UserProfile />
+                    </App>
+                  }
+                />
+                <Route
+                  path="/change-password"
+                  element={
+                    <App>
+                      <ChangePassword />
+                    </App>
+                  }
+                />
+                <Route
+                  path="/delete-account"
+                  element={
+                    <App>
+                      <DeleteAccount />
+                    </App>
+                  }
+                />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Route>
+            </Routes>
+          </BrowserRouter>
+        </WorkspaceProvider>
       </AuthProvider>
     </ThemeProvider>
   </React.StrictMode>

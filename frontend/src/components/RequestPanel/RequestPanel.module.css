@@ -1,0 +1,308 @@
+.requestPanel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  padding: 15px;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+/* URL Bar */
+.urlBar {
+  display: flex;
+  margin-bottom: 15px;
+}
+
+.methodSelector {
+  width: 110px;
+  padding: 8px 10px;
+  border-radius: 4px 0 0 4px;
+  border: 1px solid var(--border);
+  background-color: var(--input-background);
+  color: var(--text);
+  font-size: 14px;
+  border-right: none;
+  outline: none;
+}
+
+.urlInput {
+  flex-grow: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  background-color: var(--input-background);
+  color: var(--text);
+  font-size: 14px;
+  outline: none;
+}
+
+.sendButton {
+  min-width: 80px;
+  padding: 8px 16px;
+  background-color: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 0 4px 4px 0;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.sendButton:hover {
+  background-color: var(--primary-dark);
+}
+
+.sendButton:disabled {
+  background-color: var(--disabled);
+  cursor: not-allowed;
+}
+
+/* Tabs */
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 15px;
+}
+
+.tab {
+  padding: 8px 15px;
+  cursor: pointer;
+  font-size: 14px;
+  border-bottom: 3px solid transparent;
+  margin-right: 5px;
+}
+
+.tab:hover {
+  background-color: var(--hover-background);
+}
+
+.tab.active {
+  border-bottom-color: var(--primary);
+  color: var(--primary);
+}
+
+/* Tab Content */
+.tabContent {
+  height: 200px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  margin-bottom: 15px;
+  overflow: auto;
+  background-color: var(--background-lighter);
+}
+
+/* Parameter Table */
+.paramTable {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.paramHeader {
+  display: flex;
+  padding: 10px;
+  border-bottom: 1px solid var(--border);
+  background-color: var(--background);
+  font-weight: 500;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.paramRow {
+  display: flex;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.paramCheckbox {
+  width: 30px;
+  display: flex;
+  align-items: center;
+}
+
+.paramKey {
+  flex: 1;
+  padding: 0 5px;
+}
+
+.paramValue {
+  flex: 1;
+  padding: 0 5px;
+}
+
+.paramDescription {
+  flex: 1;
+  padding: 0 5px;
+}
+
+.paramRow input[type="text"] {
+  width: 100%;
+  padding: 5px;
+  border: 1px solid transparent;
+  background-color: transparent;
+  color: var(--text);
+}
+
+.paramRow input[type="text"]:focus {
+  border-color: var(--border);
+  background-color: var(--input-background);
+  outline: none;
+}
+
+/* Body Tab */
+.bodyContent {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.bodyTypeSelector {
+  display: flex;
+  padding: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.bodyTypeBadge {
+  padding: 5px 10px;
+  margin-right: 5px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  background-color: var(--background);
+}
+
+.bodyTypeBadge.active {
+  background-color: var(--primary);
+  color: white;
+}
+
+.jsonEditor {
+  flex-grow: 1;
+  padding: 10px;
+  font-family: monospace;
+  font-size: 13px;
+  overflow: auto;
+}
+
+/* Response Section */
+.responseSection {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background-color: var(--background-lighter);
+  overflow: hidden;
+}
+
+.responseMeta {
+  padding: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+}
+
+.statusBadge {
+  padding: 5px 10px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.success {
+  background-color: #d1fae5;
+  color: #10b981;
+}
+
+.error {
+  background-color: #fee2e2;
+  color: #ef4444;
+}
+
+.responseInfo {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.responseInfo span {
+  margin-left: 10px;
+}
+
+.responseTabs {
+  display: flex;
+  background-color: var(--background);
+  border-bottom: 1px solid var(--border);
+}
+
+.responseTab {
+  padding: 8px 15px;
+  cursor: pointer;
+  font-size: 13px;
+  border-bottom: 2px solid transparent;
+}
+
+.responseTab:hover {
+  background-color: var(--hover-background);
+}
+
+.responseTab.active {
+  border-bottom-color: var(--primary);
+  color: var(--primary);
+}
+
+.responseContent {
+  flex-grow: 1;
+  overflow: auto;
+}
+
+.responseBody {
+  padding: 10px;
+  font-family: monospace;
+  font-size: 13px;
+  white-space: pre-wrap;
+}
+
+.responseHeaders {
+  padding: 10px;
+}
+
+.headerRow {
+  padding: 5px 0;
+  font-size: 13px;
+}
+
+.headerKey {
+  font-weight: 500;
+  margin-right: 5px;
+  color: var(--text-muted);
+}
+
+.headerValue {
+  color: var(--text);
+}
+
+/* Auth Content */
+.authContent {
+  padding: 15px;
+}
+
+.authType {
+  display: flex;
+  flex-direction: column;
+}
+
+.authType label {
+  font-size: 13px;
+  margin-bottom: 5px;
+  font-weight: 500;
+}
+
+.authType select {
+  padding: 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background-color: var(--input-background);
+  color: var(--text);
+  font-size: 14px;
+  outline: none;
+  width: 200px;
+}

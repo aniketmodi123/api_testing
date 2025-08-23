@@ -2,8 +2,10 @@ const Body = ({ children }) => {
   const styles = {
     main: {
       flex: 1,
-      padding: '1rem',
-      overflow: 'auto',
+      padding: 0,
+      overflow: 'hidden',
+      display: 'flex',
+      flexDirection: 'column',
     },
   };
 

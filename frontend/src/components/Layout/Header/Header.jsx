@@ -1,4 +1,5 @@
 import { useAuth } from '../../../store/session.jsx';
+import WorkspaceSelector from '../../WorkspaceSelector/WorkspaceSelector.jsx';
 import Logo from './components/Logo.jsx';
 import LogoutButton from './components/LogoutButton.jsx';
 import ThemeToggle from './components/ThemeToggle.jsx';
@@ -12,7 +13,7 @@ export default function Header() {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'space-between',
-      padding: '12px 16px',
+      padding: '3px 16px',
       backgroundColor: 'var(--header-bg, transparent)',
       borderBottom: '1px solid var(--border-color, #eaeaea)',
     },
@@ -34,7 +35,10 @@ export default function Header() {
 
   return (
     <header style={styles.header}>
-      <Logo />
+      <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+        <Logo />
+        <WorkspaceSelector />
+      </div>
       <div style={styles.actionsContainer}>
         <ThemeToggle />
         {user && (

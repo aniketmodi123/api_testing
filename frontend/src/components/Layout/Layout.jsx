@@ -7,6 +7,7 @@ const Layout = ({ children }) => {
       display: 'flex',
       flexDirection: 'column',
       height: '100vh',
+      overflow: 'hidden', // Prevent scrolling on the main container
     },
   };
 
