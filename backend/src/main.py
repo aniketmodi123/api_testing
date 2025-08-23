@@ -28,12 +28,20 @@ FASTAPI_CONFIG = {
 # Swagger at /swagger
 app = FastAPI(docs_url="/swagger", redoc_url=None, openapi_url="/openapi.json")
 
+
+
+app.add_middleware(AuthMiddleware)
+
+
 # CORS (open; tighten if needed)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
-    # Add auth middleware BEFORE including routers
+    allow_origins=["*"],
+    allow_credentials=False,   # 👈 if you don
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
+
 
 @app.on_event("startup")
 async def startup_event():
@@ -117,7 +125,6 @@ async def unified_exception_handler(request: Request, exc: Exception):
 def welcome():
     return "welcome"
 
-app.add_middleware(AuthMiddleware)
 # sso
 app.include_router(create_user.router, prefix="", tags=["sso"])
 app.include_router(login.router, prefix="", tags=["sso"])

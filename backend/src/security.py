@@ -23,24 +23,34 @@ async def authenticate_token(request):
             return invalid token
         return status valid and user_name
     """
-    required_headers = ["authorization","username"]
-    validation_response = validate_required_headers(request, required_headers)
-    if validation_response:
-        raise HTTPException(status_code=401, detail=validation_response)
+    # Try to get Authorization header - browsers may use different case
+    token = request.headers.get("Authorization") or request.headers.get("authorization")
+    username = request.headers.get("username") or request.cookies.get("username")
 
-    token = request.headers.get("Authorization")
-    if token is None:
-        return False, False
+    # Check if required headers exist
+    if not token or not username:
+        return False
+
+    # Handle "Bearer " prefix if present (browsers often add this)
+    if token.startswith("Bearer "):
+        token = token.replace("Bearer ", "")
 
     try:
         try:
             payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
         except Exception as e:
-            return False, False
+            print(f"JWT decode error: {str(e)}")
+            return False
+
         if payload is None:
-            return False, False
-        if payload['username'] != request.headers.get('username'):
-            raise HTTPException(status_code=401, detail="Invalid username or token")
+            return False
+
+        # Get username from headers or cookies
+        request_username = username
+
+        if payload['username'] != request_username:
+            print(f"Username mismatch: {payload['username']} vs {request_username}")
+            return False
 
         async with SessionLocal() as db:
             stmt = select(Cache.black_list).where(
@@ -52,10 +62,10 @@ async def authenticate_token(request):
 
             if black_list_status is not None:
                 if black_list_status is True:
-                    return False, False
-        return payload["username"]
+                    return False
+                return payload["username"]
     except Exception as e:
-        return False, False
+        return False
 
 
 
@@ -68,11 +78,19 @@ class AuthMiddleware(BaseHTTPMiddleware):
             "/sign_in",
             "/send-otp",
             "/forgot-password",
+            "/verify-otp",
+            "/reset-password",
             "/swagger",
             "/redoc",
             "/openapi.json",
             "/",
-            "/health"  # Add any health check endpoints
+            "/health",  # Add any health check endpoints
+            "/docs"     # Swagger UI
+        }
+
+        # These routes require authentication but need special handling
+        self.special_routes = {
+            "/me"  # User profile endpoint - We'll check authentication manually
         }
 
     async def dispatch(self, request: Request, call_next):

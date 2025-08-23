@@ -144,26 +144,6 @@ export function AuthProvider({ children }) {
     }
   }, [state.token, state.user]);
 
-  // Setup axios interceptor for auth headers
-  useEffect(() => {
-    const requestInterceptor = api.interceptors.request.use(
-      config => {
-        if (state.token) {
-          config.headers['Authorization'] = state.token;
-        }
-        if (state.user?.email) {
-          config.headers['username'] = state.user.email;
-        }
-        return config;
-      },
-      error => Promise.reject(error)
-    );
-
-    return () => {
-      api.interceptors.request.eject(requestInterceptor);
-    };
-  }, [state.token, state.user]);
-
   // Auth actions
   const login = async (email, password) => {
     dispatch({ type: LOGIN_START });
@@ -202,21 +182,37 @@ export function AuthProvider({ children }) {
 
   const logout = async () => {
     try {
+      // Only try to call logout API if we have a token
       if (state.token) {
-        await api.delete('/logout', {
-          headers: {
-            Authorization: state.token,
-            username: state.user?.email,
-          },
-        });
+        try {
+          await api.delete('/logout', {
+            headers: {
+              Authorization: state.token,
+              username: state.user?.email,
+            },
+            // Prevent this call from triggering 401 handling
+            _skipAuthRefresh: true,
+          });
+        } catch (logoutErr) {
+          // Just log the error, but continue with local logout
+        }
       }
+
+      // Always clear storage and reset state, even if API call fails
+      localStorage.clear();
+      sessionStorage.clear();
+      dispatch({ type: LOGOUT });
+
+      console.log('Logout successful - all storage cleared');
     } catch (err) {
-      console.error('Error during logout:', err);
-    } finally {
+      console.error('Unexpected error during logout process:', err);
+
+      // Ensure state is reset even on unexpected errors
+      localStorage.clear();
+      sessionStorage.clear();
       dispatch({ type: LOGOUT });
     }
   };
-
   const getUserProfile = async () => {
     // Prevent /me call if not authenticated
     if (!state.token) return;
@@ -224,9 +220,18 @@ export function AuthProvider({ children }) {
     // Prevent duplicate calls if already loading profile
     if (state.profileLoading) return;
 
+    // Don't make API calls if we're on the sign-in page
+    if (window.location.pathname === '/sign-in') return;
+
     dispatch({ type: PROFILE_START });
     try {
-      const res = await api.get('/me');
+      // Add explicit debugging for the /me call
+
+      const res = await api.get('/me', {
+        // Add this flag to ensure this request doesn't skip auth handling
+        _enforceAuthCheck: true,
+      });
+
       dispatch({
         type: PROFILE_SUCCESS,
         payload: res.data.data,
@@ -310,7 +315,6 @@ export function AuthProvider({ children }) {
       dispatch({ type: LOGOUT });
       return true;
     } catch (err) {
-      console.error('Error deleting account:', err);
       throw err;
     }
   };
