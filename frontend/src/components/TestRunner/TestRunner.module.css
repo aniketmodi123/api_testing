@@ -1,0 +1,246 @@
+.testRunner {
+  background-color: var(--background-lighter);
+  padding: 20px;
+  border-radius: 8px;
+  width: 100%;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.header h2 {
+  color: var(--text);
+  font-size: 1.5rem;
+  font-weight: 500;
+  margin: 0;
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+}
+
+.runButton {
+  background-color: var(--primary);
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.runButton:hover:not(:disabled) {
+  background-color: var(--primary-dark);
+}
+
+.runButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.selectAllButton {
+  background-color: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.selectAllButton:hover {
+  background-color: var(--hover-background);
+}
+
+.error {
+  background-color: rgba(244, 67, 54, 0.1);
+  color: #f44336;
+  padding: 10px;
+  border-radius: 4px;
+  margin-bottom: 20px;
+}
+
+.testCaseList {
+  margin-bottom: 20px;
+}
+
+.emptyState {
+  padding: 40px;
+  text-align: center;
+  color: var(--text-muted);
+  font-style: italic;
+  background-color: var(--background);
+  border-radius: 4px;
+}
+
+.testCaseItem {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.testCaseItem:last-child {
+  border-bottom: none;
+}
+
+.testCaseHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.checkboxLabel {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.checkboxLabel input {
+  margin-right: 10px;
+}
+
+.testCaseName {
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.resultsSection {
+  margin-top: 30px;
+}
+
+.resultsSection h3 {
+  margin-bottom: 15px;
+  font-size: 1.2rem;
+  color: var(--text);
+}
+
+.resultsList {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.resultItem {
+  border-bottom: 1px solid var(--border);
+}
+
+.resultItem:last-child {
+  border-bottom: none;
+}
+
+.resultHeader {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 16px;
+  cursor: pointer;
+}
+
+.resultHeader:hover {
+  background-color: var(--hover-background);
+}
+
+.resultName {
+  display: flex;
+  align-items: center;
+}
+
+.statusDot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin-right: 10px;
+}
+
+.success .statusDot {
+  background-color: #4caf50;
+}
+
+.failure .statusDot {
+  background-color: #f44336;
+}
+
+.resultStatus {
+  font-weight: bold;
+}
+
+.success .resultStatus {
+  color: #4caf50;
+}
+
+.failure .resultStatus {
+  color: #f44336;
+}
+
+.resultDetails {
+  padding: 15px;
+  background-color: var(--background);
+  border-top: 1px solid var(--border);
+}
+
+.resultDetails h4 {
+  margin-top: 0;
+  margin-bottom: 10px;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.responseSection,
+.errorSection,
+.diffSection {
+  margin-bottom: 15px;
+}
+
+.statusCode {
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.jsonResponse,
+.diffContent {
+  background-color: var(--input-background);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 10px;
+  overflow: auto;
+  max-height: 300px;
+  font-family: monospace;
+  font-size: 0.85rem;
+  color: var(--text);
+  white-space: pre-wrap;
+}
+
+.errorMessage {
+  color: #f44336;
+  padding: 10px;
+  border-radius: 4px;
+  background-color: rgba(244, 67, 54, 0.05);
+  font-family: monospace;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 768px) {
+  .testRunner {
+    padding: 15px;
+  }
+
+  .header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .actions {
+    width: 100%;
+    margin-top: 10px;
+  }
+
+  .runButton,
+  .selectAllButton {
+    flex: 1;
+    text-align: center;
+  }
+}

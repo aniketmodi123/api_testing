@@ -549,26 +549,14 @@ class ApiUpdateRequest(BaseModel):
 class ApiCaseCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255, description="Test case name")
     headers: Optional[Dict[str, Any]] = Field(None, description="Request headers")
-    body: Dict[str, Any] = Field(..., description="Request body data")
-    expected: Dict[str, Any] = Field(..., description="Expected response data")
+    body: Optional[Dict[str, Any]] = Field(..., description="Request body data")
+    expected: Optional[Dict[str, Any]] = Field(..., description="Expected response data")
 
     @validator('name')
     def validate_name(cls, v):
         if not v or not v.strip():
             raise ValueError('Test case name cannot be empty')
         return v.strip()
-
-    @validator('body')
-    def validate_request(cls, v):
-        if not v:
-            raise ValueError('Request data cannot be empty')
-        return v
-
-    @validator('expected')
-    def validate_response(cls, v):
-        if not v:
-            raise ValueError('Response data cannot be empty')
-        return v
 
 
 class ApiCaseUpdateRequest(BaseModel):
