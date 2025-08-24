@@ -66,12 +66,23 @@ async def create_test_case_for_file_api(
             return create_response(400, error_message="Test case with this name already exists for this API")
 
         # Create new test case
-        new_case = ApiCase(
-            api_id=api.id,
-            name=request.name,
-            body=request.body,
-            expected=request.expected
-        )
+        try:
+            new_case = ApiCase(
+                api_id=api.id,
+                name=request.name,
+                headers=request.headers,  # Added headers
+                body=request.body,
+                expected=request.expected
+            )
+        except Exception as e:
+            # Fallback if headers column doesn't exist yet
+            print(f"Warning: Could not include headers field - {str(e)}")
+            new_case = ApiCase(
+                api_id=api.id,
+                name=request.name,
+                body=request.body,
+                expected=request.expected
+            )
 
         db.add(new_case)
         await db.commit()
@@ -81,6 +92,7 @@ async def create_test_case_for_file_api(
             "id": new_case.id,
             "api_id": new_case.api_id,
             "name": new_case.name,
+            "headers": new_case.headers,  # Added headers
             "body": new_case.body,
             "expected": new_case.expected,
             "created_at": new_case.created_at,

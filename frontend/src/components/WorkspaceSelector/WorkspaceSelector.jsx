@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useWorkspace } from '../../store/workspace';
 import styles from './WorkspaceSelector.module.css';
 
@@ -8,11 +8,16 @@ export default function WorkspaceSelector() {
     activeWorkspace,
     setActiveWorkspace,
     createWorkspace,
+    deleteWorkspace,
     loading,
+    shouldLoadWorkspaces,
   } = useWorkspace();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [workspaceToDelete, setWorkspaceToDelete] = useState(null);
   const [newWorkspaceName, setNewWorkspaceName] = useState('');
+  const [newWorkspaceDescription, setNewWorkspaceDescription] = useState('');
 
   const handleSelect = workspace => {
     setActiveWorkspace(workspace);
@@ -24,14 +29,93 @@ export default function WorkspaceSelector() {
     if (!newWorkspaceName.trim()) return;
 
     try {
-      await createWorkspace({ name: newWorkspaceName.trim() });
+      await createWorkspace({
+        name: newWorkspaceName.trim(),
+        description: newWorkspaceDescription.trim() || null,
+      });
       setNewWorkspaceName('');
+      setNewWorkspaceDescription('');
       setIsCreating(false);
     } catch (err) {
       console.error('Failed to create workspace:', err);
       // Handle error - could show a notification
     }
   };
+
+  const handleDeleteClick = (e, workspace) => {
+    e.stopPropagation(); // Prevent workspace selection
+    setWorkspaceToDelete(workspace);
+    setIsDeleting(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!workspaceToDelete) return;
+
+    try {
+      await deleteWorkspace(workspaceToDelete.id);
+      setIsDeleting(false);
+      setWorkspaceToDelete(null);
+    } catch (err) {
+      console.error('Failed to delete workspace:', err);
+      // Handle error - could show a notification
+    }
+  };
+
+  const handleCancelDelete = () => {
+    setIsDeleting(false);
+    setWorkspaceToDelete(null);
+  };
+
+  // Check the current URL path
+  const [isAuthPage, setIsAuthPage] = useState(false);
+  const dropdownRef = useRef(null);
+
+  // Handle outside clicks to close dropdown
+  useEffect(() => {
+    const handleClickOutside = event => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsDropdownOpen(false);
+      }
+    };
+
+    // Only add the event listener when the dropdown is open
+    if (isDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isDropdownOpen]);
+
+  useEffect(() => {
+    // Check if we're on an auth page
+    const path = window.location.pathname;
+    setIsAuthPage(
+      path === '/sign-in' || path === '/sign-up' || path === '/forgot-password'
+    );
+
+    // Listen for URL changes
+    const handleRouteChange = () => {
+      const newPath = window.location.pathname;
+      setIsAuthPage(
+        newPath === '/sign-in' ||
+          newPath === '/sign-up' ||
+          newPath === '/forgot-password'
+      );
+    };
+
+    window.addEventListener('popstate', handleRouteChange);
+
+    return () => {
+      window.removeEventListener('popstate', handleRouteChange);
+    };
+  }, []);
+
+  // Don't render anything if workspace loading is disabled or we're on an auth page
+  if (!shouldLoadWorkspaces || isAuthPage) {
+    return null;
+  }
 
   return (
     <div className={styles.workspaceSelector}>
@@ -46,7 +130,7 @@ export default function WorkspaceSelector() {
       </button>
 
       {isDropdownOpen && (
-        <div className={styles.dropdown}>
+        <div ref={dropdownRef} className={styles.dropdown}>
           <div className={styles.dropdownHeader}>
             <h3>Workspaces</h3>
             <button
@@ -70,6 +154,14 @@ export default function WorkspaceSelector() {
                 value={newWorkspaceName}
                 onChange={e => setNewWorkspaceName(e.target.value)}
                 autoFocus
+                required
+              />
+              <textarea
+                placeholder="Description (optional)"
+                className={styles.createInput}
+                value={newWorkspaceDescription}
+                onChange={e => setNewWorkspaceDescription(e.target.value)}
+                rows={2}
               />
               <div className={styles.createActions}>
                 <button
@@ -78,6 +170,7 @@ export default function WorkspaceSelector() {
                   onClick={() => {
                     setIsCreating(false);
                     setNewWorkspaceName('');
+                    setNewWorkspaceDescription('');
                   }}
                 >
                   Cancel
@@ -93,6 +186,32 @@ export default function WorkspaceSelector() {
             </form>
           )}
 
+          {isDeleting && workspaceToDelete && (
+            <div className={styles.deleteConfirmation}>
+              <p>Are you sure you want to delete "{workspaceToDelete.name}"?</p>
+              <p className={styles.deleteWarning}>
+                This action cannot be undone.
+              </p>
+              <div className={styles.deleteActions}>
+                <button
+                  type="button"
+                  className={styles.cancelButton}
+                  onClick={handleCancelDelete}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className={styles.deleteButton}
+                  onClick={handleConfirmDelete}
+                  disabled={loading}
+                >
+                  {loading ? 'Deleting...' : 'Delete'}
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className={styles.workspaceList}>
             {loading && !workspaces.length ? (
               <div className={styles.loadingItem}>Loading workspaces...</div>
@@ -104,6 +223,13 @@ export default function WorkspaceSelector() {
                   onClick={() => handleSelect(workspace)}
                 >
                   {workspace.name}
+                  <button
+                    className={styles.deleteWorkspaceButton}
+                    onClick={e => handleDeleteClick(e, workspace)}
+                    title="Delete workspace"
+                  >
+                    ×
+                  </button>
                 </div>
               ))
             ) : (

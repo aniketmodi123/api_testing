@@ -69,10 +69,17 @@ async def list_test_cases_for_file_api(
         # Format response data
         cases_data = []
         for case in cases:
+            try:
+                headers = case.headers  # Try to access headers
+            except AttributeError:
+                # Handle the case where headers column doesn't exist yet
+                headers = None
+
             cases_data.append({
                 "id": case.id,
                 "api_id": case.api_id,
                 "name": case.name,
+                "headers": headers,  # Added headers
                 "body": case.body,
                 "expected": case.expected,
                 "created_at": case.created_at

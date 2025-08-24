@@ -88,6 +88,8 @@
   color: var(--text);
   font-size: 14px;
   margin-bottom: 8px;
+  resize: vertical;
+  font-family: inherit;
 }
 
 .createActions {
@@ -156,4 +158,69 @@
   background-color: var(--selected-item-background);
   color: var(--primary);
   font-weight: 500;
+}
+
+.workspaceItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.deleteWorkspaceButton {
+  visibility: hidden;
+  opacity: 0;
+  background: none;
+  border: none;
+  color: #ff5252;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  margin-left: auto;
+  padding: 0 8px;
+  transition: opacity 0.2s;
+}
+
+.workspaceItem:hover .deleteWorkspaceButton {
+  visibility: visible;
+  opacity: 1;
+}
+
+.deleteConfirmation {
+  padding: 15px;
+  background-color: var(--background-lighter);
+  border-radius: 4px;
+  margin: 10px;
+  border: 1px solid var(--border);
+}
+
+.deleteWarning {
+  color: #ff5252;
+  font-size: 12px;
+  margin-top: 5px;
+}
+
+.deleteActions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 15px;
+  gap: 10px;
+}
+
+.deleteButton {
+  background-color: #ff5252;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 5px 10px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.deleteButton:hover {
+  background-color: #ff1a1a;
+}
+
+.deleteButton:disabled {
+  background-color: #ffcccc;
+  cursor: not-allowed;
 }

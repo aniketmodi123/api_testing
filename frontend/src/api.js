@@ -9,6 +9,12 @@ api.interceptors.request.use(config => {
   // Always add these headers
   config.headers['accept'] = 'application/json';
 
+  // Log request details
+  console.log(`API Request: ${config.method.toUpperCase()} ${config.url}`, {
+    data: config.data,
+    params: config.params,
+  });
+
   // Get token from localStorage - this ensures we always use the latest token
   const token = localStorage.getItem('token');
   const user = localStorage.getItem('user');

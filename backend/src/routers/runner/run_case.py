@@ -17,7 +17,7 @@ from config import (
     get_user_by_username,
     verify_node_ownership
 )
-from models import Api, ApiCase
+from models import Api
 
 
 router = APIRouter()
@@ -77,9 +77,19 @@ async def get_file_api(
             if req.case_id:
                 if case.id not in req.case_id:
                     continue
+            # Combine inherited headers with case-specific headers (if any)
+            try:
+                case_headers = case.headers or {}
+            except AttributeError:
+                # Handle the case where headers column doesn't exist yet
+                case_headers = {}
+
+            merged_headers = {**merge_result.get("merged_headers", {}), **case_headers}
+
             cases_data.append({
                 "id": case.id,
                 "name": case.name,
+                "headers": merged_headers,  # Use combined headers
                 "body": case.body,
                 "expected": case.expected,
                 "created_at": case.created_at

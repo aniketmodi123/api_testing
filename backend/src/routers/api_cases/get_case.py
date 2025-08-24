@@ -1,5 +1,3 @@
-from ast import Dict
-from typing import Any
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -85,11 +83,22 @@ async def get_test_case_details(
 
         final_headers = {**inherited_headers, **api_extra_headers}
 
+        # Combine inherited headers with case-specific headers (if any)
+        try:
+            case_headers = case.headers or {}
+        except AttributeError:
+            # Handle the case where headers column doesn't exist yet
+            case_headers = {}
+
+        combined_headers = {**final_headers, **case_headers}
+
         data = {
             "id": case.id,
             "api_id": case.api_id,
             "name": case.name,
-            "headers": final_headers,
+            "headers": combined_headers,  # Combined headers
+            "case_specific_headers": case_headers,  # Case-specific headers only
+            "inherited_headers": final_headers,  # Inherited headers only
             "body": case.body,
             "expected": case.expected,
             "created_at": case.created_at,

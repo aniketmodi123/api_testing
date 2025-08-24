@@ -101,6 +101,7 @@ async def get_file_api(
                     "name": case.name,
                     "body": case.body,
                     "expected": case.expected,
+                    "headers": case.headers,
                     "created_at": case.created_at
                 })
             data["test_cases"] = cases_data

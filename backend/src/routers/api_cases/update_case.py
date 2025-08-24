@@ -57,6 +57,14 @@ async def update_test_case(
         # Update fields if provided
         if request.name is not None:
             case.name = request.name
+
+        # Try to update headers, but gracefully handle if column doesn't exist yet
+        if request.headers is not None:
+            try:
+                case.headers = request.headers
+            except Exception as e:
+                print(f"Warning: Could not update headers field - {str(e)}")
+
         if request.body is not None:
             case.body = request.body
         if request.expected is not None:
@@ -69,6 +77,7 @@ async def update_test_case(
             "id": case.id,
             "api_id": case.api_id,
             "name": case.name,
+            "headers": case.headers,  # Added headers
             "body": case.body,
             "expected": case.expected,
             "created_at": case.created_at

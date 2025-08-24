@@ -89,7 +89,6 @@
   padding: 6px 8px;
   cursor: pointer;
   border-radius: 4px;
-  position: relative;
 }
 
 .folderHeader:hover {
@@ -129,7 +128,6 @@
   transition: background-color 0.2s;
   border-radius: 4px;
   margin: 2px 0;
-  position: relative;
 }
 
 .requestItem:hover {
@@ -161,89 +159,26 @@
 
 /* Node actions */
 .nodeActions {
-  margin-left: auto;
   display: none;
+  margin-left: auto;
 }
 
 .folderHeader:hover .nodeActions,
 .requestItem:hover .nodeActions {
-  display: block;
-}
-
-.menuButton {
-  background-color: #e8e8e8;
-  border-radius: 3px;
-  border: 1px solid #cccccc;
-  padding: 2px 4px;
-  cursor: pointer;
-  font-size: 14px;
-  color: #333333;
-  transition: all 0.2s;
-}
-
-.menuButton:hover {
-  background-color: #d0d0d0;
-}
-
-.contextMenu {
-  position: fixed;
-  background-color: #ffffff;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
-  z-index: 1000;
-  min-width: 120px;
-  transform: translateX(-100%);
-  animation: fadeIn 0.15s ease-out;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateX(-100%) translateY(-5px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(-100%) translateY(0);
-  }
-}
-
-.menuItem {
-  padding: 8px 12px;
-  cursor: pointer;
-  font-size: 13px;
-  transition: background-color 0.1s;
-  border-bottom: 1px solid #dddddd;
-  background-color: #ffffff;
-  color: #333333;
-}
-
-.menuItem:hover {
-  background-color: #f0f0f0;
-}
-
-.menuItem.createItem {
-  color: #2196f3;
-  font-weight: 500;
-}
-
-.menuItem:last-child {
-  color: #e53935;
-  border-bottom: none;
+  display: flex;
 }
 
 .deleteButton {
-  background-color: #f2f2f2;
-  border: 1px solid #cccccc;
-  border-radius: 3px;
+  background: none;
+  border: none;
   cursor: pointer;
-  padding: 2px 4px;
+  opacity: 0.6;
+  padding: 2px;
   font-size: 12px;
-  color: #333333;
 }
 
 .deleteButton:hover {
-  background-color: #e0e0e0;
+  opacity: 1;
 }
 
 /* Add folder form */
@@ -257,49 +192,12 @@
 .newFolderInput {
   width: 100%;
   padding: 6px;
-  border: 1px solid #cccccc;
+  border: 1px solid var(--border);
   border-radius: 4px;
   font-size: 13px;
   margin-bottom: 6px;
-  background-color: #ffffff;
-  color: #333333;
-}
-
-.itemTypeSelector {
-  display: flex;
-  margin-bottom: 8px;
-  border-radius: 4px;
-  overflow: hidden;
-  border: 1px solid #cccccc;
-}
-
-.typeButton {
-  flex: 1;
-  padding: 6px 8px;
-  border: none;
-  background-color: #f2f2f2;
-  cursor: pointer;
-  font-size: 13px;
-  transition: all 0.2s;
-}
-
-.typeButton.selected {
-  background-color: #2196f3;
-  color: white;
-}
-
-.methodSelector {
-  margin-bottom: 8px;
-}
-
-.methodDropdown {
-  width: 100%;
-  padding: 6px;
-  border: 1px solid #cccccc;
-  border-radius: 4px;
-  font-size: 13px;
-  background-color: #ffffff;
-  color: #333333;
+  background-color: var(--input-background);
+  color: var(--text);
 }
 
 .newFolderActions {
@@ -324,67 +222,4 @@
 .newFolderActions button:last-child {
   background-color: var(--background);
   border: 1px solid var(--border);
-}
-
-/* Modal styles */
-.modalOverlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 1000;
-}
-
-.modalContent {
-  background-color: white;
-  border-radius: 6px;
-  padding: 20px;
-  width: 350px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-}
-
-.modalHeader {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 15px;
-}
-
-.modalTitle {
-  font-size: 16px;
-  font-weight: 600;
-  color: #333;
-}
-
-.modalBody {
-  margin-bottom: 20px;
-  color: #555;
-}
-
-.modalActions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-}
-
-.confirmButton {
-  padding: 6px 12px;
-  border-radius: 4px;
-  border: none;
-  background-color: #e53935;
-  color: white;
-  cursor: pointer;
-}
-
-.cancelButton {
-  padding: 6px 12px;
-  border-radius: 4px;
-  border: 1px solid #ddd;
-  background-color: white;
-  cursor: pointer;
 }

@@ -143,6 +143,7 @@ class ApiCase(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     api_id: Mapped[int] = mapped_column(ForeignKey("apis.id", ondelete="CASCADE"), nullable=False)
     name: Mapped[str] = mapped_column(String(255))
+    headers: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # Added headers column
     body: Mapped[dict] = mapped_column(JSON, nullable=False)
     expected: Mapped[dict] = mapped_column(JSON, nullable=False)
     created_at: Mapped[str] = mapped_column(TIMESTAMP, default= datetime.now, server_default=func.now())

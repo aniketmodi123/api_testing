@@ -1,28 +1,298 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useNode } from '../../store/node';
 import { useWorkspace } from '../../store/workspace';
 import styles from './CollectionTree.module.css';
+
+// Custom Modal Component for confirmations
+const ConfirmModal = ({
+  isOpen,
+  title,
+  message,
+  onConfirm,
+  onCancel,
+  confirmText = 'Confirm',
+  cancelText = 'Cancel',
+  type = 'delete',
+}) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className={styles.modalOverlay}>
+      <div className={styles.modalContent}>
+        <div className={styles.modalHeader}>
+          <h3 className={styles.modalTitle}>{title}</h3>
+        </div>
+        <div className={styles.modalBody}>
+          <p>{message}</p>
+        </div>
+        <div className={styles.modalActions}>
+          <button className={styles.cancelButton} onClick={onCancel}>
+            {cancelText}
+          </button>
+          <button
+            className={styles.confirmButton}
+            style={{
+              backgroundColor:
+                type === 'delete'
+                  ? '#e53935'
+                  : type === 'create'
+                    ? '#4caf50'
+                    : type === 'update'
+                      ? '#2196f3'
+                      : '#ff9800',
+            }}
+            onClick={onConfirm}
+          >
+            {confirmText}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Recursive component for rendering node items (folders and files)
+const NodeItem = ({
+  node,
+  expandedFolders,
+  toggleFolder,
+  handleDeleteNode,
+  handleSelectRequest,
+  selectedItem,
+  getMethodColor,
+  handleRenameAction,
+  handleDuplicateNode,
+  handleCreateNewItem,
+  closeAllMenus,
+  level = 0,
+}) => {
+  // Maximum depth to prevent infinite recursion
+  const MAX_LEVEL = 10;
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
+  const menuRef = useRef(null);
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = event => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [menuRef]);
+
+  // Close this menu when another menu opens
+  useEffect(() => {
+    if (closeAllMenus) {
+      setMenuOpen(false);
+    }
+  }, [closeAllMenus]);
+
+  const handleMenuClick = e => {
+    e.stopPropagation();
+    const rect = e.currentTarget.getBoundingClientRect();
+    setMenuPosition({
+      x: rect.right,
+      y: rect.top,
+    });
+    setMenuOpen(prev => !prev);
+  };
+
+  const handleAction = (action, e) => {
+    e.stopPropagation();
+    setMenuOpen(false);
+
+    console.log(`Action ${action} on node:`, node);
+
+    switch (action) {
+      case 'create':
+        // Only available for folders
+        if (node.type === 'folder') {
+          // Set the parent folder ID and toggle it open
+          console.log('Creating new item in folder:', node.id, node.name);
+          handleCreateNewItem(node.id);
+        }
+        break;
+      case 'rename':
+        handleRenameAction(node);
+        break;
+      case 'duplicate':
+        handleDuplicateNode(node);
+        break;
+      case 'delete':
+        handleDeleteNode(node.id, e);
+        break;
+      default:
+        break;
+    }
+  };
+
+  if (level > MAX_LEVEL) return null;
+
+  if (node.type === 'folder') {
+    return (
+      <div className={`${styles.subFolder} ${level > 0 ? styles.nested : ''}`}>
+        <div
+          className={styles.folderHeader}
+          onClick={() => toggleFolder(node.id)}
+        >
+          <span className={styles.expansionIcon}>
+            {expandedFolders.includes(node.id) ? '▼' : '▶'}
+          </span>
+          <span className={styles.folderIcon}>📁</span>
+          <span className={styles.folderName}>{node.name}</span>
+          <div className={styles.nodeActions}>
+            <button
+              className={styles.menuButton}
+              onClick={handleMenuClick}
+              title="Actions"
+            >
+              ⋮
+            </button>
+            {menuOpen && (
+              <div
+                className={styles.contextMenu}
+                style={{
+                  top: `${menuPosition.y}px`,
+                  left: `${menuPosition.x}px`,
+                }}
+                ref={menuRef}
+              >
+                <div
+                  className={`${styles.menuItem} ${styles.createItem}`}
+                  onClick={e => handleAction('create', e)}
+                >
+                  Create
+                </div>
+                <div
+                  className={styles.menuItem}
+                  onClick={e => handleAction('rename', e)}
+                >
+                  Rename
+                </div>
+                <div
+                  className={styles.menuItem}
+                  onClick={e => handleAction('duplicate', e)}
+                >
+                  Duplicate
+                </div>
+                <div
+                  className={styles.menuItem}
+                  onClick={e => handleAction('delete', e)}
+                >
+                  Delete
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {node.children && expandedFolders.includes(node.id) && (
+          <div className={styles.folderItems}>
+            {node.children.map(childNode => (
+              <NodeItem
+                key={childNode.id}
+                node={childNode}
+                expandedFolders={expandedFolders}
+                toggleFolder={toggleFolder}
+                handleDeleteNode={handleDeleteNode}
+                handleSelectRequest={handleSelectRequest}
+                selectedItem={selectedItem}
+                getMethodColor={getMethodColor}
+                level={level + 1}
+                handleRenameAction={handleRenameAction}
+                handleDuplicateNode={handleDuplicateNode}
+                handleCreateNewItem={handleCreateNewItem}
+                closeAllMenus={closeAllMenus}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  } else {
+    return (
+      <div
+        className={`${styles.requestItem} ${selectedItem === node.id ? styles.selected : ''}`}
+        onClick={() => handleSelectRequest(node)}
+      >
+        <span
+          className={styles.methodBadge}
+          style={{
+            backgroundColor: getMethodColor(node.method || 'GET'),
+          }}
+        >
+          {node.method || 'GET'}
+        </span>
+        <span className={styles.requestName}>{node.name}</span>
+        <div className={styles.nodeActions}>
+          <button
+            className={styles.menuButton}
+            onClick={handleMenuClick}
+            title="Actions"
+          >
+            ⋮
+          </button>
+          {menuOpen && (
+            <div
+              className={styles.contextMenu}
+              style={{
+                top: `${menuPosition.y}px`,
+                left: `${menuPosition.x}px`,
+              }}
+              ref={menuRef}
+            >
+              <div
+                className={styles.menuItem}
+                onClick={e => handleAction('rename', e)}
+              >
+                Rename
+              </div>
+              <div
+                className={styles.menuItem}
+                onClick={e => handleAction('duplicate', e)}
+              >
+                Duplicate
+              </div>
+              <div
+                className={styles.menuItem}
+                onClick={e => handleAction('delete', e)}
+              >
+                Delete
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+};
 
 // Fallback sample data if workspace tree is not available
 const sampleCollections = [
   {
     id: 1,
     name: 'API Testing',
-    items: [
+    type: 'folder',
+    children: [
       {
         id: 'folder-1',
         type: 'folder',
         name: 'Users API',
-        items: [
+        children: [
           {
             id: 'req-1',
-            type: 'request',
+            type: 'file',
             method: 'GET',
             name: 'Get All Users',
             url: 'https://api.example.com/users',
           },
           {
             id: 'req-2',
-            type: 'request',
+            type: 'file',
             method: 'POST',
             name: 'Create User',
             url: 'https://api.example.com/users',
@@ -33,10 +303,10 @@ const sampleCollections = [
         id: 'folder-2',
         type: 'folder',
         name: 'Products API',
-        items: [
+        children: [
           {
             id: 'req-3',
-            type: 'request',
+            type: 'file',
             method: 'GET',
             name: 'Get All Products',
             url: 'https://api.example.com/products',
@@ -45,44 +315,63 @@ const sampleCollections = [
       },
       {
         id: 'req-4',
-        type: 'request',
+        type: 'file',
         method: 'GET',
         name: 'Health Check',
         url: 'https://api.example.com/health',
       },
     ],
   },
-  {
-    id: 2,
-    name: 'Workspace API',
-    items: [
-      {
-        id: 'req-5',
-        type: 'request',
-        method: 'GET',
-        name: 'List Workspace',
-        url: 'https://api.example.com/workspace',
-      },
-    ],
-  },
 ];
 
 export default function CollectionTree({ onSelectRequest }) {
-  const { workspaceTree, activeWorkspace, loading } = useWorkspace();
-  const [expandedCollections, setExpandedCollections] = useState([1]); // Default first collection expanded
-  const [expandedFolders, setExpandedFolders] = useState(['folder-1']); // Default first folder expanded
+  const { activeWorkspace, loading: workspaceLoading } = useWorkspace();
+  const {
+    nodes,
+    loading: nodeLoading,
+    fetchNodesByWorkspaceId,
+    createFolder,
+    createFile,
+    updateNode,
+    deleteNode,
+  } = useNode();
+
+  const [expandedFolders, setExpandedFolders] = useState([]);
   const [selectedItem, setSelectedItem] = useState(null);
+  const [isAddingFolder, setIsAddingFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [filterText, setFilterText] = useState('');
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [nodeToRename, setNodeToRename] = useState(null);
+  const [newName, setNewName] = useState('');
+  const [menuUpdateTrigger, setMenuUpdateTrigger] = useState(0);
+  const [isCreatingItem, setIsCreatingItem] = useState(false);
+  const [isCreatingFolder, setIsCreatingFolder] = useState(true);
+  const [parentFolderId, setParentFolderId] = useState(null);
+  const [newItemName, setNewItemName] = useState('');
+  const [newApiMethod, setNewApiMethod] = useState('GET');
 
-  // Use workspaceTree data if available, otherwise fallback to sample data
-  const collections = workspaceTree?.collections || sampleCollections;
+  // Modal state
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalConfig, setModalConfig] = useState({
+    title: '',
+    message: '',
+    confirmText: 'Confirm',
+    cancelText: 'Cancel',
+    onConfirm: () => {},
+    type: 'delete',
+  });
 
-  const toggleCollection = collectionId => {
-    setExpandedCollections(prev =>
-      prev.includes(collectionId)
-        ? prev.filter(id => id !== collectionId)
-        : [...prev, collectionId]
-    );
-  };
+  // Fetch nodes when workspace changes
+  useEffect(() => {
+    if (activeWorkspace) {
+      fetchNodesByWorkspaceId(activeWorkspace.id);
+    }
+  }, [activeWorkspace, fetchNodesByWorkspaceId]);
+
+  // Use actual nodes or fallback to sample data
+  const rootNodes =
+    nodes.length > 0 ? nodes : activeWorkspace ? [] : sampleCollections;
 
   const toggleFolder = folderId => {
     setExpandedFolders(prev =>
@@ -96,6 +385,198 @@ export default function CollectionTree({ onSelectRequest }) {
     setSelectedItem(request.id);
     onSelectRequest && onSelectRequest(request);
   };
+
+  // This function is no longer used but kept for future reference
+  const isActionInProgress = () => {
+    return false; // Disabling this check to allow multiple actions
+  };
+
+  const handleAddFolder = () => {
+    setIsAddingFolder(true);
+    // Reset other states
+    setIsRenaming(false);
+    setIsCreatingItem(false);
+  };
+
+  const handleCreateFolder = () => {
+    if (newFolderName.trim() && activeWorkspace) {
+      const folderName = newFolderName.trim();
+
+      // Directly create the folder without confirmation
+      createFolder({
+        name: folderName,
+        workspace_id: activeWorkspace.id,
+        parent_id: null, // Root level folder - use snake_case for API
+      });
+      setNewFolderName('');
+      setIsAddingFolder(false);
+    }
+  };
+
+  const handleCancelAddFolder = () => {
+    setIsAddingFolder(false);
+    setNewFolderName('');
+  };
+
+  const handleDeleteNode = (nodeId, e) => {
+    e.stopPropagation();
+
+    // Find the node name for better UX
+    const nodeToDelete = nodes.flat(Infinity).find(n => n.id === nodeId) || {
+      name: 'this item',
+    };
+
+    // Configure and show the confirmation modal
+    setModalConfig({
+      title: 'Confirm Deletion',
+      message: `Are you sure you want to delete "${nodeToDelete.name}"?`,
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      type: 'delete',
+      onConfirm: () => {
+        // Cancel any ongoing actions
+        setIsAddingFolder(false);
+        setIsRenaming(false);
+        setIsCreatingItem(false);
+
+        // Perform the deletion
+        deleteNode(nodeId);
+
+        // Close the modal
+        setModalOpen(false);
+      },
+    });
+
+    setModalOpen(true);
+  };
+
+  // Close all menus to ensure only one is open at a time
+  const closeAllMenus = () => {
+    setMenuUpdateTrigger(prev => prev + 1);
+  };
+
+  // Handle rename action
+  const handleRenameAction = node => {
+    setNodeToRename(node);
+    setNewName(node.name);
+    setIsRenaming(true);
+
+    // Reset other states
+    setIsAddingFolder(false);
+    setIsCreatingItem(false);
+
+    closeAllMenus();
+  }; // Handle rename submit
+  const handleRename = () => {
+    if (newName.trim() && nodeToRename) {
+      const newNameValue = newName.trim();
+
+      // Directly rename without confirmation
+      updateNode(nodeToRename.id, {
+        name: newNameValue,
+      });
+      setIsRenaming(false);
+      setNodeToRename(null);
+      setNewName('');
+    }
+  };
+
+  // Handle cancel rename
+  const handleCancelRename = () => {
+    setIsRenaming(false);
+    setNodeToRename(null);
+    setNewName('');
+  };
+
+  // Handle creating a new item (folder or file)
+  const handleCreateNewItem = parentId => {
+    console.log('Creating new item in parent folder:', parentId);
+
+    // Expand the parent folder
+    if (!expandedFolders.includes(parentId)) {
+      toggleFolder(parentId);
+    }
+
+    setParentFolderId(parentId);
+    setNewItemName('');
+    setIsCreatingItem(true);
+    setIsCreatingFolder(true); // Default to folder
+
+    // Reset other states
+    setIsAddingFolder(false);
+    setIsRenaming(false);
+
+    closeAllMenus();
+  }; // Handle creating the new item
+  const handleCreateItem = () => {
+    if (newItemName.trim() && activeWorkspace) {
+      const itemName = newItemName.trim();
+
+      console.log('Creating new item:', {
+        name: itemName,
+        workspace_id: activeWorkspace.id,
+        parent_id: parentFolderId,
+        type: isCreatingFolder ? 'folder' : 'file',
+      });
+
+      // Directly create the item without confirmation
+      if (isCreatingFolder) {
+        createFolder({
+          name: itemName,
+          workspace_id: activeWorkspace.id,
+          parent_id: parentFolderId,
+        });
+      } else {
+        createFile({
+          name: itemName,
+          workspace_id: activeWorkspace.id,
+          parent_id: parentFolderId,
+          method: newApiMethod,
+          url: '',
+        });
+      }
+      setNewItemName('');
+      setIsCreatingItem(false);
+      setParentFolderId(null);
+    }
+  };
+
+  // Handle canceling item creation
+  const handleCancelCreateItem = () => {
+    setIsCreatingItem(false);
+    setParentFolderId(null);
+    setNewItemName('');
+  };
+
+  // Handle duplicate node
+  const handleDuplicateNode = node => {
+    if (activeWorkspace) {
+      const duplicateName = `${node.name} (Copy)`;
+
+      // Directly duplicate without confirmation
+      const duplicateData = {
+        name: duplicateName,
+        workspace_id: activeWorkspace.id,
+        parent_id: node.parent_id,
+      };
+
+      if (node.type === 'folder') {
+        createFolder(duplicateData);
+      } else {
+        createFile({
+          ...duplicateData,
+          method: node.method || 'GET',
+          url: node.url || '',
+        });
+      }
+    }
+  }; // Filter nodes based on search text
+  const filteredNodes =
+    filterText.trim() === ''
+      ? rootNodes
+      : rootNodes.filter(node =>
+          node.name.toLowerCase().includes(filterText.toLowerCase())
+        );
 
   // Method badge color based on HTTP method
   const getMethodColor = method => {
@@ -119,105 +600,150 @@ export default function CollectionTree({ onSelectRequest }) {
           type="text"
           placeholder="Filter"
           className={styles.filterInput}
+          value={filterText}
+          onChange={e => setFilterText(e.target.value)}
         />
-        <button className={styles.addButton}>+</button>
+        <button
+          className={styles.addButton}
+          onClick={handleAddFolder}
+          title="Add new folder"
+        >
+          +
+        </button>
       </div>
 
       <div className={styles.treeContainer}>
-        {loading && !collections.length ? (
-          <div className={styles.loadingState}>
-            <p>Loading collections...</p>
-          </div>
-        ) : collections.length > 0 ? (
-          collections.map(collection => (
-            <div key={collection.id} className={styles.collection}>
-              <div
-                className={styles.collectionHeader}
-                onClick={() => toggleCollection(collection.id)}
-              >
-                <span className={styles.expansionIcon}>
-                  {expandedCollections.includes(collection.id) ? '▼' : '▶'}
-                </span>
-                <span className={styles.collectionIcon}>📁</span>
-                <span className={styles.collectionName}>{collection.name}</span>
-              </div>
-
-              {expandedCollections.includes(collection.id) && (
-                <div className={styles.collectionItems}>
-                  {collection.items.map(item => (
-                    <div key={item.id}>
-                      {item.type === 'folder' ? (
-                        <div>
-                          <div
-                            className={styles.folderHeader}
-                            onClick={() => toggleFolder(item.id)}
-                          >
-                            <span className={styles.expansionIcon}>
-                              {expandedFolders.includes(item.id) ? '▼' : '▶'}
-                            </span>
-                            <span className={styles.folderIcon}>📂</span>
-                            <span className={styles.folderName}>
-                              {item.name}
-                            </span>
-                          </div>
-
-                          {expandedFolders.includes(item.id) && item.items && (
-                            <div className={styles.folderItems}>
-                              {item.items.map(subItem => (
-                                <div
-                                  key={subItem.id}
-                                  className={`${styles.requestItem} ${selectedItem === subItem.id ? styles.selected : ''}`}
-                                  onClick={() => handleSelectRequest(subItem)}
-                                >
-                                  <span
-                                    className={styles.methodBadge}
-                                    style={{
-                                      backgroundColor: getMethodColor(
-                                        subItem.method
-                                      ),
-                                    }}
-                                  >
-                                    {subItem.method}
-                                  </span>
-                                  <span className={styles.requestName}>
-                                    {subItem.name}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <div
-                          className={`${styles.requestItem} ${selectedItem === item.id ? styles.selected : ''}`}
-                          onClick={() => handleSelectRequest(item)}
-                        >
-                          <span
-                            className={styles.methodBadge}
-                            style={{
-                              backgroundColor: getMethodColor(item.method),
-                            }}
-                          >
-                            {item.method}
-                          </span>
-                          <span className={styles.requestName}>
-                            {item.name}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
+        {isAddingFolder && (
+          <div className={styles.newFolderForm}>
+            <input
+              type="text"
+              placeholder="Folder name"
+              value={newFolderName}
+              onChange={e => setNewFolderName(e.target.value)}
+              autoFocus
+              className={styles.newFolderInput}
+            />
+            <div className={styles.newFolderActions}>
+              <button onClick={handleCreateFolder}>Create</button>
+              <button onClick={handleCancelAddFolder}>Cancel</button>
             </div>
+          </div>
+        )}
+
+        {isRenaming && (
+          <div className={styles.newFolderForm}>
+            <input
+              type="text"
+              placeholder="New name"
+              value={newName}
+              onChange={e => setNewName(e.target.value)}
+              autoFocus
+              className={styles.newFolderInput}
+            />
+            <div className={styles.newFolderActions}>
+              <button onClick={handleRename}>Rename</button>
+              <button onClick={handleCancelRename}>Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {isCreatingItem && (
+          <div className={styles.newFolderForm}>
+            <div className={styles.itemTypeSelector}>
+              <button
+                className={`${styles.typeButton} ${isCreatingFolder ? styles.selected : ''}`}
+                onClick={() => setIsCreatingFolder(true)}
+              >
+                Folder
+              </button>
+              <button
+                className={`${styles.typeButton} ${!isCreatingFolder ? styles.selected : ''}`}
+                onClick={() => setIsCreatingFolder(false)}
+              >
+                API Request
+              </button>
+            </div>
+
+            <input
+              type="text"
+              placeholder={isCreatingFolder ? 'Folder name' : 'API name'}
+              value={newItemName}
+              onChange={e => setNewItemName(e.target.value)}
+              autoFocus
+              className={styles.newFolderInput}
+            />
+
+            {!isCreatingFolder && (
+              <div className={styles.methodSelector}>
+                <select
+                  value={newApiMethod}
+                  onChange={e => setNewApiMethod(e.target.value)}
+                  className={styles.methodDropdown}
+                >
+                  <option value="GET">GET</option>
+                  <option value="POST">POST</option>
+                  <option value="PUT">PUT</option>
+                  <option value="DELETE">DELETE</option>
+                  <option value="PATCH">PATCH</option>
+                  <option value="HEAD">HEAD</option>
+                  <option value="OPTIONS">OPTIONS</option>
+                </select>
+              </div>
+            )}
+
+            <div className={styles.newFolderActions}>
+              <button onClick={handleCreateItem}>Create</button>
+              <button onClick={handleCancelCreateItem}>Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {(nodeLoading || workspaceLoading) && !rootNodes.length ? (
+          <div className={styles.loadingState}>
+            <p>Loading folders...</p>
+          </div>
+        ) : filteredNodes.length > 0 ? (
+          filteredNodes.map(node => (
+            <NodeItem
+              key={node.id}
+              node={node}
+              expandedFolders={expandedFolders}
+              toggleFolder={toggleFolder}
+              handleDeleteNode={handleDeleteNode}
+              handleSelectRequest={handleSelectRequest}
+              selectedItem={selectedItem}
+              getMethodColor={getMethodColor}
+              handleRenameAction={handleRenameAction}
+              handleDuplicateNode={handleDuplicateNode}
+              handleCreateNewItem={handleCreateNewItem}
+              closeAllMenus={menuUpdateTrigger}
+            />
           ))
         ) : (
           <div className={styles.emptyState}>
-            <p>No collections found</p>
-            <button className={styles.createButton}>Create Collection</button>
+            <p>
+              {activeWorkspace ? 'No folders found' : 'No workspace selected'}
+            </p>
+            {activeWorkspace && (
+              <button className={styles.createButton} onClick={handleAddFolder}>
+                Create Folder
+              </button>
+            )}
           </div>
         )}
       </div>
+
+      {/* Confirmation Modal */}
+      <ConfirmModal
+        isOpen={modalOpen}
+        title={modalConfig.title}
+        message={modalConfig.message}
+        confirmText={modalConfig.confirmText}
+        cancelText={modalConfig.cancelText}
+        type={modalConfig.type}
+        onConfirm={modalConfig.onConfirm}
+        onCancel={() => setModalOpen(false)}
+      />
     </div>
   );
 }

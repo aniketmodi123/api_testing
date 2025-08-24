@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import CollectionTree from '../../components/CollectionTree/CollectionTree';
 import RequestPanel from '../../components/RequestPanel/RequestPanel';
 import Sidebar from '../../components/Sidebar/Sidebar';
+import { useNode } from '../../store/node';
 import { useWorkspace } from '../../store/workspace';
 import styles from './Home.module.css';
 
@@ -11,7 +12,19 @@ export default function Home() {
   const [activeRequest, setActiveRequest] = useState(null);
 
   // Use the workspace context instead of local state
-  const { activeWorkspace, workspaceTree } = useWorkspace();
+  const { activeWorkspace, workspaceTree, setShouldLoadWorkspaces } =
+    useWorkspace();
+
+  // Use node context for managing nodes/folders
+  const { selectedNode, setSelectedNode } = useNode();
+
+  // Enable workspace loading when home component mounts
+  useEffect(() => {
+    setShouldLoadWorkspaces(true);
+
+    // Disable workspace loading when component unmounts
+    return () => setShouldLoadWorkspaces(false);
+  }, [setShouldLoadWorkspaces]);
 
   const handleTabChange = tab => {
     setActiveTab(tab);
@@ -19,6 +32,8 @@ export default function Home() {
 
   const handleSelectRequest = request => {
     setActiveRequest(request);
+    // Also update selected node in the node context
+    setSelectedNode(request);
   };
 
   return (

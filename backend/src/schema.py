@@ -548,7 +548,8 @@ class ApiUpdateRequest(BaseModel):
 # Pydantic schemas for API cases
 class ApiCaseCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255, description="Test case name")
-    body: Dict[str, Any] = Field(..., description="Request data (headers, body, params, etc.)")
+    headers: Optional[Dict[str, Any]] = Field(None, description="Request headers")
+    body: Dict[str, Any] = Field(..., description="Request body data")
     expected: Dict[str, Any] = Field(..., description="Expected response data")
 
     @validator('name')
@@ -572,7 +573,9 @@ class ApiCaseCreateRequest(BaseModel):
 
 class ApiCaseUpdateRequest(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255, description="Test case name")
-    request: Optional[Dict[str, Any]] = Field(None, description="Request data")
+    headers: Optional[Dict[str, Any]] = Field(None, description="Request headers")
+    body: Optional[Dict[str, Any]] = Field(None, description="Request body data")
+    expected: Optional[Dict[str, Any]] = Field(None, description="Expected response data")
     response: Optional[Dict[str, Any]] = Field(None, description="Expected response data")
 
     @validator('name', pre=True, always=True)
@@ -585,6 +588,7 @@ class ApiCaseUpdateRequest(BaseModel):
 
 class UpdateTestCaseRequest(BaseModel):
     name: Optional[str] = None
+    headers: Optional[Dict[Any, Any]] = None  # Added headers
     body: Optional[Dict[Any, Any]] = None
     expected: Optional[Dict[Any, Any]] = None
 

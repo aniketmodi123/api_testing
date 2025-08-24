@@ -1,11 +1,24 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useNode } from '../../store/node';
 import styles from './RequestPanel.module.css';
 
 export default function RequestPanel({ activeRequest }) {
-  const [method, setMethod] = useState(activeRequest?.method || 'GET');
-  const [url, setUrl] = useState(
-    activeRequest?.url || 'https://api.example.com'
+  const { selectedNode, getNodeById } = useNode();
+
+  const [method, setMethod] = useState(
+    activeRequest?.method || selectedNode?.method || 'GET'
   );
+  const [url, setUrl] = useState(
+    activeRequest?.url || selectedNode?.url || 'https://api.example.com'
+  );
+
+  // Update the panel when selectedNode changes
+  useEffect(() => {
+    if (selectedNode) {
+      setMethod(selectedNode.method || 'GET');
+      setUrl(selectedNode.url || '');
+    }
+  }, [selectedNode]);
   const [activeTab, setActiveTab] = useState('params');
   const [responseTab, setResponseTab] = useState('body');
   const [isSending, setIsSending] = useState(false);

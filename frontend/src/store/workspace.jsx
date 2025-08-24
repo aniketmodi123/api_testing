@@ -11,10 +11,17 @@ export function WorkspaceProvider({ children }) {
   const [error, setError] = useState(null);
   const [workspaceTree, setWorkspaceTree] = useState(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [shouldLoadWorkspaces, setShouldLoadWorkspaces] = useState(true);
 
-  // Load workspaces from API
+  // Load workspaces from API only when enabled
   useEffect(() => {
     const fetchWorkspaces = async () => {
+      // Only fetch workspaces when explicitly enabled
+      if (!shouldLoadWorkspaces) {
+        setLoading(false);
+        return;
+      }
+
       try {
         setLoading(true);
         setError(null);
@@ -49,12 +56,12 @@ export function WorkspaceProvider({ children }) {
     };
 
     fetchWorkspaces();
-  }, [refreshTrigger]);
+  }, [refreshTrigger, shouldLoadWorkspaces]);
 
-  // Load workspace tree when active workspace changes
+  // Load workspace tree when active workspace changes and workspaces are enabled
   useEffect(() => {
     const fetchWorkspaceTree = async () => {
-      if (!activeWorkspace) {
+      if (!activeWorkspace || !shouldLoadWorkspaces) {
         setWorkspaceTree(null);
         return;
       }
@@ -65,8 +72,14 @@ export function WorkspaceProvider({ children }) {
           activeWorkspace.id
         );
         setWorkspaceTree(data.data);
+        console.log('Workspace tree loaded:', data.data);
       } catch (err) {
-        console.error('Error fetching workspace tree:', err);
+        console.error(
+          'Error fetching workspace tree:',
+          err,
+          'for workspace:',
+          activeWorkspace
+        );
         // For development/demo: fallback to sample tree
         setWorkspaceTree({
           collections: [
@@ -105,7 +118,7 @@ export function WorkspaceProvider({ children }) {
     };
 
     fetchWorkspaceTree();
-  }, [activeWorkspace, refreshTrigger]);
+  }, [activeWorkspace, refreshTrigger, shouldLoadWorkspaces]);
 
   // Create a new workspace
   const createWorkspace = async workspaceData => {
@@ -181,6 +194,8 @@ export function WorkspaceProvider({ children }) {
         updateWorkspace,
         deleteWorkspace,
         refreshWorkspaces: () => setRefreshTrigger(prev => prev + 1),
+        setShouldLoadWorkspaces,
+        shouldLoadWorkspaces,
       }}
     >
       {children}
