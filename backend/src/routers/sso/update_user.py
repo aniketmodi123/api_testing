@@ -30,16 +30,6 @@ async def update_user(
         if user is None:
             return create_response(400, error_message="User not found")
 
-        # Check if username is being updated and if it's already taken
-        if "username" in update_data:
-            stmt = select(User).where(
-                User.username == update_data["username"],
-                User.id != user.id
-            )
-            result = await db.execute(stmt)
-            if result.scalar_one_or_none():
-                return create_response(400, error_message="Username already taken")
-
         # Check if email is being updated and if it's already taken
         if "email" in update_data:
             stmt = select(User).where(
@@ -49,10 +39,6 @@ async def update_user(
             result = await db.execute(stmt)
             if result.scalar_one_or_none():
                 return create_response(400, error_message="Email already taken")
-
-        # Hash password if it's being updated
-        if "password" in update_data:
-            update_data["password"] = get_password_hash(update_data.pop("password"))
 
         # Update user fields
         for field, value in update_data.items():

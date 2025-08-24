@@ -15,6 +15,7 @@ import ChangePassword from './features/auth/components/ChangePassword.jsx';
 import DeleteAccount from './features/auth/components/DeleteAccount.jsx';
 import ForgotPassword from './features/auth/components/ForgotPassword.jsx';
 import SimpleUserProfile from './features/auth/components/SimpleUserProfile.jsx';
+import UpdateProfile from './features/auth/components/UpdateProfile.jsx';
 import Home from './pages/Home/Home.jsx';
 
 import { ApiProvider } from './store/api.jsx';
@@ -82,6 +83,14 @@ createRoot(document.getElementById('root')).render(
                       element={
                         <App>
                           <DeleteAccount />
+                        </App>
+                      }
+                    />
+                    <Route
+                      path="/update-profile"
+                      element={
+                        <App>
+                          <UpdateProfile />
                         </App>
                       }
                     />

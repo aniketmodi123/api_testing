@@ -28,7 +28,7 @@ async def sign_in(user_credentials: UserSignIn, db: AsyncSession = Depends(get_d
     """
     try:
         # Get user by username
-        stmt = select(User).where(User.username == user_credentials.email)
+        stmt = select(User).where(User.email == user_credentials.email)
         result = await db.execute(stmt)
         user = result.scalar_one_or_none()
 
