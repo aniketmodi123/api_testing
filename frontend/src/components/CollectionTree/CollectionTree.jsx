@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNode } from '../../store/node';
 import { useWorkspace } from '../../store/workspace';
+import HeaderEditor from '../HeaderEditor/HeaderEditor';
 import styles from './CollectionTree.module.css';
 
 // Custom Modal Component for confirmations
@@ -63,6 +64,7 @@ const NodeItem = ({
   handleRenameAction,
   handleDuplicateNode,
   handleCreateNewItem,
+  handleEditHeaders, // Added this prop
   closeAllMenus,
   level = 0,
 }) => {
@@ -103,6 +105,7 @@ const NodeItem = ({
 
   const handleAction = (action, e) => {
     e.stopPropagation();
+    e.preventDefault(); // Prevent any default actions
     setMenuOpen(false);
 
     console.log(`Action ${action} on node:`, node);
@@ -121,6 +124,18 @@ const NodeItem = ({
         break;
       case 'duplicate':
         handleDuplicateNode(node);
+        break;
+      case 'headers':
+        console.log('Headers action triggered for node:', node);
+        // Only available for folders
+        if (node.type === 'folder' && handleEditHeaders) {
+          // Open the header editor modal for this folder
+          handleEditHeaders(node);
+        } else {
+          console.log(
+            'Headers action ignored - not a folder or handleEditHeaders not available'
+          );
+        }
         break;
       case 'delete':
         handleDeleteNode(node.id, e);
@@ -179,6 +194,14 @@ const NodeItem = ({
                 >
                   Duplicate
                 </div>
+                {node.type === 'folder' && (
+                  <div
+                    className={`${styles.menuItem} ${styles.headersItem}`}
+                    onClick={e => handleAction('headers', e)}
+                  >
+                    Edit Headers
+                  </div>
+                )}
                 <div
                   className={styles.menuItem}
                   onClick={e => handleAction('delete', e)}
@@ -206,6 +229,7 @@ const NodeItem = ({
                 handleRenameAction={handleRenameAction}
                 handleDuplicateNode={handleDuplicateNode}
                 handleCreateNewItem={handleCreateNewItem}
+                handleEditHeaders={handleEditHeaders}
                 closeAllMenus={closeAllMenus}
               />
             ))}
@@ -350,6 +374,10 @@ export default function CollectionTree({ onSelectRequest }) {
   const [parentFolderId, setParentFolderId] = useState(null);
   const [newItemName, setNewItemName] = useState('');
   const [newApiMethod, setNewApiMethod] = useState('GET');
+
+  // Header editor state
+  const [isHeaderEditorOpen, setIsHeaderEditorOpen] = useState(false);
+  const [currentFolder, setCurrentFolder] = useState(null);
 
   // Modal state
   const [modalOpen, setModalOpen] = useState(false);
@@ -570,6 +598,28 @@ export default function CollectionTree({ onSelectRequest }) {
         });
       }
     }
+  };
+
+  // Handle opening the header editor
+  const handleEditHeaders = node => {
+    console.log('Opening header editor for folder:', node);
+    if (node && node.type === 'folder') {
+      setCurrentFolder(node);
+      setIsHeaderEditorOpen(true);
+      console.log('Header editor modal should be open now');
+    } else {
+      console.error(
+        'Cannot open header editor: Invalid node or not a folder',
+        node
+      );
+    }
+  };
+
+  // Handle saving headers
+  const handleSaveHeaders = headerData => {
+    console.log('Headers saved:', headerData);
+    setIsHeaderEditorOpen(false);
+    setCurrentFolder(null);
   }; // Filter nodes based on search text
   const filteredNodes =
     filterText.trim() === ''
@@ -716,6 +766,7 @@ export default function CollectionTree({ onSelectRequest }) {
               handleRenameAction={handleRenameAction}
               handleDuplicateNode={handleDuplicateNode}
               handleCreateNewItem={handleCreateNewItem}
+              handleEditHeaders={handleEditHeaders}
               closeAllMenus={menuUpdateTrigger}
             />
           ))
@@ -744,6 +795,29 @@ export default function CollectionTree({ onSelectRequest }) {
         onConfirm={modalConfig.onConfirm}
         onCancel={() => setModalOpen(false)}
       />
+
+      {/* Header Editor Modal */}
+      {isHeaderEditorOpen && currentFolder && (
+        <div
+          className={styles.modalOverlay}
+          onClick={e => {
+            // Close when clicking on the overlay background, not on the modal itself
+            if (e.target === e.currentTarget) {
+              setIsHeaderEditorOpen(false);
+              setCurrentFolder(null);
+            }
+          }}
+        >
+          <HeaderEditor
+            folder={currentFolder}
+            onClose={() => {
+              setIsHeaderEditorOpen(false);
+              setCurrentFolder(null);
+            }}
+            onSave={handleSaveHeaders}
+          />
+        </div>
+      )}
     </div>
   );
 }

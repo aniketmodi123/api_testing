@@ -163,6 +163,7 @@
 .nodeActions {
   margin-left: auto;
   display: none;
+  z-index: 100;
 }
 
 .folderHeader:hover .nodeActions,
@@ -192,7 +193,7 @@
   border-radius: 4px;
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
   z-index: 1000;
-  min-width: 120px;
+  min-width: 150px; /* Increased width for better text display */
   transform: translateX(-100%);
   animation: fadeIn 0.15s ease-out;
 }
@@ -224,6 +225,11 @@
 
 .menuItem.createItem {
   color: #2196f3;
+  font-weight: 500;
+}
+
+.menuItem.headersItem {
+  color: #4caf50;
   font-weight: 500;
 }
 
