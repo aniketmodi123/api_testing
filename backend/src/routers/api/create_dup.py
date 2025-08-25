@@ -72,7 +72,6 @@ async def duplicate_file_api(
             method=source_api.method,
             endpoint=source_api.endpoint,
             description=source_api.description,
-            version=source_api.version,
             is_active=source_api.is_active,
             extra_meta=source_api.extra_meta
         )

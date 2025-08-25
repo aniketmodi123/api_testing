@@ -41,6 +41,52 @@
   resize: vertical;
 }
 
+.jsonEditor {
+  margin-top: 16px;
+}
+
+.jsonEditor label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 14px;
+  color: #aaa;
+}
+
+.jsonEditor textarea {
+  width: 100%;
+  background-color: #1e1e1e;
+  color: #d4d4d4;
+  border: 1px solid #555;
+  border-radius: 4px;
+  padding: 12px;
+  font-family: monospace;
+  font-size: 13px;
+  resize: vertical;
+}
+
+.keyValueRow {
+  display: flex;
+  margin-bottom: 8px;
+  gap: 8px;
+}
+
+.keyValueRow input {
+  background-color: #1e1e1e;
+  color: #d4d4d4;
+  border: 1px solid #555;
+  border-radius: 4px;
+  padding: 8px;
+  font-family: monospace;
+}
+
+.keyValueRow input:first-child {
+  width: 40%;
+}
+
+.keyValueRow input:nth-child(2) {
+  flex: 1;
+}
+
 .checkboxLabel {
   display: flex;
   align-items: center;
@@ -78,6 +124,62 @@
   background-color: var(--primary-dark);
 }
 
+.apiTester {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: #2b2b2b;
+  color: #f0f0f0;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue",
+    sans-serif;
+}
+
+.apiHeader {
+  display: flex;
+  align-items: center;
+  padding: 10px;
+  gap: 8px;
+  background-color: #3c3c3c;
+  border-bottom: 1px solid #555;
+}
+
+.methodSelector {
+  width: 110px;
+  padding: 8px;
+  border: 1px solid #555;
+  background-color: #3c3c3c;
+  color: #f0f0f0;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.endpointInput {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid #555;
+  background-color: #2b2b2b;
+  color: #f0f0f0;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.sendButton,
+.saveButton {
+  padding: 8px 20px;
+  background-color: #4c8bf5;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.sendButton:hover,
+.saveButton:hover {
+  background-color: #3b7ae0;
+}
+
 .cancelButton {
   background-color: transparent;
   color: var(--text);
@@ -98,13 +200,524 @@
   background-color: rgba(244, 67, 54, 0.1);
   color: #f44336;
   padding: 10px;
+}
+
+.tabContainer {
+  display: flex;
+  background-color: #3c3c3c;
+  border-bottom: 1px solid #555;
+  overflow-x: auto;
+}
+
+.tab {
+  padding: 12px 16px;
+  cursor: pointer;
+  font-size: 14px;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+}
+
+.tab:hover {
+  background-color: #4c4c4c;
+}
+
+.activeTab {
+  border-bottom: 2px solid #4c8bf5;
+  color: #4c8bf5;
+}
+
+.tabContent {
+  padding: 16px;
+  background-color: #2b2b2b;
+  overflow: auto;
+  height: 100%;
+}
+
+.responseSection {
+  margin-top: 20px;
+  border-top: 1px solid #555;
+  padding-top: 16px;
+}
+
+.responseHeader {
+  display: flex;
+  align-items: center;
+  margin-bottom: 12px;
+  gap: 12px;
+}
+
+.emptyResponseHeader {
+  color: #888;
+  font-style: italic;
+  margin-bottom: 12px;
+}
+
+.statusBadge {
+  display: inline-block;
+  padding: 4px 8px;
   border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.statusSuccess {
+  background-color: rgba(76, 175, 80, 0.2);
+  color: #4caf50;
+}
+
+.statusError {
+  background-color: rgba(244, 67, 54, 0.2);
+  color: #f44336;
+}
+
+.statusWarning {
+  background-color: rgba(255, 152, 0, 0.2);
+  color: #ff9800;
+}
+
+.responseMeta {
+  font-size: 13px;
+  color: #aaa;
+}
+
+.responseActions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+
+.secondaryButton {
+  padding: 6px 12px;
+  background-color: transparent;
+  color: #f0f0f0;
+  border: 1px solid #555;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.secondaryButton:hover {
+  background-color: #4c4c4c;
+  border-radius: 4px;
+}
+
+.responseTabs {
+  display: flex;
+  border-bottom: 1px solid #555;
+  margin-bottom: 16px;
+}
+
+.responseTab {
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 14px;
+  border-bottom: 2px solid transparent;
+}
+
+.responseTab:hover {
+  background-color: #3c3c3c;
+}
+
+.activeResponseTab {
+  border-bottom: 2px solid #4c8bf5;
+  color: #4c8bf5;
+}
+
+.responseBody {
+  background-color: #1e1e1e;
+  border-radius: 4px;
+  padding: 16px;
+  max-height: 400px;
+  overflow: auto;
+}
+
+.responseBody pre {
+  margin: 0;
+  font-family: monospace;
+  font-size: 13px;
+  white-space: pre-wrap;
+  color: #d4d4d4;
+}
+
+.emptyResponse {
+  color: #888;
+  font-style: italic;
+  text-align: center;
+  padding: 20px;
+}
+
+.loading {
+  color: #888;
+  text-align: center;
+  padding: 20px;
+  font-style: italic;
+}
+
+/* API Tester Styles */
+.apiTester {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background-color: var(--background);
+  color: var(--text);
+}
+
+/* Header with method selector and endpoint */
+.apiHeader {
+  display: flex;
+  align-items: center;
+  padding: 10px;
+  background-color: var(--background-darker);
+  border-bottom: 1px solid var(--border);
+}
+
+.methodSelector {
+  width: auto;
+  min-width: 90px;
+  padding: 8px 12px;
+  border-radius: 4px 0 0 4px;
+  border: 1px solid var(--border);
+  background-color: var(--input-background);
+  color: var(--text);
+  font-weight: 500;
+  font-size: 0.9rem;
+  cursor: pointer;
+  border-right: none;
+}
+
+.endpointInput {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  background-color: var(--input-background);
+  color: var(--text);
+  font-family: monospace;
+  font-size: 0.9rem;
+}
+
+.sendButton {
+  padding: 8px 20px;
+  margin-left: 10px;
+  background-color: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.sendButton:hover:not(:disabled) {
+  background-color: var(--primary-dark);
+}
+
+.sendButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Tab styles */
+.tabContainer {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  background-color: var(--background-lighter);
+}
+
+.tab {
+  padding: 12px 20px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: 500;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
+}
+
+.tab:hover {
+  color: var(--text);
+  background-color: var(--hover-background);
+}
+
+.activeTab {
+  color: var(--primary);
+  border-bottom: 2px solid var(--primary);
+  background-color: var(--background);
+}
+
+.tabContent {
+  margin-top: 15px;
+}
+
+.tabContent h3 {
+  margin-top: 0;
+  margin-bottom: 15px;
+  font-size: 1.1rem;
+  color: var(--text);
+}
+
+.tabContent h4 {
+  margin-top: 20px;
+  margin-bottom: 10px;
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+}
+
+/* Key-value pairs for headers and parameters */
+.keyValueRow {
+  display: flex;
+  margin-bottom: 8px;
+  gap: 10px;
+  align-items: center;
+}
+
+.keyValueRow input {
+  flex: 1;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.9rem;
+  background-color: var(--input-background);
+  color: var(--text);
+}
+
+.removeButton {
+  background-color: rgba(244, 67, 54, 0.8);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  width: 30px;
+  height: 30px;
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+}
+
+.removeButton:hover {
+  background-color: rgba(244, 67, 54, 1);
+}
+
+.addButton {
+  background-color: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin-top: 10px;
   margin-bottom: 20px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.addButton:hover {
+  background-color: var(--primary-dark);
+}
+
+.jsonEditor {
+  margin-top: 15px;
+}
+
+.jsonEditor label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.jsonEditor textarea {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.9rem;
+  font-family: monospace;
+  resize: vertical;
+  background-color: var(--input-background);
+  color: var(--text);
+}
+
+/* Response Section */
+.responseSection {
+  margin-top: 20px;
+  padding: 15px;
+  border-top: 1px solid var(--border);
+}
+
+.responseSection h3 {
+  margin-top: 0;
+  margin-bottom: 15px;
+  color: var(--text);
+}
+
+.responseHeader {
+  display: flex;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.statusBadge {
+  padding: 5px 10px;
+  border-radius: 4px;
+  font-weight: 500;
+  margin-right: 15px;
+}
+
+.statusSuccess {
+  background-color: rgba(76, 175, 80, 0.1);
+  color: #4caf50;
+}
+
+.statusError {
+  background-color: rgba(244, 67, 54, 0.1);
+  color: #f44336;
+}
+
+.statusWarning {
+  background-color: rgba(255, 193, 7, 0.1);
+  color: #ffc107;
+}
+
+.responseMeta {
+  margin-right: auto;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.responseActions {
+  display: flex;
+  gap: 10px;
+}
+
+.secondaryButton {
+  padding: 6px 12px;
+  background-color: transparent;
+  color: var(--primary);
+  border: 1px solid var(--primary);
+  border-radius: 4px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.secondaryButton:hover {
+  background-color: var(--primary);
+  color: white;
+}
+
+.responseTabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 10px;
+}
+
+.responseTab {
+  padding: 8px 15px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  border-bottom: 2px solid transparent;
+}
+
+.responseTab:hover {
+  color: var(--text);
+}
+
+.responseTab.active {
+  color: var(--primary);
+  border-bottom: 2px solid var(--primary);
+}
+
+.responseBody {
+  background-color: var(--background-darker);
+  border-radius: 4px;
+  padding: 15px;
+  max-height: 300px;
+  overflow: auto;
+}
+
+.responseBody pre {
+  margin: 0;
+  font-family: monospace;
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+  color: var(--text);
+}
+
+/* Details section */
+.detailsSection {
+  margin: 20px 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 15px;
+}
+
+.detailRow {
+  display: flex;
+  margin-bottom: 10px;
+}
+
+.detailLabel {
+  width: 120px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.detailValue {
+  flex: 1;
+  color: var(--text);
+}
+
+.testCasesSection {
+  margin-top: 20px;
+  border-top: 1px solid var(--border);
+  padding-top: 15px;
+}
+
+.testCasesSection h3 {
+  margin-top: 0;
+  font-size: 1rem;
+  margin-bottom: 10px;
+}
+
+.testCasesList {
+  margin-bottom: 15px;
+}
+
+.testCaseCount {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
 }
 
 @media (max-width: 768px) {
   .formContainer {
     padding: 15px;
+  }
+
+  .apiHeader {
+    flex-direction: column;
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .methodSelector {
+    width: 100%;
+    border-radius: 4px;
+    border-right: 1px solid var(--border);
+  }
+
+  .endpointInput {
+    width: 100%;
+    border-radius: 4px;
+  }
+
+  .sendButton {
+    width: 100%;
+    margin-left: 0;
   }
 
   .formGroup input,
@@ -116,5 +729,33 @@
   .saveButton,
   .cancelButton {
     padding: 8px 16px;
+  }
+
+  .tabContainer {
+    flex-wrap: wrap;
+  }
+
+  .tab {
+    flex-grow: 1;
+    text-align: center;
+    padding: 8px 10px;
+  }
+
+  .keyValueRow {
+    flex-direction: column;
+  }
+
+  .keyValueRow input {
+    width: 100%;
+  }
+
+  .responseHeader {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .responseMeta {
+    margin-bottom: 10px;
   }
 }

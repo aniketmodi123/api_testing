@@ -87,7 +87,7 @@ export default function RequestPanel({ activeRequest }) {
     activeRequest?.method || selectedNode?.method || 'GET'
   );
   const [url, setUrl] = useState(
-    activeRequest?.url || selectedNode?.url || 'https://api.example.com'
+    activeRequest?.url || selectedNode?.url || selectedNode?.endpoint || ''
   );
   const [showApiForm, setShowApiForm] = useState(false);
   const [showTestCaseForm, setShowTestCaseForm] = useState(false);
@@ -98,11 +98,15 @@ export default function RequestPanel({ activeRequest }) {
     if (selectedNode) {
       setMethod(selectedNode.method || 'GET');
 
-      // Set a default URL if none exists
-      if (!selectedNode.url) {
-        setUrl('https://api.example.com');
-      } else {
+      // Set URL directly from node without modifications
+      if (selectedNode.url) {
         setUrl(selectedNode.url);
+      } else if (selectedNode.endpoint) {
+        // Use endpoint directly if URL is not available
+        setUrl(selectedNode.endpoint);
+      } else {
+        // Leave URL empty if no URL or endpoint is available
+        setUrl('');
       }
 
       // Load API details if this is a file node
@@ -116,15 +120,12 @@ export default function RequestPanel({ activeRequest }) {
             const apiData = apiResponse?.data || {};
 
             if (apiData) {
-              // Set URL based on endpoint as primary source
+              // Use the exact endpoint or URL from the API without modifying it
               if (apiData.endpoint) {
-                // If it's just an endpoint path, add a base URL
-                if (apiData.endpoint.startsWith('/')) {
-                  setUrl(`https://api.example.com${apiData.endpoint}`);
-                } else {
-                  setUrl(`https://api.example.com/${apiData.endpoint}`);
-                }
+                // Use the endpoint directly without adding any base URL
+                setUrl(apiData.endpoint);
               } else if (apiData.url) {
+                // Use the URL directly if available
                 setUrl(apiData.url);
               }
 

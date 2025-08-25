@@ -493,7 +493,6 @@ class ApiCreateRequest(BaseModel):
     method: str = Field(..., description="HTTP method (GET, POST, PUT, DELETE, PATCH)")
     endpoint: str = Field(..., description="API endpoint path")
     description: Optional[str] = Field(None, description="API description")
-    version: Optional[str] = Field("v1", max_length=50, description="API version")
     is_active: bool = Field(True, description="API active status")
     extra_meta: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
 
@@ -519,7 +518,6 @@ class ApiUpdateRequest(BaseModel):
     method: Optional[str] = Field(None, description="HTTP method")
     endpoint: Optional[str] = Field(None, description="API endpoint path")
     description: Optional[str] = Field(None, description="API description")
-    version: Optional[str] = Field(None, max_length=50, description="API version")
     is_active: Optional[bool] = Field(None, description="API active status")
     extra_meta: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
 

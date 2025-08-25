@@ -5,6 +5,53 @@ import { api } from '../api.js';
  */
 export const apiService = {
   /**
+   * Validate API structure and return any errors
+   * @param {Object} apiData - API data to validate
+   * @returns {Object} Object with isValid flag and errors array
+   */
+  validateApi(apiData) {
+    const errors = [];
+
+    // Check required fields
+    if (!apiData.name) errors.push('API name is required');
+    if (!apiData.method) errors.push('HTTP method is required');
+    if (!apiData.endpoint) errors.push('API endpoint is required');
+
+    // Validate method
+    const validMethods = [
+      'GET',
+      'POST',
+      'PUT',
+      'DELETE',
+      'PATCH',
+      'OPTIONS',
+      'HEAD',
+    ];
+    if (
+      apiData.method &&
+      !validMethods.includes(apiData.method.toUpperCase())
+    ) {
+      errors.push(
+        `Invalid HTTP method: ${apiData.method}. Valid methods are: ${validMethods.join(', ')}`
+      );
+    }
+
+    // Validate headers format if present
+    if (apiData.headers && typeof apiData.headers === 'object') {
+      Object.entries(apiData.headers).forEach(([key, value]) => {
+        if (typeof key !== 'string' || !key.trim()) {
+          errors.push('Header keys must be non-empty strings');
+        }
+      });
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors,
+    };
+  },
+
+  /**
    * Create a new API in a file
    * @param {number} fileId - File ID to create the API in
    * @param {Object} apiData - API data
@@ -55,10 +102,8 @@ export const apiService = {
         // Process the API data to ensure all fields are properly structured
         const apiData = response.data.data;
 
-        // Ensure URL field is properly set from endpoint
-        if (apiData.endpoint && !apiData.url) {
-          apiData.url = apiData.endpoint;
-        }
+        // Keep endpoint and url as separate fields without modification
+        // Both will be used as-is without adding any base URL
 
         // Normalize the method field (ensure uppercase)
         if (apiData.method) {
@@ -255,5 +300,309 @@ export const apiService = {
       console.error('Error running test:', error);
       throw error;
     }
+  },
+
+  /**
+   * Generate test cases automatically based on API structure
+   * @param {number} fileId - File ID containing the API
+   * @param {Object} options - Generation options
+   * @returns {Promise} Promise with generated test cases
+   */
+  async generateTestCases(fileId, options = {}) {
+    try {
+      console.log(
+        `Generating test cases for file ${fileId} with options:`,
+        options
+      );
+
+      // Fetch API details first
+      const apiResponse = await this.getApi(fileId);
+
+      if (!apiResponse || !apiResponse.data) {
+        throw new Error('Could not fetch API details for test case generation');
+      }
+
+      const apiData = apiResponse.data;
+      const testCases = [];
+
+      // Generate basic positive test case
+      const positiveCase = {
+        name: `${apiData.name || 'API'} - Success Case`,
+        description: `Automatically generated positive test case for ${apiData.method} ${apiData.endpoint}`,
+        request_body: apiData.request_body || {},
+        request_headers: { ...apiData.headers },
+        expected_status: options.expectedStatus || 200,
+        is_positive: true,
+        validation_rules: [
+          { type: 'status', value: options.expectedStatus || 200 },
+          { type: 'response_time', value: 2000 }, // 2 seconds max
+        ],
+      };
+
+      testCases.push(positiveCase);
+
+      // Generate negative test cases if requested
+      if (options.includeNegative) {
+        // Invalid auth test case
+        const authCase = {
+          name: `${apiData.name || 'API'} - Auth Failure`,
+          description: 'Test authentication failure scenario',
+          request_body: apiData.request_body || {},
+          request_headers: {
+            ...apiData.headers,
+            Authorization: 'Invalid-Token',
+          },
+          expected_status: 401,
+          is_positive: false,
+          validation_rules: [
+            { type: 'status', value: 401 },
+            { type: 'contains', field: 'message', value: 'auth' },
+          ],
+        };
+
+        // Invalid input test case (for POST/PUT methods)
+        if (['POST', 'PUT', 'PATCH'].includes(apiData.method?.toUpperCase())) {
+          const invalidInputCase = {
+            name: `${apiData.name || 'API'} - Invalid Input`,
+            description: 'Test invalid input handling',
+            request_body: {},
+            request_headers: { ...apiData.headers },
+            expected_status: 400,
+            is_positive: false,
+            validation_rules: [
+              { type: 'status', value: 400 },
+              { type: 'contains', field: 'message', value: 'invalid' },
+            ],
+          };
+
+          testCases.push(invalidInputCase);
+        }
+
+        testCases.push(authCase);
+      }
+
+      // Create all test cases in the backend
+      const createdCases = [];
+      for (const testCase of testCases) {
+        try {
+          const result = await this.createTestCase(fileId, testCase);
+          createdCases.push(result.data);
+        } catch (error) {
+          console.error('Error creating generated test case:', error);
+        }
+      }
+
+      return {
+        data: createdCases,
+        total: createdCases.length,
+        message: `Generated ${createdCases.length} test cases successfully`,
+      };
+    } catch (error) {
+      console.error(`Error generating test cases for file ${fileId}:`, error);
+      throw error;
+    }
+  },
+
+  /**
+   * Run batch tests for multiple APIs and generate report
+   * @param {Array} fileIds - Array of file IDs to test
+   * @param {Object} options - Batch options (optional)
+   * @returns {Promise} Promise with batch test results
+   */
+  async runBatchTests(fileIds, options = {}) {
+    try {
+      console.log(
+        `Running batch tests for files:`,
+        fileIds,
+        'with options:',
+        options
+      );
+
+      const batchResults = [];
+      const failedTests = [];
+      let totalTests = 0;
+      let passedTests = 0;
+
+      // Process each file in sequence
+      for (const fileId of fileIds) {
+        try {
+          // Get all test cases for this file
+          const testCasesResponse = await this.listTestCases(fileId);
+          const testCases = testCasesResponse.data || [];
+
+          if (testCases.length === 0) {
+            batchResults.push({
+              fileId,
+              status: 'skipped',
+              message: 'No test cases found for this file',
+              results: [],
+            });
+            continue;
+          }
+
+          // Extract case IDs
+          const caseIds = testCases.map(testCase => testCase.id);
+          totalTests += caseIds.length;
+
+          // Run tests for this file
+          const testResponse = await this.runTest(fileId, caseIds);
+          const fileResults = testResponse.data || [];
+
+          // Count passed tests
+          const filePassed = fileResults.filter(
+            result => result.status === 'passed'
+          ).length;
+          passedTests += filePassed;
+
+          // Add any failures to the failedTests array
+          const failures = fileResults
+            .filter(result => result.status !== 'passed')
+            .map(result => ({
+              fileId,
+              caseId: result.case_id,
+              name: result.name || `Test case ${result.case_id}`,
+              error: result.error || 'Test failed',
+            }));
+
+          failedTests.push(...failures);
+
+          // Add results for this file
+          batchResults.push({
+            fileId,
+            status: filePassed === fileResults.length ? 'passed' : 'failed',
+            message: `${filePassed}/${fileResults.length} tests passed`,
+            results: fileResults,
+          });
+        } catch (error) {
+          console.error(`Error running tests for file ${fileId}:`, error);
+          batchResults.push({
+            fileId,
+            status: 'error',
+            message:
+              error.message || 'An error occurred running tests for this file',
+            results: [],
+          });
+        }
+      }
+
+      // Build the final report
+      return {
+        data: {
+          batchResults,
+          summary: {
+            totalFiles: fileIds.length,
+            totalTests,
+            passedTests,
+            failedTests: totalTests - passedTests,
+            successRate:
+              totalTests > 0 ? Math.round((passedTests / totalTests) * 100) : 0,
+            failures: failedTests,
+          },
+        },
+        status: 200,
+        message: `Batch test run complete. ${passedTests}/${totalTests} tests passed.`,
+      };
+    } catch (error) {
+      console.error('Error running batch tests:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Generate a detailed test report
+   * @param {Object} batchResults - Results from runBatchTests
+   * @param {Object} options - Report options
+   * @returns {Object} Formatted report data
+   */
+  generateTestReport(batchResults, options = {}) {
+    try {
+      console.log('Generating test report with options:', options);
+
+      if (!batchResults || !batchResults.data || !batchResults.data.summary) {
+        throw new Error('Invalid batch results data');
+      }
+
+      const { summary, batchResults: fileResults } = batchResults.data;
+      const timestamp = new Date().toISOString();
+
+      // Build detailed report with categorized results
+      const report = {
+        timestamp,
+        summary: {
+          ...summary,
+          duration: options.duration || 0,
+          environment: options.environment || 'development',
+        },
+        files: fileResults.map(file => ({
+          fileId: file.fileId,
+          status: file.status,
+          testsPassed: file.results.filter(r => r.status === 'passed').length,
+          testsTotal: file.results.length,
+          results: file.results.map(result => ({
+            id: result.case_id,
+            name: result.name || `Test case ${result.case_id}`,
+            status: result.status,
+            duration: result.duration || 0,
+            statusCode: result.status_code,
+            error: result.error || null,
+          })),
+        })),
+      };
+
+      // Add charts data for visualization if requested
+      if (options.includeChartData) {
+        // Status distribution data
+        report.chartData = {
+          statusDistribution: {
+            labels: ['Passed', 'Failed', 'Error'],
+            data: [
+              summary.passedTests,
+              summary.failedTests - (summary.errorTests || 0),
+              summary.errorTests || 0,
+            ],
+          },
+          responseTimeDistribution:
+            this._calculateResponseTimeBuckets(fileResults),
+        };
+      }
+
+      return report;
+    } catch (error) {
+      console.error('Error generating test report:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Helper method to calculate response time distribution
+   * @private
+   */
+  _calculateResponseTimeBuckets(fileResults) {
+    // Define time buckets in ms
+    const buckets = {
+      '0-100': 0,
+      '101-500': 0,
+      '501-1000': 0,
+      '1001-2000': 0,
+      '2001+': 0,
+    };
+
+    // Process all results and count in buckets
+    fileResults.forEach(file => {
+      file.results.forEach(result => {
+        const time = result.duration || 0;
+
+        if (time <= 100) buckets['0-100']++;
+        else if (time <= 500) buckets['101-500']++;
+        else if (time <= 1000) buckets['501-1000']++;
+        else if (time <= 2000) buckets['1001-2000']++;
+        else buckets['2001+']++;
+      });
+    });
+
+    return {
+      labels: Object.keys(buckets),
+      data: Object.values(buckets),
+    };
   },
 };

@@ -71,7 +71,6 @@ async def update_file_api(
             "method": api.method,
             "endpoint": api.endpoint,
             "description": api.description,
-            "version": api.version,
             "is_active": api.is_active,
             "extra_meta": api.extra_meta,
             "created_at": api.created_at,

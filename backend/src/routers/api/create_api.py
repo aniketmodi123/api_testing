@@ -56,7 +56,6 @@ async def create_api(
             method=request.method,
             endpoint=request.endpoint,
             description=request.description,
-            version=request.version,
             is_active=request.is_active,
             extra_meta=request.extra_meta or {}
         )
@@ -72,7 +71,6 @@ async def create_api(
             "method": new_api.method,
             "endpoint": new_api.endpoint,
             "description": new_api.description,
-            "version": new_api.version,
             "is_active": new_api.is_active,
             "extra_meta": new_api.extra_meta,
             "created_at": new_api.created_at,

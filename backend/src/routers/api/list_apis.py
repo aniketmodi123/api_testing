@@ -85,7 +85,6 @@ async def get_file_api(
             "endpoint": api.endpoint,
             "headers":final_headers,
             "description": api.description,
-            "version": api.version,
             "is_active": api.is_active,
             "extra_meta": api.extra_meta,
             "created_at": api.created_at,

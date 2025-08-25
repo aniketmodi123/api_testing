@@ -115,7 +115,6 @@ class Api(Base):
     method: Mapped[str] = mapped_column(String(10), nullable=False)      # GET/POST/PUT/DELETE
     endpoint: Mapped[str] = mapped_column(Text, nullable=False)          # /api/v1/users/{id}
     description: Mapped[str] = mapped_column(Text)                       # Optional doc/notes
-    version: Mapped[str] = mapped_column(String(50), nullable=True)      # e.g., v1, v2
     is_active: Mapped[bool] = mapped_column(default=True)                # To mark active/inactive
 
     # ✅ Extra data that may not be searchable often
