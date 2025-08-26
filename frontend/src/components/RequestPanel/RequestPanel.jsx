@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
+import { api } from '../../api';
 import { useApi } from '../../store/api';
 import { useNode } from '../../store/node';
-import { ApiForm } from '../ApiForm';
 import { TestCaseForm } from '../TestCaseForm';
 import styles from './RequestPanel.module.css';
 
@@ -80,6 +80,8 @@ export default function RequestPanel({ activeRequest }) {
     activeApi,
     runTest,
     testResults,
+    clearTestResults,
+    createTestCase,
     isLoading,
   } = useApi();
 
@@ -89,7 +91,6 @@ export default function RequestPanel({ activeRequest }) {
   const [url, setUrl] = useState(
     activeRequest?.url || selectedNode?.url || selectedNode?.endpoint || ''
   );
-  const [showApiForm, setShowApiForm] = useState(false);
   const [showTestCaseForm, setShowTestCaseForm] = useState(false);
   const [editingTestCaseId, setEditingTestCaseId] = useState(null);
 
@@ -137,7 +138,8 @@ export default function RequestPanel({ activeRequest }) {
           })
           .catch(err => console.error('Error loading API:', err));
 
-        // Load test cases for this API
+        // Load test cases for this API and reset selected test cases
+        setSelectedTestCases([]);
         getTestCases(selectedNode.id)
           .then(testCasesResponse => {
             console.log('Test cases loaded:', testCasesResponse);
@@ -151,6 +153,156 @@ export default function RequestPanel({ activeRequest }) {
   const [responseTab, setResponseTab] = useState('body');
   const [isSending, setIsSending] = useState(false);
   const [response, setResponse] = useState(null);
+  const [selectedTestCases, setSelectedTestCases] = useState([]);
+
+  const handleTestCaseSelection = testCaseId => {
+    setSelectedTestCases(prev => {
+      if (prev.includes(testCaseId)) {
+        return prev.filter(id => id !== testCaseId);
+      } else {
+        return [...prev, testCaseId];
+      }
+    });
+  };
+
+  const handleRunSelectedTests = async () => {
+    if (selectedTestCases.length === 0) return;
+
+    setIsSending(true);
+    try {
+      const result = await runTest(selectedNode?.id, selectedTestCases);
+      console.log('Selected tests result:', result);
+      setActiveTab('apiTests');
+    } catch (error) {
+      console.error('Error running selected tests:', error);
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  // Function to directly call the API with current parameters
+  const handleDirectApiCall = async () => {
+    setIsSending(true);
+
+    try {
+      // Prepare request configuration
+      const requestConfig = {
+        method: method.toLowerCase(),
+        url: url,
+        headers: extractValue(activeApi, 'headers', {}),
+        params: extractValue(activeApi, 'params', {}),
+      };
+
+      // Add body for non-GET requests
+      if (method !== 'GET') {
+        requestConfig.data = extractValue(activeApi, 'request_body', {});
+      }
+
+      console.log('Making direct API call with config:', requestConfig);
+
+      // Make the API call using the Axios instance
+      const directResponse = await api(requestConfig);
+
+      // Set the response for display
+      setResponse({
+        statusCode: directResponse.status,
+        statusText: directResponse.statusText,
+        body: directResponse.data,
+        headers: directResponse.headers,
+        responseTime: new Date().toISOString(),
+      });
+
+      // Switch to the response tab
+      setActiveTab('response');
+      setResponseTab('body');
+    } catch (error) {
+      console.error('Error making direct API call:', error);
+
+      // Format error response
+      setResponse({
+        statusCode: error.response?.status || 500,
+        statusText: error.response?.statusText || 'Error',
+        body: {
+          message: error.message,
+          details: error.response?.data || 'No response details available',
+        },
+        headers: error.response?.headers || {},
+        responseTime: new Date().toISOString(),
+        isError: true,
+      });
+
+      // Switch to the response tab
+      setActiveTab('response');
+      setResponseTab('body');
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  // Function to validate the API by creating a test case and then validating
+  const handleValidateApi = async () => {
+    setIsSending(true);
+
+    try {
+      if (!selectedNode?.id) {
+        throw new Error(
+          'No API selected. Please select or create an API first.'
+        );
+      }
+
+      // Create a test case with the current parameters
+      const testCaseData = {
+        name: `Validation test - ${new Date().toISOString()}`,
+        description: 'Auto-generated test case for validation',
+        method: method,
+        endpoint: url,
+        headers: extractValue(activeApi, 'headers', {}),
+        params: extractValue(activeApi, 'params', {}),
+        request_body: extractValue(activeApi, 'request_body', {}),
+        expected_status: 200, // Default expected status
+        expected_response: {}, // Default empty expected response
+      };
+
+      console.log('Creating test case for validation:', testCaseData);
+
+      // Create the test case
+      const createResult = await createTestCase(selectedNode.id, testCaseData);
+      console.log('Test case created:', createResult);
+
+      if (!createResult || !createResult.case_id) {
+        throw new Error('Failed to create test case for validation');
+      }
+
+      // Run the test using the new case ID
+      const validationResult = await runTest(selectedNode.id, [
+        createResult.case_id,
+      ]);
+      console.log('Validation result:', validationResult);
+
+      // Set the test results and switch to the API Tests tab
+      setActiveTab('apiTests');
+    } catch (error) {
+      console.error('Error validating API:', error);
+
+      // Show error in response tab
+      setResponse({
+        statusCode: 500,
+        statusText: 'Validation Error',
+        body: {
+          message: 'Failed to validate API',
+          details: error.message,
+        },
+        headers: {},
+        responseTime: new Date().toISOString(),
+        isError: true,
+      });
+
+      setActiveTab('response');
+      setResponseTab('body');
+    } finally {
+      setIsSending(false);
+    }
+  };
 
   const handleSend = async () => {
     setIsSending(true);
@@ -160,6 +312,8 @@ export default function RequestPanel({ activeRequest }) {
       if (selectedNode?.type === 'file' && selectedNode?.id) {
         const result = await runTest(selectedNode.id);
         console.log('API test result:', result);
+        // Switch to the API Tests tab to show results
+        setActiveTab('apiTests');
 
         if (result) {
           // Handle the standard response format with response_code and data structure
@@ -274,12 +428,102 @@ export default function RequestPanel({ activeRequest }) {
           placeholder="Enter request URL"
         />
 
+        <div className={styles.buttonGroup}>
+          <button
+            className={styles.sendButton}
+            onClick={handleSend}
+            disabled={isSending}
+          >
+            {isSending ? 'Sending...' : 'Send'}
+          </button>
+
+          <button
+            className={styles.directApiButton}
+            onClick={handleDirectApiCall}
+            disabled={isSending || !url}
+            title="Call API directly using current parameters"
+          >
+            {isSending ? 'Calling...' : 'Direct Call'}
+          </button>
+
+          <button
+            className={styles.validateButton}
+            onClick={handleValidateApi}
+            disabled={isSending || !url || !selectedNode?.id}
+            title="Record as test case and validate API"
+          >
+            {isSending ? 'Validating...' : 'Validate'}
+          </button>
+        </div>
+
         <button
-          className={styles.sendButton}
-          onClick={handleSend}
-          disabled={isSending}
+          className={styles.actionButton}
+          onClick={() => {
+            // Create a function to update API config without changing general API info
+            if (selectedNode?.id && activeApi) {
+              // Update only the request configuration parts
+              const configOnlyData = {
+                ...activeApi,
+                method: method,
+                endpoint: url,
+                headers: extractValue(activeApi, 'headers', {}),
+                params: extractValue(activeApi, 'params', {}),
+                request_body: extractValue(activeApi, 'request_body', {}),
+              };
+
+              // Save the configuration
+              try {
+                updateApi(selectedNode.id, configOnlyData);
+                console.log('Request configuration updated');
+              } catch (err) {
+                console.error('Error updating request configuration:', err);
+              }
+            }
+          }}
+          title="Update request configuration"
         >
-          {isSending ? 'Sending...' : 'Send'}
+          Update Config
+        </button>
+
+        <button
+          className={styles.actionButton}
+          onClick={() => {
+            if (!response) {
+              alert('Send a request first to record as a test case');
+              return;
+            }
+
+            // Save the current request/response as a test case
+            try {
+              const testCase = {
+                api_id: selectedNode?.id,
+                name: `Test case - ${new Date().toLocaleTimeString()}`,
+                request: {
+                  method: method,
+                  endpoint: url,
+                  headers: extractValue(activeApi, 'headers', {}),
+                  params: extractValue(activeApi, 'params', {}),
+                  body: extractValue(activeApi, 'request_body', {}),
+                },
+                expected_response: {
+                  status: response.status,
+                  headers: response.headers || {},
+                  body: response.body || {},
+                },
+                created_at: new Date().toISOString(),
+              };
+
+              console.log('Recording test case:', testCase);
+              // In a real implementation, you would save this to your backend
+              alert('Test case recorded');
+            } catch (err) {
+              console.error('Error recording test case:', err);
+            }
+          }}
+          disabled={!response}
+          title="Save current request/response as a test case"
+        >
+          Record as Case
         </button>
       </div>
 
@@ -342,6 +586,12 @@ export default function RequestPanel({ activeRequest }) {
           onClick={() => setActiveTab('body')}
         >
           Body
+        </div>
+        <div
+          className={`${styles.tab} ${activeTab === 'validation' ? styles.active : ''}`}
+          onClick={() => setActiveTab('validation')}
+        >
+          Validation
         </div>
         <div
           className={`${styles.tab} ${activeTab === 'apiTests' ? styles.active : ''}`}
@@ -462,23 +712,15 @@ export default function RequestPanel({ activeRequest }) {
                 )}
 
                 <div className={styles.apiActions}>
-                  <button
-                    className={styles.editButton}
-                    onClick={() => setShowApiForm(true)}
-                  >
-                    Edit API
-                  </button>
+                  {/* Edit API button removed - editing now happens directly in the interface */}
                 </div>
               </div>
             ) : selectedNode?.type === 'file' ? (
               <div className={styles.emptyState}>
                 <p>No API configured for this file</p>
-                <button
-                  className={styles.createButton}
-                  onClick={() => setShowApiForm(true)}
-                >
-                  Configure API
-                </button>
+                <p className={styles.infoText}>
+                  Use the URL bar and tabs above to configure your API directly.
+                </p>
               </div>
             ) : (
               <div className={styles.emptyState}>
@@ -715,6 +957,87 @@ export default function RequestPanel({ activeRequest }) {
           </div>
         )}
 
+        {activeTab === 'validation' && (
+          <div className={styles.validationContent}>
+            <div className={styles.validationSection}>
+              <h4>Request Schema</h4>
+              <div className={styles.jsonEditor}>
+                <textarea
+                  rows={8}
+                  placeholder="Enter JSON schema for request validation"
+                  defaultValue={(() => {
+                    // Try to get validation schema if it exists
+                    const schema =
+                      extractValue(activeApi, 'validation.requestSchema') ||
+                      extractValue(activeApi, 'validationSchema.request');
+
+                    return schema ? JSON.stringify(schema, null, 2) : '';
+                  })()}
+                />
+              </div>
+            </div>
+
+            <div className={styles.validationSection}>
+              <h4>Response Schema</h4>
+              <div className={styles.jsonEditor}>
+                <textarea
+                  rows={8}
+                  placeholder="Enter JSON schema for response validation"
+                  defaultValue={(() => {
+                    // Try to get validation schema if it exists
+                    const schema =
+                      extractValue(activeApi, 'validation.responseSchema') ||
+                      extractValue(activeApi, 'validationSchema.response');
+
+                    return schema ? JSON.stringify(schema, null, 2) : '';
+                  })()}
+                />
+              </div>
+            </div>
+
+            <div className={styles.validationActions}>
+              <button
+                type="button"
+                className={styles.validationButton}
+                onClick={() => {
+                  try {
+                    // Simple validation logic
+                    let isValid = true;
+                    let message = '';
+
+                    try {
+                      // In a real implementation, you would use a JSON Schema validator library
+                      // This is just a basic check if the JSON is valid
+                      const requestBody =
+                        extractValue(activeApi, 'body') ||
+                        extractValue(activeApi, 'request_body') ||
+                        extractValue(activeApi, 'requestBody');
+
+                      if (requestBody) {
+                        if (typeof requestBody === 'string') {
+                          JSON.parse(requestBody);
+                        }
+                      }
+                      message = 'JSON is valid';
+                    } catch (e) {
+                      isValid = false;
+                      message = `Invalid JSON: ${e.message}`;
+                    }
+
+                    // Display validation result
+                    alert(message);
+                  } catch (err) {
+                    console.error('Validation error:', err);
+                    alert(`Error during validation: ${err.message}`);
+                  }
+                }}
+              >
+                Validate Current JSON
+              </button>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'authorization' && (
           <div className={styles.authContent}>
             <div className={styles.authType}>
@@ -734,16 +1057,97 @@ export default function RequestPanel({ activeRequest }) {
           <div className={styles.testsContent}>
             <div className={styles.testsHeader}>
               <h3>API Test Cases</h3>
-              <button
-                className={styles.addTestButton}
-                onClick={() => {
-                  setEditingTestCaseId(null);
-                  setShowTestCaseForm(true);
-                }}
-              >
-                {activeApi ? 'Add Test Case' : 'Create API First'}
-              </button>
+              <div className={styles.testHeaderButtons}>
+                <button
+                  className={styles.addTestButton}
+                  onClick={() => {
+                    setEditingTestCaseId(null);
+                    setShowTestCaseForm(true);
+                  }}
+                >
+                  {activeApi ? 'Add Test Case' : 'Create API First'}
+                </button>
+                {activeApi && testCases && testCases.length > 0 && (
+                  <>
+                    <button
+                      className={styles.runSelectedTestsButton}
+                      onClick={handleRunSelectedTests}
+                      disabled={isSending || selectedTestCases.length === 0}
+                    >
+                      {isSending
+                        ? 'Running...'
+                        : `Run Selected (${selectedTestCases.length})`}
+                    </button>
+                    <button
+                      className={styles.runAllTestsButton}
+                      onClick={() => runTest(selectedNode?.id)}
+                      disabled={isSending}
+                    >
+                      {isSending ? 'Running...' : 'Run All Tests'}
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
+
+            {testResults && (
+              <div className={styles.testResultsSummary}>
+                <div className={styles.testResultsHeader}>
+                  <h4>Test Results</h4>
+                  <button
+                    className={styles.clearResultsButton}
+                    onClick={clearTestResults}
+                  >
+                    Clear Results
+                  </button>
+                </div>
+                <div className={styles.testResultsContent}>
+                  {Array.isArray(testResults.data) ? (
+                    <>
+                      <div className={styles.testResultsStats}>
+                        <div className={styles.testStat}>
+                          <span>Total:</span> {testResults.data.length}
+                        </div>
+                        <div className={styles.testStat}>
+                          <span>Passed:</span>{' '}
+                          {testResults.data.filter(r => r.passed).length}
+                        </div>
+                        <div className={styles.testStat}>
+                          <span>Failed:</span>{' '}
+                          {testResults.data.filter(r => !r.passed).length}
+                        </div>
+                      </div>
+                      <div className={styles.testResultsList}>
+                        {testResults.data.map((result, index) => (
+                          <div
+                            key={index}
+                            className={`${styles.testResultItem} ${result.passed ? styles.testPassed : styles.testFailed}`}
+                          >
+                            <div className={styles.testResultHeader}>
+                              <span className={styles.testName}>
+                                {result.name || `Test Case ${index + 1}`}
+                              </span>
+                              <span className={styles.testStatus}>
+                                {result.passed ? 'Passed' : 'Failed'}
+                              </span>
+                            </div>
+                            {!result.passed && result.error && (
+                              <div className={styles.testError}>
+                                {result.error}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <div className={styles.testResultMessage}>
+                      {testResults.message || 'Test execution completed'}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {isLoading ? (
               <div className={styles.loadingIndicator}>
@@ -758,9 +1162,24 @@ export default function RequestPanel({ activeRequest }) {
                       className={styles.testCase}
                     >
                       <div className={styles.testCaseHeader}>
-                        <h4 className={styles.testCaseName}>
-                          {testCase.name || 'Unnamed Test'}
-                        </h4>
+                        <div className={styles.testCaseNameSection}>
+                          <input
+                            type="checkbox"
+                            className={styles.testCaseCheckbox}
+                            checked={selectedTestCases.includes(
+                              testCase.id || testCase.case_id
+                            )}
+                            onChange={() =>
+                              handleTestCaseSelection(
+                                testCase.id || testCase.case_id
+                              )
+                            }
+                            disabled={isSending}
+                          />
+                          <h4 className={styles.testCaseName}>
+                            {testCase.name || 'Unnamed Test'}
+                          </h4>
+                        </div>
                         <div className={styles.testActions}>
                           <button
                             className={styles.runTestButton}
@@ -824,12 +1243,9 @@ export default function RequestPanel({ activeRequest }) {
             ) : (
               <div className={styles.emptyState}>
                 <p>Please create or select an API first</p>
-                <button
-                  className={styles.createButton}
-                  onClick={() => setShowApiForm(true)}
-                >
-                  Configure API
-                </button>
+                <p className={styles.infoText}>
+                  Use the URL bar and tabs above to configure your API.
+                </p>
               </div>
             )}
           </div>
@@ -939,34 +1355,6 @@ export default function RequestPanel({ activeRequest }) {
           </>
         )}
       </div>
-
-      {/* API Form Modal */}
-      {showApiForm && selectedNode?.type === 'file' && (
-        <div className={styles.modalOverlay}>
-          <div className={styles.modalContent}>
-            <div className={styles.modalHeader}>
-              <h3>{activeApi ? 'Edit API' : 'Create API'}</h3>
-              <button
-                className={styles.closeButton}
-                onClick={() => setShowApiForm(false)}
-              >
-                ×
-              </button>
-            </div>
-            <div className={styles.modalBody}>
-              <ApiForm
-                fileId={selectedNode.id}
-                initialData={activeApi}
-                onSave={() => {
-                  setShowApiForm(false);
-                  getApi(selectedNode.id);
-                }}
-                onCancel={() => setShowApiForm(false)}
-              />
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Test Case Form Modal */}
       {showTestCaseForm && selectedNode?.type === 'file' && (

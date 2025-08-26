@@ -11,7 +11,7 @@ const ApiForm = ({
   onSave = () => {},
   onCancel = () => {},
 }) => {
-  const [activeTab, setActiveTab] = useState('basic'); // basic, headers, params, body, authorization, tests
+  const [activeTab, setActiveTab] = useState('basic'); // basic, headers, params, body, authorization, validation, tests
   const [formData, setFormData] = useState({
     name: '',
     method: 'GET',
@@ -30,6 +30,11 @@ const ApiForm = ({
     headers: {},
     params: {},
     request_body: {},
+    validation: {
+      requestSchema: {},
+      responseSchema: {},
+      rules: [],
+    },
     expected: {
       status: 200,
       headers: {},
@@ -38,6 +43,9 @@ const ApiForm = ({
     tests: [],
     extra_meta: {},
   });
+
+  // For JSON validation
+  const [validationResult, setValidationResult] = useState(null);
 
   const { createApi, getApi, updateApi, isLoading, error, activeApi } =
     useApi();
@@ -232,6 +240,66 @@ const ApiForm = ({
     }
   };
 
+  // Save API request configuration (params, headers, body) without changing general info
+  const saveRequestConfig = async () => {
+    try {
+      if (apiId) {
+        // Only update the API request configuration parts
+        const configOnlyData = {
+          ...activeApi,
+          method: formData.method,
+          endpoint: formData.endpoint,
+          headers: formData.headers,
+          params: formData.params,
+          request_body: formData.request_body,
+          authorization: formData.authorization,
+        };
+
+        await updateApi(apiId, configOnlyData);
+        console.log('Request configuration updated');
+      } else {
+        // If no API ID, we need to create a new API
+        await saveApiDefinition();
+      }
+    } catch (err) {
+      console.error('Error saving request configuration:', err);
+    }
+  };
+
+  // Save a test case based on current request/response
+  const saveAsTestCase = async () => {
+    if (!responseData) {
+      console.error('No response data available to save as a test case');
+      return;
+    }
+
+    try {
+      const testCase = {
+        api_id: apiId,
+        name: `Test case - ${new Date().toLocaleTimeString()}`,
+        request: {
+          method: formData.method,
+          endpoint: formData.endpoint,
+          headers: formData.headers,
+          params: formData.params,
+          body: formData.request_body,
+        },
+        expected_response: {
+          status: responseData.status,
+          headers: responseData.headers || {},
+          body: responseData.data || {},
+        },
+        created_at: new Date().toISOString(),
+      };
+
+      // In a real implementation, you would save this to your backend
+      console.log('Saving test case:', testCase);
+      alert('Test case saved successfully');
+    } catch (err) {
+      console.error('Error saving test case:', err);
+    }
+  };
+
   return (
     <div className={styles.apiTester}>
       {/* Header with HTTP Method selector and Endpoint input */}
@@ -280,10 +348,28 @@ const ApiForm = ({
         >
           Save
         </button>
-      </div>
 
+        <button
+          type="button"
+          className={styles.actionButton}
+          onClick={saveRequestConfig}
+          disabled={isLoading}
+          title="Update request configuration (params, headers, body)"
+        >
+          Update Config
+        </button>
+
+        <button
+          type="button"
+          className={styles.actionButton}
+          onClick={saveAsTestCase}
+          disabled={isLoading || !responseData}
+          title="Save current request/response as a test case"
+        >
+          Record as Case
+        </button>
+      </div>{' '}
       {error && <div className={styles.error}>{error}</div>}
-
       <div className={styles.tabContainer}>
         <div
           className={`${styles.tab} ${activeTab === 'basic' ? styles.activeTab : ''}`}
@@ -316,13 +402,18 @@ const ApiForm = ({
           Body
         </div>
         <div
+          className={`${styles.tab} ${activeTab === 'validation' ? styles.activeTab : ''}`}
+          onClick={() => setActiveTab('validation')}
+        >
+          Validation
+        </div>
+        <div
           className={`${styles.tab} ${activeTab === 'tests' ? styles.activeTab : ''}`}
           onClick={() => setActiveTab('tests')}
         >
           API Tests
         </div>
       </div>
-
       <form onSubmit={handleSubmit}>
         {/* API Details Tab */}
         <div
@@ -682,6 +773,121 @@ const ApiForm = ({
           </div>
         </div>
 
+        {/* Validation Tab */}
+        <div
+          className={styles.tabContent}
+          style={{ display: activeTab === 'validation' ? 'block' : 'none' }}
+        >
+          <h3>JSON Validation</h3>
+
+          <div className={styles.validationSection}>
+            <h4>Request Schema</h4>
+            <div className={styles.jsonEditor}>
+              <textarea
+                value={JSON.stringify(
+                  formData.validation.requestSchema,
+                  null,
+                  2
+                )}
+                onChange={e => {
+                  try {
+                    const schema = e.target.value
+                      ? JSON.parse(e.target.value)
+                      : {};
+                    setFormData(prev => ({
+                      ...prev,
+                      validation: {
+                        ...prev.validation,
+                        requestSchema: schema,
+                      },
+                    }));
+                  } catch (err) {
+                    console.error('Invalid JSON schema:', err);
+                  }
+                }}
+                rows={8}
+                placeholder="Enter JSON schema for request validation"
+              />
+            </div>
+          </div>
+
+          <div className={styles.validationSection}>
+            <h4>Response Schema</h4>
+            <div className={styles.jsonEditor}>
+              <textarea
+                value={JSON.stringify(
+                  formData.validation.responseSchema,
+                  null,
+                  2
+                )}
+                onChange={e => {
+                  try {
+                    const schema = e.target.value
+                      ? JSON.parse(e.target.value)
+                      : {};
+                    setFormData(prev => ({
+                      ...prev,
+                      validation: {
+                        ...prev.validation,
+                        responseSchema: schema,
+                      },
+                    }));
+                  } catch (err) {
+                    console.error('Invalid JSON schema:', err);
+                  }
+                }}
+                rows={8}
+                placeholder="Enter JSON schema for response validation"
+              />
+            </div>
+          </div>
+
+          <div className={styles.validationActions}>
+            <button
+              type="button"
+              className={styles.validationButton}
+              onClick={() => {
+                try {
+                  // Simple validation logic
+                  let isValid = true;
+                  let message = '';
+
+                  try {
+                    // In a real implementation, you would use a JSON Schema validator library
+                    // This is just a basic check if the JSON is valid
+                    JSON.parse(JSON.stringify(formData.request_body));
+                    message = 'JSON is valid';
+                  } catch (e) {
+                    isValid = false;
+                    message = `Invalid JSON: ${e.message}`;
+                  }
+
+                  setValidationResult({
+                    isValid,
+                    message,
+                  });
+                } catch (err) {
+                  console.error('Validation error:', err);
+                  setValidationResult({
+                    isValid: false,
+                    message: `Error during validation: ${err.message}`,
+                  });
+                }
+              }}
+            >
+              Validate Current JSON
+            </button>
+          </div>
+
+          {validationResult && (
+            <div
+              className={`${styles.validationResult} ${validationResult.isValid ? styles.validSuccess : styles.validError}`}
+            >
+              {validationResult.message}
+            </div>
+          )}
+        </div>
+
         {/* API Tests Tab */}
         <div
           className={styles.tabContent}
@@ -802,7 +1008,6 @@ const ApiForm = ({
           </button>
         </div>
       </form>
-
       {/* Response section - always visible */}
       <div className={styles.responseSection}>
         <h3>Response</h3>

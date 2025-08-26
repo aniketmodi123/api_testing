@@ -24,3 +24,11 @@
 9. Analytics & Reporting
 
 Would you like me to start implementing **Phase 1** APIs (Headers, APIs, and Test Cases management)? These would give you a fully functional API management system that users can actually use to organize and test their APIs.
+
+
+
+i want direct call functionallty also using ui
+i have three condition
+1) when i click on send directly api call using ui asiox or fetch using  body etc data
+2) when i click on validate the api first record the api as case then use run api to validate api
+

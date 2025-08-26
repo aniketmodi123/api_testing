@@ -1,5 +1,4 @@
-﻿from urllib.parse import urljoin
-
+﻿
 # build URL (avoids double slashes)
 import asyncio
 import httpx
@@ -94,7 +93,6 @@ def _load_headers_hierarchy(start_dir: Path, stop_at: Optional[Path] = None) -> 
 # ---------- API runner ----------
 async def _run_case(
     client: httpx.AsyncClient,
-    base_url: str,
     headers: Dict[str, str],
     case: Dict[str, Any],
     ts: int,
@@ -118,7 +116,7 @@ async def _run_case(
 
             # Merge meta defaults into case
             method = (case.get("method") or "GET").upper()
-            url = f"{base_url}{case.get('endpoint', '')}"
+            url = case.get('endpoint', '')
 
             # Merge headers from global → service → case, then apply ${ts} into headers as well
             headers = replace_ts(headers)
@@ -217,7 +215,6 @@ from typing import Dict, Any, List
 
 async def run_from_list_api(
     data: dict,
-    base_url: str,
     concurrency: int = 5,
 ) -> Dict[str, Any]:
     try:
@@ -249,7 +246,6 @@ async def run_from_list_api(
             for case in cases:
                 res = await _run_case(
                     client=client,
-                    base_url=base_url,                 # <-- where real endpoint is
                     headers=api_hdrs,                 # merged headers from list_api
                     case=case,
                     ts=ts,

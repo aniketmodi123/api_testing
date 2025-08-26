@@ -759,3 +759,79 @@
     margin-bottom: 10px;
   }
 }
+
+/* New button styles for API form */
+.actionButton {
+  padding: 8px 12px;
+  background-color: #555;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  margin-left: 5px;
+}
+
+.actionButton:hover:not(:disabled) {
+  background-color: #666;
+}
+
+.actionButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Validation styles */
+.validationSection {
+  margin-bottom: 20px;
+}
+
+.validationSection h4 {
+  margin-bottom: 8px;
+  color: #aaa;
+}
+
+.validationActions {
+  margin: 20px 0;
+}
+
+.validationButton {
+  padding: 8px 16px;
+  background-color: #2a6496;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.validationButton:hover {
+  background-color: #1e5080;
+}
+
+.validationResult {
+  padding: 12px;
+  border-radius: 4px;
+  margin-top: 16px;
+  font-family: monospace;
+}
+
+.validSuccess {
+  background-color: rgba(76, 175, 80, 0.2);
+  color: #4caf50;
+  border: 1px solid rgba(76, 175, 80, 0.4);
+}
+
+.validError {
+  background-color: rgba(244, 67, 54, 0.2);
+  color: #f44336;
+  border: 1px solid rgba(244, 67, 54, 0.4);
+}
+
+/* Additional spacing for API Edit UI */
+.apiHeader {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px;
+}

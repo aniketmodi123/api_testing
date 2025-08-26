@@ -120,10 +120,16 @@
   flex-grow: 1;
   padding: 8px 12px;
   border: 1px solid var(--border);
+  border-radius: 4px;
   background-color: var(--input-background);
   color: var(--text);
   font-size: 14px;
   outline: none;
+}
+
+.buttonGroup {
+  display: flex;
+  gap: 5px;
 }
 
 .sendButton {
@@ -132,7 +138,7 @@
   background-color: var(--primary);
   color: white;
   border: none;
-  border-radius: 0 4px 4px 0;
+  border-radius: 4px;
   cursor: pointer;
   font-size: 14px;
 }
@@ -143,6 +149,42 @@
 
 .sendButton:disabled {
   background-color: var(--disabled);
+  cursor: not-allowed;
+}
+
+.directApiButton,
+.validateButton {
+  min-width: 80px;
+  padding: 8px 12px;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.directApiButton {
+  background-color: var(--secondary, #2ecc71);
+}
+
+.directApiButton:hover {
+  background-color: var(--secondary-dark, #27ae60);
+}
+
+.validateButton {
+  background-color: var(--accent, #3498db);
+}
+
+.validateButton:hover {
+  background-color: var(--accent-dark, #2980b9);
+}
+
+.directApiButton:disabled,
+.validateButton:disabled {
+  opacity: 0.6;
   cursor: not-allowed;
 }
 
@@ -584,6 +626,13 @@
   color: var(--text-muted);
 }
 
+.infoText {
+  font-style: italic;
+  font-size: 0.9em;
+  color: var(--text-muted);
+  margin: 0 15px;
+}
+
 .createButton {
   padding: 6px 12px;
   background-color: var(--primary);
@@ -618,6 +667,11 @@
   justify-content: space-between;
   align-items: center;
   margin-bottom: 15px;
+}
+
+.testHeaderButtons {
+  display: flex;
+  gap: 10px;
 }
 
 .testsHeader h3 {
@@ -658,6 +712,16 @@
   align-items: center;
 }
 
+.testCaseNameSection {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.testCaseCheckbox {
+  cursor: pointer;
+}
+
 .testCaseName {
   margin: 0;
   font-size: 15px;
@@ -680,6 +744,155 @@
 
 .runTestButton:hover {
   background-color: var(--primary-dark);
+}
+
+.runAllTestsButton,
+.runSelectedTestsButton {
+  padding: 4px 12px;
+  background-color: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+}
+
+.runAllTestsButton:hover,
+.runSelectedTestsButton:hover {
+  background-color: var(--primary-dark);
+}
+
+.runAllTestsButton:disabled,
+.runSelectedTestsButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.runSelectedTestsButton {
+  background-color: var(--secondary, #27ae60);
+}
+
+.runSelectedTestsButton:hover {
+  background-color: var(--secondary-dark, #219653);
+}
+
+.testResultsSummary {
+  margin-bottom: 20px;
+  padding: 15px;
+  background-color: var(--background-lighter);
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.testResultsHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.testResultsSummary h4 {
+  margin-top: 0;
+  margin-bottom: 0;
+  color: var(--text);
+  font-size: 16px;
+}
+
+.clearResultsButton {
+  padding: 3px 8px;
+  background-color: transparent;
+  color: var(--text-light);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.clearResultsButton:hover {
+  background-color: var(--background-light);
+  color: var(--text);
+}
+
+.testResultsStats {
+  display: flex;
+  gap: 15px;
+  margin-bottom: 15px;
+}
+
+.testStat {
+  display: flex;
+  gap: 5px;
+  font-size: 14px;
+}
+
+.testStat span {
+  font-weight: bold;
+}
+
+.testResultsList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.testResultItem {
+  padding: 10px;
+  border-radius: 4px;
+}
+
+.testPassed {
+  background-color: rgba(46, 204, 113, 0.1);
+  border-left: 3px solid #2ecc71;
+}
+
+.testFailed {
+  background-color: rgba(231, 76, 60, 0.1);
+  border-left: 3px solid #e74c3c;
+}
+
+.testResultHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 14px;
+}
+
+.testName {
+  font-weight: 500;
+}
+
+.testStatus {
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.testPassed .testStatus {
+  color: #27ae60;
+}
+
+.testFailed .testStatus {
+  color: #c0392b;
+}
+
+.testError {
+  margin-top: 8px;
+  padding: 8px;
+  background-color: rgba(231, 76, 60, 0.05);
+  border-radius: 3px;
+  font-size: 12px;
+  color: #c0392b;
+  font-family: monospace;
+  white-space: pre-wrap;
+}
+
+.testResultMessage {
+  font-size: 14px;
+  font-style: italic;
+  color: var(--text-light);
 }
 
 .editTestButton {
@@ -776,4 +989,105 @@
   padding: 15px;
   overflow-y: auto;
   flex: 1;
+}
+
+/* Validation Tab Styles */
+.validationContent {
+  padding: 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.validationSection {
+  margin-bottom: 20px;
+}
+
+.validationSection h4 {
+  font-size: 14px;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: var(--text-lighter);
+}
+
+.validationSection textarea {
+  width: 100%;
+  min-height: 150px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  background-color: var(--background-darker);
+  color: var(--text);
+  font-family: monospace;
+  font-size: 13px;
+  border-radius: 4px;
+}
+
+.validationActions {
+  margin-top: 15px;
+  display: flex;
+  gap: 10px;
+}
+
+.validationButton {
+  padding: 8px 16px;
+  background-color: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.validationButton:hover {
+  background-color: var(--primary-dark);
+}
+
+.validationResult {
+  margin-top: 15px;
+  padding: 10px;
+  border-radius: 4px;
+}
+
+.validSuccess {
+  background-color: rgba(40, 167, 69, 0.1);
+  border: 1px solid rgba(40, 167, 69, 0.2);
+  color: #28a745;
+}
+
+.validError {
+  background-color: rgba(220, 53, 69, 0.1);
+  border: 1px solid rgba(220, 53, 69, 0.2);
+  color: #dc3545;
+}
+
+/* Action Buttons */
+.actionButton {
+  padding: 8px 12px;
+  background-color: var(--secondary);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  margin-left: 5px;
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.actionButton:hover:not(:disabled) {
+  background-color: var(--secondary-dark);
+}
+
+.actionButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (max-width: 768px) {
+  .actionButton {
+    margin-top: 5px;
+    width: 100%;
+    margin-left: 0;
+  }
 }
