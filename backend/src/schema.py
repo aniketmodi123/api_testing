@@ -494,6 +494,9 @@ class ApiCreateRequest(BaseModel):
     endpoint: str = Field(..., description="API endpoint path")
     description: Optional[str] = Field(None, description="API description")
     is_active: bool = Field(True, description="API active status")
+    headers: Optional[Dict[str, Any]] = Field(None, description="API request headers")
+    body: Optional[Dict[str, Any]] = Field(None, description="API request body")
+    params: Optional[Dict[str, Any]] = Field(None, description="API request parameters")
     extra_meta: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
 
     @validator('name')
@@ -506,10 +509,14 @@ class ApiCreateRequest(BaseModel):
     def validate_endpoint(cls, v):
         if not v or not v.strip():
             raise ValueError('Endpoint cannot be empty')
-        # Ensure endpoint starts with /
+
         endpoint = v.strip()
-        if not endpoint.startswith('/'):
-            endpoint = '/' + endpoint
+
+        # Check if endpoint already has a protocol
+        if not (endpoint.startswith('http://') or endpoint.startswith('https://')):
+            # If no protocol, add https:// as default
+            endpoint = 'https://' + endpoint
+
         return endpoint
 
 
@@ -519,6 +526,9 @@ class ApiUpdateRequest(BaseModel):
     endpoint: Optional[str] = Field(None, description="API endpoint path")
     description: Optional[str] = Field(None, description="API description")
     is_active: Optional[bool] = Field(None, description="API active status")
+    headers: Optional[Dict[str, Any]] = Field(None, description="API request headers")
+    body: Optional[Dict[str, Any]] = Field(None, description="API request body")
+    params: Optional[Dict[str, Any]] = Field(None, description="API request parameters")
     extra_meta: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
 
 
@@ -535,9 +545,14 @@ class ApiUpdateRequest(BaseModel):
         if v is not None:
             if not v or not v.strip():
                 raise ValueError('Endpoint cannot be empty')
+
             endpoint = v.strip()
-            if not endpoint.startswith('/'):
-                endpoint = '/' + endpoint
+
+            # Check if endpoint already has a protocol
+            if not (endpoint.startswith('http://') or endpoint.startswith('https://')):
+                # If no protocol, add https:// as default
+                endpoint = 'https://' + endpoint
+
             return endpoint
         return v
 
@@ -546,8 +561,8 @@ class ApiUpdateRequest(BaseModel):
 class ApiCaseCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255, description="Test case name")
     headers: Optional[Dict[str, Any]] = Field(None, description="Request headers")
-    body: Optional[Dict[str, Any]] = Field(..., description="Request body data")
-    expected: Optional[Dict[str, Any]] = Field(..., description="Expected response data")
+    body: Optional[Dict[str, Any]] = Field(None, description="Request body data")
+    expected: Optional[Dict[str, Any]] = Field(None, description="Expected response data")
 
     @validator('name')
     def validate_name(cls, v):

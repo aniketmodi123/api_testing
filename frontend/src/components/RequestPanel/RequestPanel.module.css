@@ -306,6 +306,21 @@
   cursor: pointer;
   font-size: 13px;
   background-color: var(--background);
+  transition: all 0.2s ease;
+  user-select: none;
+  border: 1px solid transparent;
+}
+
+.bodyTypeBadge:hover {
+  background-color: var(--background-lightest);
+  border: 1px solid var(--border);
+}
+
+.bodyTypeBadge.active {
+  background-color: var(--primary-light);
+  color: var(--primary);
+  font-weight: 500;
+  border: 1px solid var(--primary);
 }
 
 .bodyTypeBadge.active {
@@ -319,6 +334,55 @@
   font-family: monospace;
   font-size: 13px;
   overflow: auto;
+}
+
+.bodyTextarea {
+  width: 100%;
+  height: 100%;
+  min-height: 200px;
+  font-family: monospace;
+  font-size: 13px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background-color: var(--background-lighter);
+  resize: vertical;
+  color: var(--text);
+  overflow: auto;
+  white-space: pre;
+  tab-size: 2;
+}
+
+.emptyBodyMessage {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 150px;
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.formDataHelp {
+  margin-top: 10px;
+  padding: 10px;
+  background-color: rgba(0, 0, 0, 0.05);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.formDataHelp p {
+  margin: 0 0 5px 0;
+}
+
+.xmlEditor .bodyTextarea {
+  color: #e06c75;
+}
+
+.jsonEditor .bodyTextarea {
+  color: #61afef;
 }
 
 /* Response Section */
@@ -1006,10 +1070,17 @@
 }
 
 .validationSection h4 {
-  font-size: 14px;
+  font-size: 16px;
   margin-bottom: 8px;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--text-lighter);
+}
+
+.validationDescription {
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--text-lighter);
+  line-height: 1.4;
 }
 
 .validationSection textarea {
@@ -1042,6 +1113,39 @@
 
 .validationButton:hover {
   background-color: var(--primary-dark);
+}
+
+.resetButton {
+  padding: 8px 16px;
+  background-color: #6c757d;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.resetButton:hover {
+  background-color: #5a6268;
+}
+
+.validateButton {
+  padding: 8px 16px;
+  background-color: #28a745;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.validateButton:hover {
+  background-color: #218838;
+}
+
+.validateButton:disabled {
+  background-color: #a3d7b3;
+  cursor: not-allowed;
 }
 
 .validationResult {

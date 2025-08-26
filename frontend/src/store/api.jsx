@@ -113,6 +113,49 @@ export const useApi = create((set, get) => ({
   },
 
   /**
+   * Save an API (create or update)
+   * @param {number} fileId - File ID
+   * @param {Object} apiData - API data
+   */
+  saveApi: async (fileId, apiData) => {
+    try {
+      set({ isLoading: true, error: null });
+      const result = await apiService.saveApi(fileId, apiData);
+
+      if (result && result.data) {
+        // Update or add the API in the list and set as active
+        set(state => {
+          const existingApiIndex = state.apis.findIndex(
+            api => api.file_id === fileId
+          );
+          let updatedApis;
+
+          if (existingApiIndex >= 0) {
+            // Update existing API
+            updatedApis = [...state.apis];
+            updatedApis[existingApiIndex] = result.data;
+          } else {
+            // Add new API
+            updatedApis = [...state.apis, result.data];
+          }
+
+          return {
+            apis: updatedApis,
+            activeApi: result.data,
+          };
+        });
+      }
+
+      return result;
+    } catch (error) {
+      set({ error: error.message || 'Failed to save API' });
+      throw error;
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  /**
    * Update an API
    * @param {number} apiId - API ID
    * @param {Object} apiData - Updated API data
@@ -184,6 +227,51 @@ export const useApi = create((set, get) => ({
       return result;
     } catch (error) {
       set({ error: error.message || 'Failed to create test case' });
+      throw error;
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  /**
+   * Save a test case (create or update)
+   * @param {number} fileId - File ID
+   * @param {Object} testCaseData - Test case data
+   * @param {number|null} caseId - Optional test case ID for updates
+   */
+  saveTestCase: async (fileId, testCaseData, caseId = null) => {
+    try {
+      set({ isLoading: true, error: null });
+      const result = await apiService.saveTestCase(
+        fileId,
+        testCaseData,
+        caseId
+      );
+
+      if (result && result.data) {
+        set(state => {
+          let updatedCases;
+
+          if (caseId) {
+            // Update existing test case
+            updatedCases = state.testCases.map(testCase =>
+              testCase.id === caseId ? result.data : testCase
+            );
+          } else {
+            // Add new test case
+            updatedCases = [...state.testCases, result.data];
+          }
+
+          return {
+            testCases: updatedCases,
+            selectedTestCase: result.data,
+          };
+        });
+      }
+
+      return result;
+    } catch (error) {
+      set({ error: error.message || 'Failed to save test case' });
       throw error;
     } finally {
       set({ isLoading: false });

@@ -1,0 +1,41 @@
+/* Override styles for the Send button */
+.sendButtonContainer {
+  display: flex;
+  align-items: center;
+  height: 34px;
+  margin: 0 0 0 10px;
+}
+
+/* These styles will override the module CSS */
+button.overrideSendButton {
+  background-color: #4d5969 !important;
+  color: white !important;
+  border: none !important;
+  padding: 0 15px !important;
+  border-radius: 4px 0 0 4px !important;
+  cursor: pointer !important;
+  font-size: 14px !important;
+  height: 100% !important;
+  font-weight: normal !important;
+  min-width: 70px;
+}
+
+/* Record as Case button */
+.recordCaseButton {
+  margin-left: 10px;
+  padding: 0 15px;
+  background-color: #ffffff;
+  color: #000000;
+  border: 1px solid #ddd;
+  border-radius: 4px 0 0 4px;
+  cursor: pointer;
+  height: 32px;
+  font-weight: normal;
+  font-size: 14px;
+}
+
+.recordCaseButtonContainer {
+  position: relative;
+  display: inline-block;
+  vertical-align: middle;
+}

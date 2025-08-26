@@ -1,0 +1,16 @@
+/**
+ * Save an API (create or update) in a file
+ * @param {number} fileId - File ID to save the API in
+ * @param {Object} apiData - API data
+ * @returns {Promise} Promise with saved API data
+ */
+async saveApi(fileId, apiData) {
+  try {
+    console.log(`Saving API in file ${fileId}:`, apiData);
+    const response = await api.post(`/file/${fileId}/api/save`, apiData);
+    return response.data;
+  } catch (error) {
+    console.error('Error saving API:', error);
+    throw error;
+  }
+}

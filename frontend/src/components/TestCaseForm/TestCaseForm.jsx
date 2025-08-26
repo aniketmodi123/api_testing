@@ -26,6 +26,7 @@ const TestCaseForm = ({
     isLoading,
     error,
     selectTestCase,
+    saveTestCase,
   } = useApi();
 
   // Load test case data if editing an existing case
@@ -83,16 +84,8 @@ const TestCaseForm = ({
     e.preventDefault();
 
     try {
-      let result;
-
-      if (caseId) {
-        // Update existing test case
-        result = await updateTestCase(caseId, formData);
-      } else {
-        // Create new test case
-        result = await createTestCase(fileId, formData);
-      }
-
+      // Use the unified saveTestCase function that handles both create and update
+      const result = await saveTestCase(fileId, formData, caseId);
       onSave(result?.data);
     } catch (err) {
       console.error('Error saving test case:', err);

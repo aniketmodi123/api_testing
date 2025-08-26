@@ -98,6 +98,15 @@ export const apiService = {
       });
 
       // Handle the specific response structure
+      // Check for status code 206 which indicates no API data found
+      if (response.data && response.data.response_code === 206) {
+        return {
+          data: null,
+          status: response.data.response_code,
+          message: response.data.message || 'API not found',
+        };
+      }
+
       if (response.data && response.data.data) {
         // Process the API data to ensure all fields are properly structured
         const apiData = response.data.data;
@@ -135,6 +144,23 @@ export const apiService = {
       };
     } catch (error) {
       console.error(`Error fetching API for file ${fileId}:`, error);
+      throw error;
+    }
+  },
+
+  /**
+   * Save an API (create or update) in a file
+   * @param {number} fileId - File ID to save the API in
+   * @param {Object} apiData - API data
+   * @returns {Promise} Promise with saved API data
+   */
+  async saveApi(fileId, apiData) {
+    try {
+      console.log(`Saving API in file ${fileId}:`, apiData);
+      const response = await api.post(`/file/${fileId}/api/save`, apiData);
+      return response.data;
+    } catch (error) {
+      console.error('Error saving API:', error);
       throw error;
     }
   },
@@ -188,6 +214,47 @@ export const apiService = {
       return response.data;
     } catch (error) {
       console.error('Error creating test case:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Save a test case (create or update) for an API
+   * @param {number} fileId - File ID containing the API
+   * @param {Object} testCaseData - Test case data
+   * @param {number|null} caseId - Optional test case ID for updates
+   * @returns {Promise} Promise with saved test case data
+   */
+  async saveTestCase(fileId, testCaseData, caseId = null) {
+    try {
+      console.log(
+        `Saving test case for file ${fileId}${caseId ? ` (updating case ${caseId})` : ''}:`,
+        testCaseData
+      );
+
+      // Ensure the data structure matches the API schema
+      const formattedData = {
+        name: testCaseData.name,
+        headers: testCaseData.headers || {},
+        // Keep the body as a string to match FastAPI endpoint expectations
+        body: testCaseData.body || null,
+        expected: testCaseData.expected || null,
+      };
+
+      console.log('Formatted data for API endpoint:', formattedData);
+
+      const response = await api.post(
+        `/file/${fileId}/api/cases/save${caseId ? `?case_id=${caseId}` : ''}`,
+        formattedData,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Error saving test case:', error, error.response?.data);
       throw error;
     }
   },

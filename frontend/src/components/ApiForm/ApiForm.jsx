@@ -291,10 +291,6 @@ const ApiForm = ({
         },
         created_at: new Date().toISOString(),
       };
-
-      // In a real implementation, you would save this to your backend
-      console.log('Saving test case:', testCase);
-      alert('Test case saved successfully');
     } catch (err) {
       console.error('Error saving test case:', err);
     }

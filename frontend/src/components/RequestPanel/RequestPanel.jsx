@@ -4,6 +4,8 @@ import { useApi } from '../../store/api';
 import { useNode } from '../../store/node';
 import { TestCaseForm } from '../TestCaseForm';
 import styles from './RequestPanel.module.css';
+import './buttonStyles.css';
+import './dropdown.css';
 
 // Helper function to safely extract values from possibly nested API response objects
 const extractValue = (obj, key, defaultValue = '') => {
@@ -71,6 +73,20 @@ const extractValue = (obj, key, defaultValue = '') => {
   }
 };
 
+function normalizeBody(bodyContent, bodyType) {
+  if (bodyType === 'none') return null;
+  if (bodyType === 'JSON') {
+    try {
+      // For API /save endpoint, we should keep it as a string
+      // This helps with the body serialization when sending to backend
+      return bodyContent;
+    } catch {
+      return bodyContent; // Already a string
+    }
+  }
+  return bodyContent; // Keep as string for all body types
+}
+
 export default function RequestPanel({ activeRequest }) {
   const { selectedNode, getNodeById } = useNode();
   const {
@@ -83,6 +99,9 @@ export default function RequestPanel({ activeRequest }) {
     clearTestResults,
     createTestCase,
     isLoading,
+    updateApi,
+    saveApi,
+    saveTestCase,
   } = useApi();
 
   const [method, setMethod] = useState(
@@ -91,10 +110,88 @@ export default function RequestPanel({ activeRequest }) {
   const [url, setUrl] = useState(
     activeRequest?.url || selectedNode?.url || selectedNode?.endpoint || ''
   );
+  const [isUpdatingConfig, setIsUpdatingConfig] = useState(false);
   const [showTestCaseForm, setShowTestCaseForm] = useState(false);
   const [editingTestCaseId, setEditingTestCaseId] = useState(null);
+  const [bodyContent, setBodyContent] = useState('');
+  const [bodyType, setBodyType] = useState('JSON');
 
   // Update the panel when selectedNode changes
+  // Add effect for handling dropdown close on outside click
+  useEffect(() => {
+    const closeDropdowns = () => {
+      const dropdowns = document.querySelectorAll('.dropdownContent');
+      dropdowns.forEach(dd => dd.classList.remove('active'));
+    };
+
+    document.addEventListener('click', closeDropdowns);
+
+    return () => {
+      document.removeEventListener('click', closeDropdowns);
+    };
+  }, []);
+
+  // Initialize the body content and type when the activeApi changes
+  useEffect(() => {
+    if (activeApi) {
+      const requestBody =
+        extractValue(activeApi, 'body') ||
+        extractValue(activeApi, 'request_body') ||
+        extractValue(activeApi, 'requestBody');
+
+      // Determine body type from the activeApi metadata or content
+      const bodyTypeFromApi = extractValue(activeApi, 'bodyType') || 'JSON';
+      setBodyType(bodyTypeFromApi);
+
+      if (requestBody) {
+        if (typeof requestBody === 'string') {
+          try {
+            // Try to parse as JSON to see if it's actually JSON formatted
+            JSON.parse(requestBody);
+            setBodyType('JSON');
+            setBodyContent(requestBody);
+          } catch (e) {
+            // If not valid JSON, it might be raw text or XML
+            if (
+              requestBody.trim().startsWith('<') &&
+              requestBody.includes('</')
+            ) {
+              setBodyType('XML');
+            } else {
+              setBodyType('raw');
+            }
+            setBodyContent(requestBody);
+          }
+        } else if (
+          requestBody === null ||
+          Object.keys(requestBody).length === 0
+        ) {
+          // Empty body
+          setBodyType('none');
+          setBodyContent('');
+        } else {
+          // If it's an object, stringify it and set to JSON
+          setBodyType('JSON');
+          setBodyContent(JSON.stringify(requestBody, null, 2));
+        }
+      } else {
+        // Default empty body
+        setBodyType('JSON');
+        setBodyContent(`{
+  "name": "Example",
+  "data": {
+    "id": 1,
+    "description": "Sample request body"
+  }
+}`);
+      }
+    } else {
+      // No active API, set default
+      setBodyType('none');
+      setBodyContent('');
+    }
+  }, [activeApi]);
+
   useEffect(() => {
     if (selectedNode) {
       setMethod(selectedNode.method || 'GET');
@@ -117,22 +214,28 @@ export default function RequestPanel({ activeRequest }) {
           .then(apiResponse => {
             console.log('API data loaded:', apiResponse);
 
-            // Extract the API data from the response structure
-            const apiData = apiResponse?.data || {};
+            // Check if we got a 206 status (no API data)
+            if (apiResponse.status === 206) {
+              console.log('No API configured for this file yet.');
+              // Keep the current values since there's no API data
+            } else {
+              // Extract the API data from the response structure
+              const apiData = apiResponse?.data || {};
 
-            if (apiData) {
-              // Use the exact endpoint or URL from the API without modifying it
-              if (apiData.endpoint) {
-                // Use the endpoint directly without adding any base URL
-                setUrl(apiData.endpoint);
-              } else if (apiData.url) {
-                // Use the URL directly if available
-                setUrl(apiData.url);
-              }
+              if (apiData) {
+                // Use the exact endpoint or URL from the API without modifying it
+                if (apiData.endpoint) {
+                  // Use the endpoint directly without adding any base URL
+                  setUrl(apiData.endpoint);
+                } else if (apiData.url) {
+                  // Use the URL directly if available
+                  setUrl(apiData.url);
+                }
 
-              // Set the method from the API
-              if (apiData.method) {
-                setMethod(apiData.method);
+                // Set the method from the API
+                if (apiData.method) {
+                  setMethod(apiData.method);
+                }
               }
             }
           })
@@ -154,6 +257,30 @@ export default function RequestPanel({ activeRequest }) {
   const [isSending, setIsSending] = useState(false);
   const [response, setResponse] = useState(null);
   const [selectedTestCases, setSelectedTestCases] = useState([]);
+  const [defaultValidationSchema, setDefaultValidationSchema] = useState({
+    status: 200,
+    text_contains: 'success',
+    headers_regex: {
+      'content-type': '^application/json',
+    },
+    json: {
+      checks: [
+        { path: 'response_code', equals: 200 },
+        { path: 'error_message', absent: true },
+        { path: 'data', present: true },
+      ],
+      either: [
+        {
+          checks: [{ path: 'errors', present: true }],
+        },
+        {
+          checks: [{ path: 'detail', present: true }],
+        },
+      ],
+    },
+    _mirror_http_status: true,
+    _require_content_for_error: true,
+  });
 
   const handleTestCaseSelection = testCaseId => {
     setSelectedTestCases(prev => {
@@ -250,17 +377,23 @@ export default function RequestPanel({ activeRequest }) {
         );
       }
 
+      // Get the validation schema from API or use default
+      const validationSchema =
+        extractValue(activeApi, 'expected') ||
+        extractValue(activeApi, 'validation.responseSchema') ||
+        extractValue(activeApi, 'validationSchema.response') ||
+        defaultValidationSchema;
+
       // Create a test case with the current parameters
       const testCaseData = {
         name: `Validation test - ${new Date().toISOString()}`,
-        description: 'Auto-generated test case for validation',
+        description: 'Auto-generated test case with validation schema',
         method: method,
         endpoint: url,
         headers: extractValue(activeApi, 'headers', {}),
         params: extractValue(activeApi, 'params', {}),
-        request_body: extractValue(activeApi, 'request_body', {}),
-        expected_status: 200, // Default expected status
-        expected_response: {}, // Default empty expected response
+        body: normalizeBody(bodyContent, bodyType),
+        expected: validationSchema, // Store the validation schema directly in the expected field
       };
 
       console.log('Creating test case for validation:', testCaseData);
@@ -429,102 +562,229 @@ export default function RequestPanel({ activeRequest }) {
         />
 
         <div className={styles.buttonGroup}>
-          <button
-            className={styles.sendButton}
-            onClick={handleSend}
-            disabled={isSending}
-          >
-            {isSending ? 'Sending...' : 'Send'}
-          </button>
+          <div className="sendButtonContainer">
+            <button
+              className={`${styles.sendButton} overrideSendButton`}
+              onClick={handleDirectApiCall} // Now uses direct call functionality instead of handleSend
+              disabled={isSending || !url}
+            >
+              {isSending ? 'Sending...' : 'Send'}
+            </button>
 
-          <button
-            className={styles.directApiButton}
-            onClick={handleDirectApiCall}
-            disabled={isSending || !url}
-            title="Call API directly using current parameters"
-          >
-            {isSending ? 'Calling...' : 'Direct Call'}
-          </button>
-
-          <button
-            className={styles.validateButton}
-            onClick={handleValidateApi}
-            disabled={isSending || !url || !selectedNode?.id}
-            title="Record as test case and validate API"
-          >
-            {isSending ? 'Validating...' : 'Validate'}
-          </button>
+            <div className="dropdownContainer">
+              <button
+                className="dropdownButton"
+                disabled={isSending}
+                onClick={e => {
+                  e.stopPropagation();
+                  const dropdowns =
+                    document.querySelectorAll('.dropdownContent');
+                  dropdowns.forEach(dd => dd.classList.remove('active'));
+                  e.currentTarget.nextElementSibling.classList.toggle('active');
+                }}
+              >
+                ▼
+              </button>
+              <div
+                className="dropdownContent"
+                onClick={e => e.stopPropagation()}
+              >
+                <button
+                  onClick={handleValidateApi}
+                  disabled={isSending || !url || !selectedNode?.id}
+                >
+                  Validate
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <button
-          className={styles.actionButton}
-          onClick={() => {
-            // Create a function to update API config without changing general API info
-            if (selectedNode?.id && activeApi) {
-              // Update only the request configuration parts
-              const configOnlyData = {
-                ...activeApi,
-                method: method,
-                endpoint: url,
-                headers: extractValue(activeApi, 'headers', {}),
-                params: extractValue(activeApi, 'params', {}),
-                request_body: extractValue(activeApi, 'request_body', {}),
-              };
-
-              // Save the configuration
-              try {
-                updateApi(selectedNode.id, configOnlyData);
-                console.log('Request configuration updated');
-              } catch (err) {
-                console.error('Error updating request configuration:', err);
+        <div className="actionsContainer">
+          <button
+            className="actionsButton"
+            onClick={async () => {
+              if (!selectedNode?.id) {
+                alert('Please select a file first');
+                return;
               }
-            }
-          }}
-          title="Update request configuration"
-        >
-          Update Config
-        </button>
 
-        <button
-          className={styles.actionButton}
-          onClick={() => {
-            if (!response) {
-              alert('Send a request first to record as a test case');
-              return;
-            }
+              setIsUpdatingConfig(true);
 
-            // Save the current request/response as a test case
-            try {
-              const testCase = {
-                api_id: selectedNode?.id,
-                name: `Test case - ${new Date().toLocaleTimeString()}`,
-                request: {
-                  method: method,
-                  endpoint: url,
-                  headers: extractValue(activeApi, 'headers', {}),
-                  params: extractValue(activeApi, 'params', {}),
-                  body: extractValue(activeApi, 'request_body', {}),
-                },
-                expected_response: {
-                  status: response.status,
-                  headers: response.headers || {},
-                  body: response.body || {},
-                },
-                created_at: new Date().toISOString(),
-              };
+              try {
+                // Prepare data for saving API (works for both create and update)
+                const apiData = activeApi
+                  ? {
+                      // Update existing API
+                      ...activeApi,
+                      method: method,
+                      endpoint: url,
+                      headers: extractValue(activeApi, 'headers', {}),
+                      params: extractValue(activeApi, 'params', {}),
+                      body: normalizeBody(bodyContent, bodyType),
+                      bodyType: bodyType,
+                    }
+                  : {
+                      // Create new API
+                      name: selectedNode.name || 'New API',
+                      method: method,
+                      endpoint: url,
+                      description: '',
+                      is_active: true,
+                      headers: {},
+                      params: {},
+                      body: normalizeBody(bodyContent, bodyType),
+                      bodyType: bodyType,
+                    };
 
-              console.log('Recording test case:', testCase);
-              // In a real implementation, you would save this to your backend
-              alert('Test case recorded');
-            } catch (err) {
-              console.error('Error recording test case:', err);
-            }
-          }}
-          disabled={!response}
-          title="Save current request/response as a test case"
-        >
-          Record as Case
-        </button>
+                // Use the unified saveApi function for both create and update
+                const result = await saveApi(selectedNode.id, apiData);
+
+                console.log('API saved successfully:', result);
+
+                const message = activeApi
+                  ? 'API configuration updated successfully'
+                  : 'New API created successfully';
+
+                alert(message);
+
+                // Reload the API details if this was a new API
+                if (!activeApi) {
+                  await getApi(selectedNode.id);
+                }
+              } catch (err) {
+                console.error('Error saving API configuration:', err);
+                alert(`Failed to save configuration: ${err.message}`);
+              } finally {
+                setIsUpdatingConfig(false);
+              }
+            }}
+            disabled={isUpdatingConfig}
+            title="Save API"
+          >
+            {isUpdatingConfig ? 'Saving...' : 'Save'}
+          </button>
+          <div className="dropdownContainer">
+            <button
+              className="dropdownButton"
+              onClick={e => {
+                e.stopPropagation();
+                const dropdowns = document.querySelectorAll('.dropdownContent');
+                dropdowns.forEach(dd => dd.classList.remove('active'));
+                e.currentTarget.nextElementSibling.classList.toggle('active');
+              }}
+            >
+              ▼
+            </button>
+            <div
+              className="dropdownContent saveActionsDropdown"
+              onClick={e => e.stopPropagation()}
+            >
+              <button
+                onClick={async () => {
+                  if (!response) {
+                    alert('Send a request first to record as a test case');
+                    return;
+                  }
+
+                  // Start with button in saving state
+                  const button = document.querySelector(
+                    '.saveActionsDropdown button'
+                  );
+                  const originalText = button.innerText;
+                  button.innerText = 'Saving...';
+                  button.disabled = true;
+
+                  // Save the current request/response as a test case
+                  try {
+                    // Get the validation schema from the validation tab textarea
+                    const schemaTextarea = document.getElementById(
+                      'validationSchemaTextarea'
+                    );
+                    let validationSchema;
+
+                    try {
+                      if (schemaTextarea && schemaTextarea.value) {
+                        validationSchema = JSON.parse(schemaTextarea.value);
+                      } else {
+                        // Get schema from active API or use default
+                        validationSchema =
+                          extractValue(activeApi, 'expected') ||
+                          extractValue(
+                            activeApi,
+                            'validation.responseSchema'
+                          ) ||
+                          extractValue(
+                            activeApi,
+                            'validationSchema.response'
+                          ) ||
+                          defaultValidationSchema;
+                      }
+                    } catch (e) {
+                      console.warn(
+                        'Failed to parse validation schema, using default',
+                        e
+                      );
+                      validationSchema = defaultValidationSchema;
+                    }
+
+                    // Ask user for a custom test case name
+                    const defaultName = `Test case - ${new Date().toLocaleTimeString()}`;
+                    const customName = prompt(
+                      'Enter a name for this test case:',
+                      defaultName
+                    );
+
+                    // Format the test case data according to the FastAPI endpoint requirements
+                    const testCaseData = {
+                      name: customName || defaultName, // Use custom name or fall back to default
+                      // Pass headers directly as object
+                      headers: extractValue(activeApi, 'headers', {}),
+                      // Pass body as string if it's JSON or other formats
+                      body: bodyType === 'none' ? null : bodyContent,
+                      // Use the validation schema from the validation tab
+                      expected: validationSchema,
+                    };
+
+                    console.log('Recording test case with data:', testCaseData);
+
+                    // Use our saveTestCase function
+                    const result = await saveTestCase(
+                      selectedNode.id,
+                      testCaseData
+                    );
+
+                    if (result && result.data) {
+                      alert('Test case saved successfully!');
+                      // Refresh the test cases list
+                      await getTestCases(selectedNode.id);
+                    } else {
+                      alert('Failed to save test case. Please try again.');
+                    }
+
+                    // Close the dropdown after action
+                    document
+                      .querySelector('.saveActionsDropdown')
+                      .classList.remove('active');
+                  } catch (err) {
+                    console.error('Error recording test case:', err);
+                    alert(
+                      `Error saving test case: ${err.message || 'Unknown error'}`
+                    );
+                  } finally {
+                    // Reset button state
+                    button.innerText = originalText;
+                    button.disabled = !response || !selectedNode?.id;
+                  }
+                }}
+                disabled={!response || !selectedNode?.id}
+                title="Record current request/response as a test case"
+              >
+                Record as Test Case
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* API metadata bar - shows if API has additional information */}
@@ -568,12 +828,6 @@ export default function RequestPanel({ activeRequest }) {
           onClick={() => setActiveTab('params')}
         >
           Params
-        </div>
-        <div
-          className={`${styles.tab} ${activeTab === 'authorization' ? styles.active : ''}`}
-          onClick={() => setActiveTab('authorization')}
-        >
-          Authorization
         </div>
         <div
           className={`${styles.tab} ${activeTab === 'headers' ? styles.active : ''}`}
@@ -669,12 +923,7 @@ export default function RequestPanel({ activeRequest }) {
                   </div>
                 )}
 
-                {extractValue(activeApi, 'workspace_id') && (
-                  <div className={styles.apiWorkspace}>
-                    <h4>Workspace ID</h4>
-                    <p>{extractValue(activeApi, 'workspace_id')}</p>
-                  </div>
-                )}
+                {/* Workspace ID removed as per request */}
 
                 {extractValue(activeApi, 'created_at') && (
                   <div className={styles.apiCreated}>
@@ -894,162 +1143,156 @@ export default function RequestPanel({ activeRequest }) {
           <div className={styles.bodyContent}>
             <div className={styles.bodyTypeSelector}>
               <div
-                className={`${styles.bodyTypeBadge} ${!activeApi?.body ? styles.active : ''}`}
+                className={`${styles.bodyTypeBadge} ${bodyType === 'none' ? styles.active : ''}`}
+                onClick={() => {
+                  setBodyType('none');
+                  setBodyContent('');
+                }}
               >
                 none
               </div>
-              <div className={styles.bodyTypeBadge}>raw</div>
               <div
-                className={`${styles.bodyTypeBadge} ${activeApi?.body ? styles.active : ''}`}
+                className={`${styles.bodyTypeBadge} ${bodyType === 'raw' ? styles.active : ''}`}
+                onClick={() => {
+                  setBodyType('raw');
+                  // If coming from JSON, try to remove formatting
+                  if (bodyType === 'JSON') {
+                    try {
+                      const obj = JSON.parse(bodyContent);
+                      setBodyContent(JSON.stringify(obj));
+                    } catch (e) {
+                      // Keep content as is if not valid JSON
+                    }
+                  }
+                }}
+              >
+                raw
+              </div>
+              <div
+                className={`${styles.bodyTypeBadge} ${bodyType === 'JSON' ? styles.active : ''}`}
+                onClick={() => {
+                  setBodyType('JSON');
+                  // If coming from raw and content might be JSON, try to format it
+                  if (bodyType === 'raw' && bodyContent.trim()) {
+                    try {
+                      const obj = JSON.parse(bodyContent);
+                      setBodyContent(JSON.stringify(obj, null, 2));
+                    } catch (e) {
+                      // If not valid JSON, initialize with empty JSON object
+                      if (
+                        !bodyContent.includes('{') &&
+                        !bodyContent.includes('[')
+                      ) {
+                        setBodyContent('{}');
+                      }
+                    }
+                  } else if (bodyType === 'none' || !bodyContent) {
+                    // Set a default JSON if coming from none
+                    setBodyContent(`{}`);
+                  }
+                }}
               >
                 JSON
               </div>
-              <div className={styles.bodyTypeBadge}>XML</div>
-              <div className={styles.bodyTypeBadge}>form-data</div>
+              <div
+                className={`${styles.bodyTypeBadge} ${bodyType === 'XML' ? styles.active : ''}`}
+                onClick={() => {
+                  setBodyType('XML');
+                  if (bodyType === 'none' || !bodyContent) {
+                    // Set a default XML if coming from none
+                    setBodyContent(`<root>
+  <name>Example</name>
+  <data>
+    <id>1</id>
+    <description>Sample request body</description>
+  </data>
+</root>`);
+                  }
+                }}
+              >
+                XML
+              </div>
+              <div
+                className={`${styles.bodyTypeBadge} ${bodyType === 'form-data' ? styles.active : ''}`}
+                onClick={() => {
+                  setBodyType('form-data');
+                  // For simplicity, we'll keep the text representation of form data
+                  if (bodyType === 'none' || !bodyContent) {
+                    setBodyContent(
+                      'name=Example&id=1&description=Sample+request+body'
+                    );
+                  }
+                }}
+              >
+                form-data
+              </div>
             </div>
 
-            <div className={styles.jsonEditor}>
-              {activeApi ? (
-                <pre>
-                  {(() => {
-                    // Try to find body in different possible locations
-                    const requestBody =
-                      extractValue(activeApi, 'body') ||
-                      extractValue(activeApi, 'request_body') ||
-                      extractValue(activeApi, 'requestBody');
-
-                    if (requestBody) {
-                      if (typeof requestBody === 'string') {
-                        try {
-                          // Try to parse if it's a stringified JSON
-                          const parsedBody = JSON.parse(requestBody);
-                          return JSON.stringify(parsedBody, null, 2);
-                        } catch (e) {
-                          // If it's not valid JSON, return as is
-                          return requestBody;
-                        }
-                      } else {
-                        // If it's already an object
-                        return JSON.stringify(requestBody, null, 2);
-                      }
-                    } else {
-                      // Default empty body
-                      return `{
-  "name": "Example",
-  "data": {
-    "id": 1,
-    "description": "Sample request body"
-  }
-}`;
-                    }
-                  })()}
-                </pre>
-              ) : (
-                <pre>{`{
-  "name": "Example",
-  "data": {
-    "id": 1,
-    "description": "Sample request body"
-  }
-}`}</pre>
-              )}
-            </div>
+            {bodyType !== 'none' && (
+              <div
+                className={`${styles.jsonEditor} ${styles[bodyType.toLowerCase() + 'Editor']}`}
+              >
+                <textarea
+                  className={styles.bodyTextarea}
+                  value={bodyContent}
+                  onChange={e => {
+                    setBodyContent(e.target.value);
+                  }}
+                  placeholder={
+                    bodyType === 'raw'
+                      ? 'Enter raw text'
+                      : bodyType === 'JSON'
+                        ? 'Enter JSON data'
+                        : bodyType === 'XML'
+                          ? 'Enter XML data'
+                          : bodyType === 'form-data'
+                            ? 'name=value&name2=value2'
+                            : ''
+                  }
+                />
+              </div>
+            )}
+            {bodyType === 'none' && (
+              <div className={styles.emptyBodyMessage}>
+                <p>This request does not have a body</p>
+              </div>
+            )}
+            {bodyType === 'form-data' && (
+              <div className={styles.formDataHelp}>
+                <p>
+                  Form data will be sent as application/x-www-form-urlencoded
+                </p>
+                <p>Format: key1=value1&key2=value2</p>
+              </div>
+            )}
           </div>
         )}
 
         {activeTab === 'validation' && (
           <div className={styles.validationContent}>
             <div className={styles.validationSection}>
-              <h4>Request Schema</h4>
               <div className={styles.jsonEditor}>
                 <textarea
-                  rows={8}
-                  placeholder="Enter JSON schema for request validation"
+                  id="validationSchemaTextarea"
+                  rows={16}
+                  placeholder="Enter validation schema for API responses"
                   defaultValue={(() => {
                     // Try to get validation schema if it exists
                     const schema =
-                      extractValue(activeApi, 'validation.requestSchema') ||
-                      extractValue(activeApi, 'validationSchema.request');
-
-                    return schema ? JSON.stringify(schema, null, 2) : '';
-                  })()}
-                />
-              </div>
-            </div>
-
-            <div className={styles.validationSection}>
-              <h4>Response Schema</h4>
-              <div className={styles.jsonEditor}>
-                <textarea
-                  rows={8}
-                  placeholder="Enter JSON schema for response validation"
-                  defaultValue={(() => {
-                    // Try to get validation schema if it exists
-                    const schema =
+                      extractValue(activeApi, 'expected') ||
                       extractValue(activeApi, 'validation.responseSchema') ||
                       extractValue(activeApi, 'validationSchema.response');
 
-                    return schema ? JSON.stringify(schema, null, 2) : '';
+                    // If no schema exists, use our default validation schema
+                    return schema
+                      ? JSON.stringify(schema, null, 2)
+                      : JSON.stringify(defaultValidationSchema, null, 2);
                   })()}
                 />
               </div>
             </div>
 
-            <div className={styles.validationActions}>
-              <button
-                type="button"
-                className={styles.validationButton}
-                onClick={() => {
-                  try {
-                    // Simple validation logic
-                    let isValid = true;
-                    let message = '';
-
-                    try {
-                      // In a real implementation, you would use a JSON Schema validator library
-                      // This is just a basic check if the JSON is valid
-                      const requestBody =
-                        extractValue(activeApi, 'body') ||
-                        extractValue(activeApi, 'request_body') ||
-                        extractValue(activeApi, 'requestBody');
-
-                      if (requestBody) {
-                        if (typeof requestBody === 'string') {
-                          JSON.parse(requestBody);
-                        }
-                      }
-                      message = 'JSON is valid';
-                    } catch (e) {
-                      isValid = false;
-                      message = `Invalid JSON: ${e.message}`;
-                    }
-
-                    // Display validation result
-                    alert(message);
-                  } catch (err) {
-                    console.error('Validation error:', err);
-                    alert(`Error during validation: ${err.message}`);
-                  }
-                }}
-              >
-                Validate Current JSON
-              </button>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'authorization' && (
-          <div className={styles.authContent}>
-            <div className={styles.authType}>
-              <label>Type</label>
-              <select>
-                <option>No Auth</option>
-                <option>Bearer Token</option>
-                <option>Basic Auth</option>
-                <option>OAuth 2.0</option>
-                <option>API Key</option>
-              </select>
-            </div>
+            {/* Validation buttons have been removed as requested */}
           </div>
         )}
 
@@ -1065,7 +1308,7 @@ export default function RequestPanel({ activeRequest }) {
                     setShowTestCaseForm(true);
                   }}
                 >
-                  {activeApi ? 'Add Test Case' : 'Create API First'}
+                  {activeApi ? 'Add Test Case' : 'Save API First'}
                 </button>
                 {activeApi && testCases && testCases.length > 0 && (
                   <>
