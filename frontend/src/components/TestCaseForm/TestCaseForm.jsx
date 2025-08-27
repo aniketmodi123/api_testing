@@ -110,24 +110,6 @@ const TestCaseForm = ({
                 {new Date(testCaseDetails.created_at).toLocaleString()}
               </span>
             </div>
-            <div className={styles.detailItem}>
-              <span className={styles.detailLabel}>Last Updated:</span>
-              <span className={styles.detailValue}>
-                {new Date(testCaseDetails.updated_at).toLocaleString()}
-              </span>
-            </div>
-            <div className={styles.detailItem}>
-              <span className={styles.detailLabel}>Status:</span>
-              <span className={styles.detailValue}>
-                {testCaseDetails.status || 'N/A'}
-              </span>
-            </div>
-            <div className={styles.detailItem}>
-              <span className={styles.detailLabel}>Type:</span>
-              <span className={styles.detailValue}>
-                {testCaseDetails.type || 'N/A'}
-              </span>
-            </div>
           </div>
 
           {testCaseDetails.description && (

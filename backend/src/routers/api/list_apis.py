@@ -56,7 +56,7 @@ async def get_file_api(
         # Get path from root to target folder
         folder_path, folder_ids, headers_map, merge_result = await get_headers(db, api.file_id)
         if not folder_path:
-            return create_response(404, error_message="Folder not found")
+            return create_response(206, error_message="Folder not found")
 
         inherited_headers = merge_result.get("merged_headers", {})
 

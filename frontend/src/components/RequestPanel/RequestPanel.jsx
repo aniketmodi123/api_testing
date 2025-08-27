@@ -1743,7 +1743,7 @@ export default function RequestPanel({ activeRequest }) {
             <div className={styles.modalBody}>
               <TestCaseForm
                 fileId={selectedNode.id}
-                testCaseId={editingTestCaseId}
+                caseId={editingTestCaseId}
                 onSave={() => {
                   setShowTestCaseForm(false);
                   getTestCases(selectedNode.id);

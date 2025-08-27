@@ -40,7 +40,7 @@ async def get_complete_folder_headers(
         # Get path from root to target folder
         folder_path, folder_ids, headers_map, merge_result = await get_headers(db, folder_id)
         if not folder_path:
-            return create_response(404, error_message="Folder not found")
+            return create_response(206, error_message="Folder not found")
 
         # Prepare response data
         data = {
@@ -99,7 +99,7 @@ async def get_headers_inheritance_preview(
         # Get path from root to target folder
         folder_path, folder_ids, headers_map, merge_result = await get_headers(db, folder_id)
         if not folder_path:
-            return create_response(404, error_message="Folder not found")
+            return create_response(206, error_message="Folder not found")
 
         # Build inheritance preview
         inheritance_preview = []

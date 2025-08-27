@@ -307,7 +307,7 @@ export const apiService = {
   async getTestCase(caseId) {
     try {
       console.log('Fetching test case details:', caseId);
-      const response = await api.get(`/api/cases/${caseId}`);
+      const response = await api.get(`/case/${caseId}`);
       return response.data;
     } catch (error) {
       console.error(`Error fetching test case ${caseId}:`, error);
@@ -393,7 +393,7 @@ export const apiService = {
   async deleteTestCase(caseId) {
     try {
       console.log(`Deleting test case ${caseId}`);
-      const response = await api.delete(`/api/cases/${caseId}`);
+      const response = await api.delete(`/case/${caseId}`);
       return response.data;
     } catch (error) {
       console.error(`Error deleting test case ${caseId}:`, error);
