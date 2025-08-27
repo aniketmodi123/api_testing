@@ -163,6 +163,7 @@ export default function RequestPanel({ activeRequest }) {
     saveApi,
     saveTestCase,
     duplicateApi,
+    deleteTestCase,
   } = useApi();
 
   const [method, setMethod] = useState(
@@ -1486,49 +1487,61 @@ export default function RequestPanel({ activeRequest }) {
                   </button>
                 </div>
                 <div className={styles.testResultsContent}>
-                  {Array.isArray(testResults.data) ? (
-                    <>
-                      <div className={styles.testResultsStats}>
-                        <div className={styles.testStat}>
-                          <span>Total:</span> {testResults.data.length}
-                        </div>
-                        <div className={styles.testStat}>
-                          <span>Passed:</span>{' '}
-                          {testResults.data.filter(r => r.passed).length}
-                        </div>
-                        <div className={styles.testStat}>
-                          <span>Failed:</span>{' '}
-                          {testResults.data.filter(r => !r.passed).length}
-                        </div>
-                      </div>
-                      <div className={styles.testResultsList}>
-                        {testResults.data.map((result, index) => (
-                          <div
-                            key={index}
-                            className={`${styles.testResultItem} ${result.passed ? styles.testPassed : styles.testFailed}`}
-                          >
-                            <div className={styles.testResultHeader}>
-                              <span className={styles.testName}>
-                                {result.name || `Test Case ${index + 1}`}
-                              </span>
-                              <span className={styles.testStatus}>
-                                {result.passed ? 'Passed' : 'Failed'}
-                              </span>
+                  {(() => {
+                    const resultsArray =
+                      testResults.test_cases ?? testResults.data ?? [];
+
+                    if (
+                      Array.isArray(resultsArray) &&
+                      resultsArray.length > 0
+                    ) {
+                      return (
+                        <>
+                          <div className={styles.testResultsStats}>
+                            <div className={styles.testStat}>
+                              <span>Total:</span> {resultsArray.length}
                             </div>
-                            {!result.passed && result.error && (
-                              <div className={styles.testError}>
-                                {result.error}
-                              </div>
-                            )}
+                            <div className={styles.testStat}>
+                              <span>Passed:</span>{' '}
+                              {resultsArray.filter(r => r.passed).length}
+                            </div>
+                            <div className={styles.testStat}>
+                              <span>Failed:</span>{' '}
+                              {resultsArray.filter(r => !r.passed).length}
+                            </div>
                           </div>
-                        ))}
+                          <div className={styles.testResultsList}>
+                            {resultsArray.map((result, index) => (
+                              <div
+                                key={result.id ?? index}
+                                className={`${styles.testResultItem} ${result.passed ? styles.testPassed : styles.testFailed}`}
+                              >
+                                <div className={styles.testResultHeader}>
+                                  <span className={styles.testName}>
+                                    {result.name || `Test Case ${index + 1}`}
+                                  </span>
+                                  <span className={styles.testStatus}>
+                                    {result.passed ? 'Passed' : 'Failed'}
+                                  </span>
+                                </div>
+                                {!result.passed && result.error && (
+                                  <div className={styles.testError}>
+                                    {result.error}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      );
+                    }
+
+                    return (
+                      <div className={styles.testResultMessage}>
+                        {testResults.message || 'Test execution completed'}
                       </div>
-                    </>
-                  ) : (
-                    <div className={styles.testResultMessage}>
-                      {testResults.message || 'Test execution completed'}
-                    </div>
-                  )}
+                    );
+                  })()}
                 </div>
               </div>
             )}
@@ -1587,6 +1600,28 @@ export default function RequestPanel({ activeRequest }) {
                             }}
                           >
                             Edit
+                          </button>
+                          <button
+                            className={styles.deleteTestButton}
+                            onClick={async () => {
+                              const id = testCase.id || testCase.case_id;
+                              const confirmDelete = window.confirm(
+                                'Delete this test case?'
+                              );
+                              if (!confirmDelete) return;
+                              try {
+                                await deleteTestCase(id);
+                                // Refresh list after deletion
+                                getTestCases(selectedNode.id);
+                              } catch (err) {
+                                console.error(
+                                  'Failed to delete test case:',
+                                  err
+                                );
+                              }
+                            }}
+                          >
+                            Delete
                           </button>
                         </div>
                       </div>

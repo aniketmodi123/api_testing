@@ -122,27 +122,28 @@ async def _run_case(
             headers = replace_ts(headers)
 
             body = case.get("body")
+            params = case.get("params")
 
             print(f"{case['name']} | {method} {url}")
 
             # time the request
             t0 = time.perf_counter()
 
-            # Send request
+            # Send request (pass params as query parameters when present)
             if method == "GET":
-                resp = await client.get(url, headers=headers, timeout=timeout)
+                resp = await client.get(url, headers=headers, params=params, timeout=timeout)
             elif method == "POST":
-                resp = await client.post(url, headers=headers, json=body, timeout=timeout)
+                resp = await client.post(url, headers=headers, json=body, params=params, timeout=timeout)
             elif method == "PUT":
-                resp = await client.put(url, headers=headers, json=body, timeout=timeout)
+                resp = await client.put(url, headers=headers, json=body, params=params, timeout=timeout)
             elif method == "DELETE":
-                resp = await client.delete(url, headers=headers, timeout=timeout)
+                resp = await client.delete(url, headers=headers, params=params, timeout=timeout)
             elif method == "PATCH":
-                resp = await client.patch(url, headers=headers, json=body, timeout=timeout)
+                resp = await client.patch(url, headers=headers, json=body, params=params, timeout=timeout)
             elif method == "HEAD":
-                resp = await client.head(url, headers=headers, timeout=timeout)
+                resp = await client.head(url, headers=headers, params=params, timeout=timeout)
             elif method == "OPTIONS":
-                resp = await client.options(url, headers=headers, timeout=timeout)
+                resp = await client.options(url, headers=headers, params=params, timeout=timeout)
             else:
                 raise ValueError(f"Unsupported method: {method}")
 
@@ -200,6 +201,7 @@ async def _run_case(
                     "method": method,
                     "url": url,
                     "headers": headers,
+                    "params": params,
                     "body": body
                 },
                 "response": {
@@ -231,6 +233,7 @@ async def run_from_list_api(
             cases.append({
                 "name": c.get("name") or f"case-{c.get('id')}",
                 "body": c.get("body"),
+                "params": c.get("params"),
                 "expected": c.get("expected"),
                 "method": method,
                 "endpoint": endpoint,

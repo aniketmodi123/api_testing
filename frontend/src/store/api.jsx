@@ -258,6 +258,35 @@ export const useApi = create((set, get) => ({
   },
 
   /**
+   * Bulk create multiple test cases
+   * @param {number} fileId - File ID
+   * @param {Array} testCasesData - Array of test case data objects
+   */
+  bulkCreateTestCases: async (fileId, testCasesData) => {
+    try {
+      set({ isLoading: true, error: null });
+      const result = await apiService.bulkCreateTestCases(
+        fileId,
+        testCasesData
+      );
+
+      if (result && result.data && result.data.created) {
+        // Add new test cases to list
+        set(state => ({
+          testCases: [...state.testCases, ...result.data.created],
+        }));
+      }
+
+      return result;
+    } catch (error) {
+      set({ error: error.message || 'Failed to bulk create test cases' });
+      throw error;
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  /**
    * Save a test case (create or update)
    * @param {number} fileId - File ID
    * @param {Object} testCaseData - Test case data
@@ -434,21 +463,47 @@ export const useApi = create((set, get) => ({
     try {
       set({ isLoading: true, error: null, testResults: null });
       const result = await apiService.runTest(fileId, caseId);
+      console.log('runTest raw result:', result);
 
       if (result && result.data) {
-        // Format the test results for consistent display
-        const formattedResults = {
-          status: result.status,
-          statusText: result.message || '',
-          time: result.data.execution_time || '0 ms',
-          size: result.data.response_size || '0 B',
-          body: result.data.response || {},
-          headers: result.data.response_headers || {},
-          passed: result.data.passed || false,
-          details: result.data.validation_details || [],
-        };
+        // Normalize different backend shapes into { test_cases: [...] }
+        let normalized = null;
 
-        set({ testResults: formattedResults });
+        // If backend returned an array of case results
+        if (Array.isArray(result.data)) {
+          normalized = {
+            test_cases: result.data,
+            status: result.status,
+            message: result.message,
+          };
+        } else if (result.data.test_cases) {
+          // Already in the expected shape
+          normalized = {
+            ...result.data,
+            status: result.status,
+            message: result.message,
+          };
+        } else {
+          // Fallback: convert known fields into a single-item test_cases array
+          normalized = {
+            test_cases: [
+              {
+                id: result.data.case_id || null,
+                name: result.data.name || `Run ${new Date().toISOString()}`,
+                response: result.data.response || result.data.body || {},
+                success: result.data.passed || false,
+                error: result.data.error || null,
+                status_code: result.data.status_code || result.status || null,
+                duration:
+                  result.data.execution_time || result.data.duration || null,
+              },
+            ],
+            status: result.status,
+            message: result.message,
+          };
+        }
+
+        set({ testResults: normalized });
       }
 
       return result;

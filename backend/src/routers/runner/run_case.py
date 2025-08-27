@@ -26,7 +26,7 @@ class RunnerReq(BaseModel):
     file_id: int
     case_id: Optional[list[int]] = None
 
-@router.get("/run")
+@router.post("/run")
 async def get_file_api(
     req: RunnerReq,
     username: str = Header(...),
@@ -90,6 +90,7 @@ async def get_file_api(
                 "id": case.id,
                 "name": case.name,
                 "headers": merged_headers,  # Use combined headers
+                "params": getattr(case, 'params', {}) or {},
                 "body": case.body,
                 "expected": case.expected,
                 "created_at": case.created_at

@@ -92,6 +92,12 @@ async def get_test_case_details(
 
         combined_headers = {**final_headers, **case_headers}
 
+        # Params if present on the case
+        try:
+            case_params = case.params or {}
+        except AttributeError:
+            case_params = {}
+
         data = {
             "id": case.id,
             "api_id": case.api_id,
@@ -99,6 +105,7 @@ async def get_test_case_details(
             "headers": combined_headers,  # Combined headers
             "case_specific_headers": case_headers,  # Case-specific headers only
             "inherited_headers": final_headers,  # Inherited headers only
+            "params": case_params,
             "body": case.body,
             "expected": case.expected,
             "created_at": case.created_at,

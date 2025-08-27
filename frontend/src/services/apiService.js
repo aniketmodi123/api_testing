@@ -219,6 +219,33 @@ export const apiService = {
   },
 
   /**
+   * Bulk create multiple test cases for an API
+   * @param {number} fileId - File ID containing the API
+   * @param {Array} testCasesData - Array of test case data objects
+   * @returns {Promise} Promise with bulk creation results
+   */
+  async bulkCreateTestCases(fileId, testCasesData) {
+    try {
+      console.log(
+        `Bulk creating ${testCasesData.length} test cases for file ${fileId}`
+      );
+      const response = await api.post(
+        `/file/${fileId}/api/cases/bulk`,
+        testCasesData
+      );
+      console.log('Bulk create response:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Error bulk creating test cases:', error);
+      if (error.response) {
+        console.error('Response data:', error.response.data);
+        console.error('Response status:', error.response.status);
+      }
+      throw error;
+    }
+  },
+
+  /**
    * Duplicates an API to a new file within the same folder
    * @param {number} fileId - Original file ID containing the API to duplicate
    * @param {string} newApiName - Optional name for the duplicated API
@@ -265,6 +292,7 @@ export const apiService = {
         name:
           testCaseData.name || `Test case - ${new Date().toLocaleTimeString()}`,
         headers: testCaseData.headers || {},
+        params: testCaseData.params || {},
         // Keep the body as a string to match FastAPI endpoint expectations
         body: testCaseData.body || null,
         expected: testCaseData.expected || null,
@@ -410,11 +438,11 @@ export const apiService = {
   async runTest(fileId, caseId = null) {
     try {
       console.log(`Running test for file ${fileId}, case IDs:`, caseId);
-      const params = { file_id: fileId };
+      const body = { file_id: fileId };
       if (caseId) {
-        params.case_id = Array.isArray(caseId) ? caseId : [caseId];
+        body.case_id = Array.isArray(caseId) ? caseId : [caseId];
       }
-      const response = await api.get(`/run`, { params });
+      const response = await api.post(`/run`, body);
 
       // Handle the specific response structure
       return {

@@ -14,9 +14,13 @@ const TestCaseForm = ({
   const [formData, setFormData] = useState({
     name: '',
     headers: {},
+    params: {},
     body: {},
     expected: {},
   });
+  const [bulkImportMode, setBulkImportMode] = useState(false);
+  const [bulkImportJson, setBulkImportJson] = useState('');
+  const [bulkImportError, setBulkImportError] = useState('');
 
   const {
     createTestCase,
@@ -28,6 +32,7 @@ const TestCaseForm = ({
     selectTestCase,
     saveTestCase,
     testCaseDetails,
+    bulkCreateTestCases,
   } = useApi();
 
   // Load test case data if editing an existing case
@@ -51,6 +56,7 @@ const TestCaseForm = ({
       setFormData({
         name: selectedTestCase.name || '',
         headers: selectedTestCase.headers || {},
+        params: selectedTestCase.params || {},
         body: selectedTestCase.body || {},
         expected: selectedTestCase.expected || {},
       });
@@ -80,6 +86,53 @@ const TestCaseForm = ({
     }
   };
 
+  // Handle bulk import JSON change
+  const handleBulkImportChange = e => {
+    setBulkImportJson(e.target.value);
+    setBulkImportError('');
+  };
+
+  // Toggle between normal mode and bulk import mode
+  const toggleBulkImportMode = () => {
+    setBulkImportMode(!bulkImportMode);
+    setBulkImportError('');
+  };
+
+  // Handle bulk import submission
+  const handleBulkImport = async () => {
+    try {
+      // Parse the JSON array
+      let testCases;
+      try {
+        testCases = JSON.parse(bulkImportJson);
+        if (!Array.isArray(testCases)) {
+          testCases = [testCases]; // Convert single object to array
+        }
+      } catch (err) {
+        setBulkImportError(
+          'Invalid JSON format. Please provide a valid JSON array.'
+        );
+        return;
+      }
+
+      // Validate each test case has required fields
+      for (let i = 0; i < testCases.length; i++) {
+        const testCase = testCases[i];
+        if (!testCase.name) {
+          setBulkImportError(`Test case at index ${i} is missing a name.`);
+          return;
+        }
+      }
+
+      // Send the bulk create request
+      const result = await bulkCreateTestCases(fileId, testCases);
+      onSave(result?.data);
+    } catch (err) {
+      console.error('Error bulk importing test cases:', err);
+      setBulkImportError(err.message || 'Failed to bulk import test cases');
+    }
+  };
+
   // Handle form submission
   const handleSubmit = async e => {
     e.preventDefault();
@@ -95,9 +148,21 @@ const TestCaseForm = ({
 
   return (
     <div className={styles.formContainer}>
-      <h2>{caseId ? 'Edit Test Case' : 'Create New Test Case'}</h2>
+      <div className={styles.formHeader}>
+        <h2>{caseId ? 'Edit Test Case' : 'Create New Test Case'}</h2>
+        {!caseId && ( // Only show bulk import toggle in create mode
+          <button
+            type="button"
+            className={styles.bulkImportToggle}
+            onClick={toggleBulkImportMode}
+          >
+            {bulkImportMode ? 'Single Case Mode' : 'Bulk Import Mode'}
+          </button>
+        )}
+      </div>
 
       {error && <div className={styles.error}>{error}</div>}
+      {bulkImportError && <div className={styles.error}>{bulkImportError}</div>}
 
       {/* Display detailed test case info if available */}
       {caseId && testCaseDetails && (
@@ -154,83 +219,155 @@ const TestCaseForm = ({
         </div>
       )}
 
-      <form onSubmit={handleSubmit}>
-        <div className={styles.formGroup}>
-          <label htmlFor="name">Test Case Name</label>
-          <input
-            type="text"
-            id="name"
-            name="name"
-            value={formData.name}
-            onChange={handleChange}
-            required
-            placeholder="Enter test case name"
-          />
+      {bulkImportMode && !caseId ? (
+        <div className={styles.bulkImportContainer}>
+          <div className={styles.formGroup}>
+            <label htmlFor="bulkImport">Bulk Import JSON</label>
+            <textarea
+              id="bulkImport"
+              name="bulkImport"
+              value={bulkImportJson}
+              onChange={handleBulkImportChange}
+              placeholder={`[
+  {
+    "name": "Test Case 1",
+    "headers": {"Content-Type": "application/json"},
+    "params": {"param1": "value1"},
+    "body": {"key": "value"},
+    "expected": {"status": "success"}
+  },
+  {
+    "name": "Test Case 2",
+    "headers": {"Content-Type": "application/json"},
+    "params": {"param2": "value2"},
+    "body": {"key": "value"},
+    "expected": {"status": "success"}
+  }
+]`}
+              rows={15}
+              className={styles.jsonEditor}
+              required
+            />
+            <div className={styles.bulkImportHelp}>
+              <p>
+                Paste a JSON array of test cases to bulk import. Each test case
+                should have:
+                <code>name</code>, <code>headers</code>, <code>params</code>,{' '}
+                <code>body</code>, and <code>expected</code> fields.
+              </p>
+            </div>
+          </div>
+          <div className={styles.formActions}>
+            <button
+              type="button"
+              onClick={onCancel}
+              className={styles.cancelButton}
+              disabled={isLoading}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleBulkImport}
+              className={styles.saveButton}
+              disabled={isLoading}
+            >
+              {isLoading ? 'Importing...' : 'Import Test Cases'}
+            </button>
+          </div>
         </div>
+      ) : (
+        <form onSubmit={handleSubmit}>
+          <div className={styles.formGroup}>
+            <label htmlFor="name">Test Case Name</label>
+            <input
+              type="text"
+              id="name"
+              name="name"
+              value={formData.name}
+              onChange={handleChange}
+              required
+              placeholder="Enter test case name"
+            />
+          </div>
 
-        <div className={styles.formGroup}>
-          <label htmlFor="headers">Headers (JSON)</label>
-          <textarea
-            id="headers"
-            name="headers"
-            value={JSON.stringify(formData.headers, null, 2)}
-            onChange={e => handleJsonChange('headers', e.target.value)}
-            placeholder='{"Content-Type": "application/json"}'
-            rows={5}
-            className={styles.jsonEditor}
-          />
-        </div>
+          <div className={styles.formGroup}>
+            <label htmlFor="headers">Headers (JSON)</label>
+            <textarea
+              id="headers"
+              name="headers"
+              value={JSON.stringify(formData.headers, null, 2)}
+              onChange={e => handleJsonChange('headers', e.target.value)}
+              placeholder='{"Content-Type": "application/json"}'
+              rows={5}
+              className={styles.jsonEditor}
+            />
+          </div>
 
-        <div className={styles.formGroup}>
-          <label htmlFor="body">Request Body (JSON)</label>
-          <textarea
-            id="body"
-            name="body"
-            value={JSON.stringify(formData.body, null, 2)}
-            onChange={e => handleJsonChange('body', e.target.value)}
-            placeholder="{}"
-            rows={8}
-            className={styles.jsonEditor}
-            required
-          />
-        </div>
+          <div className={styles.formGroup}>
+            <label htmlFor="params">Query Params (JSON)</label>
+            <textarea
+              id="params"
+              name="params"
+              value={JSON.stringify(formData.params, null, 2)}
+              onChange={e => handleJsonChange('params', e.target.value)}
+              placeholder='{"search": "value", "limit": 10}'
+              rows={4}
+              className={styles.jsonEditor}
+            />
+          </div>
 
-        <div className={styles.formGroup}>
-          <label htmlFor="expected">Expected Response (JSON)</label>
-          <textarea
-            id="expected"
-            name="expected"
-            value={JSON.stringify(formData.expected, null, 2)}
-            onChange={e => handleJsonChange('expected', e.target.value)}
-            placeholder="{}"
-            rows={8}
-            className={styles.jsonEditor}
-            required
-          />
-        </div>
+          <div className={styles.formGroup}>
+            <label htmlFor="body">Request Body (JSON)</label>
+            <textarea
+              id="body"
+              name="body"
+              value={JSON.stringify(formData.body, null, 2)}
+              onChange={e => handleJsonChange('body', e.target.value)}
+              placeholder="{}"
+              rows={8}
+              className={styles.jsonEditor}
+              required
+            />
+          </div>
 
-        <div className={styles.formActions}>
-          <button
-            type="button"
-            onClick={onCancel}
-            className={styles.cancelButton}
-            disabled={isLoading}
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            className={styles.saveButton}
-            disabled={isLoading}
-          >
-            {isLoading
-              ? 'Saving...'
-              : caseId
-                ? 'Update Test Case'
-                : 'Create Test Case'}
-          </button>
-        </div>
-      </form>
+          <div className={styles.formGroup}>
+            <label htmlFor="expected">Expected Response (JSON)</label>
+            <textarea
+              id="expected"
+              name="expected"
+              value={JSON.stringify(formData.expected, null, 2)}
+              onChange={e => handleJsonChange('expected', e.target.value)}
+              placeholder="{}"
+              rows={8}
+              className={styles.jsonEditor}
+              required
+            />
+          </div>
+
+          <div className={styles.formActions}>
+            <button
+              type="button"
+              onClick={onCancel}
+              className={styles.cancelButton}
+              disabled={isLoading}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className={styles.saveButton}
+              disabled={isLoading}
+            >
+              {isLoading
+                ? 'Saving...'
+                : caseId
+                  ? 'Update Test Case'
+                  : 'Create Test Case'}
+            </button>
+          </div>
+        </form>
+      )}
     </div>
   );
 };

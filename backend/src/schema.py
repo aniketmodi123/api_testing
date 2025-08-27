@@ -562,6 +562,7 @@ class ApiCaseCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255, description="Test case name")
     headers: Optional[Dict[str, Any]] = Field(None, description="Request headers")
     body: Optional[Dict[str, Any]] = Field(None, description="Request body data")
+    params: Optional[Dict[str, Any]] = Field(None, description="Request query/path parameters")
     expected: Optional[Dict[str, Any]] = Field(None, description="Expected response data")
 
     @validator('name')
@@ -575,6 +576,7 @@ class ApiCaseUpdateRequest(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255, description="Test case name")
     headers: Optional[Dict[str, Any]] = Field(None, description="Request headers")
     body: Optional[Dict[str, Any]] = Field(None, description="Request body data")
+    params: Optional[Dict[str, Any]] = Field(None, description="Request query/path parameters")
     expected: Optional[Dict[str, Any]] = Field(None, description="Expected response data")
     response: Optional[Dict[str, Any]] = Field(None, description="Expected response data")
 
@@ -590,6 +592,7 @@ class UpdateTestCaseRequest(BaseModel):
     name: Optional[str] = None
     headers: Optional[Dict[Any, Any]] = None  # Added headers
     body: Optional[Dict[Any, Any]] = None
+    params: Optional[Dict[Any, Any]] = None
     expected: Optional[Dict[Any, Any]] = None
 
 

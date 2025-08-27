@@ -53,10 +53,12 @@ async def duplicate_test_case(
 
         try:
             headers = original_case.headers.copy() if hasattr(original_case, 'headers') and original_case.headers else {}
+            params = original_case.params.copy() if hasattr(original_case, 'params') and original_case.params else {}
             new_case = ApiCase(
                 api_id=original_case.api_id,
                 name=duplicate_name,
                 headers=headers,  # Added headers
+                params=params,
                 body=original_case.body.copy() if original_case.body else {},
                 expected=original_case.expected.copy() if original_case.expected else {}
             )
@@ -84,6 +86,7 @@ async def duplicate_test_case(
             "api_id": new_case.api_id,
             "name": new_case.name,
             "headers": headers,  # Added headers
+            "params": new_case.params,
             "body": new_case.body,
             "expected": new_case.expected,
             "created_at": new_case.created_at,

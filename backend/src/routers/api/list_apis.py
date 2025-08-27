@@ -99,6 +99,7 @@ async def get_file_api(
                     "id": case.id,
                     "name": case.name,
                     "body": case.body,
+                    "params": getattr(case, 'params', None),
                     "expected": case.expected,
                     "headers": case.headers,
                     "created_at": case.created_at
