@@ -86,8 +86,9 @@ async def duplicate_file_api(
                 duplicate_case = ApiCase(
                     api_id=duplicate_api.id,
                     name=case.name,
-                    request=case.request.copy() if case.request else {},
-                    response=case.response.copy() if case.response else {}
+                    headers = case.headers,
+                    body=case.body.copy() if case.body else {},
+                    expected=case.expected.copy() if case.expected else {}
                 )
                 db.add(duplicate_case)
                 duplicated_cases.append(duplicate_case)

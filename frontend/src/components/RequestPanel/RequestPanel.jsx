@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api';
 import { useApi } from '../../store/api';
 import { useNode } from '../../store/node';
@@ -6,6 +6,66 @@ import { TestCaseForm } from '../TestCaseForm';
 import styles from './RequestPanel.module.css';
 import './buttonStyles.css';
 import './dropdown.css';
+
+// Copy to clipboard utility function
+const copyToClipboard = async text => {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (err) {
+    console.error('Failed to copy text: ', err);
+    return false;
+  }
+};
+
+// Reusable copy button component
+const CopyButton = ({ textToCopy, className }) => {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    const success = await copyToClipboard(textToCopy);
+    if (success) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000); // Reset after 2 seconds
+    }
+  };
+
+  return (
+    <button
+      className={`${styles.copyButton} ${className || ''}`}
+      onClick={handleCopy}
+      title="Copy to clipboard"
+    >
+      {copied ? (
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"
+            fill="currentColor"
+          />
+        </svg>
+      ) : (
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="M16 1H4C2.9 1 2 1.9 2 3V17H4V3H16V1ZM19 5H8C6.9 5 6 5.9 6 7V21C6 22.1 6.9 23 8 23H19C20.1 23 21 22.1 21 21V7C21 5.9 20.1 5 19 5ZM19 21H8V7H19V21Z"
+            fill="currentColor"
+          />
+        </svg>
+      )}
+    </button>
+  );
+};
 
 // Helper function to safely extract values from possibly nested API response objects
 const extractValue = (obj, key, defaultValue = '') => {
@@ -102,6 +162,7 @@ export default function RequestPanel({ activeRequest }) {
     updateApi,
     saveApi,
     saveTestCase,
+    duplicateApi,
   } = useApi();
 
   const [method, setMethod] = useState(
@@ -115,6 +176,33 @@ export default function RequestPanel({ activeRequest }) {
   const [editingTestCaseId, setEditingTestCaseId] = useState(null);
   const [bodyContent, setBodyContent] = useState('');
   const [bodyType, setBodyType] = useState('JSON');
+  const [requestHeight, setRequestHeight] = useState(200); // Default height for request section
+
+  // Handle resizing between request and response sections
+  const startResize = useCallback(
+    e => {
+      e.preventDefault();
+      const startY = e.clientY;
+      const startHeight = requestHeight;
+
+      const doDrag = e => {
+        const newHeight = startHeight + (e.clientY - startY);
+        // Set min and max height constraints
+        if (newHeight >= 100 && newHeight <= window.innerHeight - 200) {
+          setRequestHeight(newHeight);
+        }
+      };
+
+      const stopDrag = () => {
+        document.removeEventListener('mousemove', doDrag);
+        document.removeEventListener('mouseup', stopDrag);
+      };
+
+      document.addEventListener('mousemove', doDrag);
+      document.addEventListener('mouseup', stopDrag);
+    },
+    [requestHeight]
+  );
 
   // Update the panel when selectedNode changes
   // Add effect for handling dropdown close on outside click
@@ -736,10 +824,17 @@ export default function RequestPanel({ activeRequest }) {
                     );
 
                     // Format the test case data according to the FastAPI endpoint requirements
+                    // Get the request headers from the current request
+                    const requestHeaders = extractValue(
+                      activeApi,
+                      'headers',
+                      {}
+                    );
+
                     const testCaseData = {
                       name: customName || defaultName, // Use custom name or fall back to default
                       // Pass headers directly as object
-                      headers: extractValue(activeApi, 'headers', {}),
+                      headers: requestHeaders,
                       // Pass body as string if it's JSON or other formats
                       body: bodyType === 'none' ? null : bodyContent,
                       // Use the validation schema from the validation tab
@@ -748,33 +843,62 @@ export default function RequestPanel({ activeRequest }) {
 
                     console.log('Recording test case with data:', testCaseData);
 
-                    // Use our saveTestCase function
-                    const result = await saveTestCase(
-                      selectedNode.id,
-                      testCaseData
-                    );
-
-                    if (result && result.data) {
-                      alert('Test case saved successfully!');
-                      // Refresh the test cases list
-                      await getTestCases(selectedNode.id);
-                    } else {
-                      alert('Failed to save test case. Please try again.');
+                    // Check if required values are present
+                    if (!selectedNode?.id) {
+                      console.error(
+                        'Missing selectedNode.id when trying to save test case'
+                      );
+                      alert(
+                        'Error: No API selected. Please select an API first.'
+                      );
+                      return;
                     }
 
-                    // Close the dropdown after action
-                    document
-                      .querySelector('.saveActionsDropdown')
-                      .classList.remove('active');
+                    console.log(
+                      'Selected node for saving test case:',
+                      selectedNode
+                    );
+
+                    try {
+                      // Use our saveTestCase function
+                      const result = await saveTestCase(
+                        selectedNode.id,
+                        testCaseData
+                      );
+
+                      console.log('Save test case result:', result);
+
+                      if (result && (result.data || result.success)) {
+                        alert('Test case saved successfully!');
+                        // Refresh the test cases list
+                        await getTestCases(selectedNode.id);
+                      } else {
+                        alert('Failed to save test case. Please try again.');
+                      }
+
+                      // Close the dropdown after action
+                      document
+                        .querySelector('.saveActionsDropdown')
+                        .classList.remove('active');
+                    } catch (saveError) {
+                      console.error('Error in saveTestCase:', saveError);
+                      alert(
+                        `Error saving test case: ${saveError.message || 'Unknown error'}`
+                      );
+                    }
                   } catch (err) {
                     console.error('Error recording test case:', err);
+                    if (err.response) {
+                      console.error('Error response:', err.response.data);
+                      console.error('Status:', err.response.status);
+                    }
                     alert(
                       `Error saving test case: ${err.message || 'Unknown error'}`
                     );
                   } finally {
                     // Reset button state
                     button.innerText = originalText;
-                    button.disabled = !response || !selectedNode?.id;
+                    button.disabled = false;
                   }
                 }}
                 disabled={!response || !selectedNode?.id}
@@ -856,7 +980,10 @@ export default function RequestPanel({ activeRequest }) {
       </div>
 
       {/* Tab Content */}
-      <div className={styles.tabContent}>
+      <div
+        className={styles.tabContent}
+        style={{ height: `${requestHeight}px` }}
+      >
         {activeTab === 'api' && (
           <div className={styles.apiContent}>
             {isLoading ? (
@@ -1230,8 +1357,9 @@ export default function RequestPanel({ activeRequest }) {
 
             {bodyType !== 'none' && (
               <div
-                className={`${styles.jsonEditor} ${styles[bodyType.toLowerCase() + 'Editor']}`}
+                className={`${styles.jsonEditor} ${styles[bodyType.toLowerCase() + 'Editor']} scrollable ${styles.jsonContainer}`}
               >
+                {bodyType === 'JSON' && <CopyButton textToCopy={bodyContent} />}
                 <textarea
                   className={styles.bodyTextarea}
                   value={bodyContent}
@@ -1271,7 +1399,20 @@ export default function RequestPanel({ activeRequest }) {
         {activeTab === 'validation' && (
           <div className={styles.validationContent}>
             <div className={styles.validationSection}>
-              <div className={styles.jsonEditor}>
+              <div
+                className={`${styles.jsonEditor} scrollable ${styles.jsonContainer}`}
+              >
+                <CopyButton
+                  textToCopy={(() => {
+                    const schema =
+                      extractValue(activeApi, 'expected') ||
+                      extractValue(activeApi, 'validation.responseSchema') ||
+                      defaultValidationSchema;
+                    return typeof schema === 'string'
+                      ? schema
+                      : JSON.stringify(schema, null, 2);
+                  })()}
+                />
                 <textarea
                   id="validationSchemaTextarea"
                   rows={16}
@@ -1495,6 +1636,15 @@ export default function RequestPanel({ activeRequest }) {
         )}
       </div>
 
+      {/* Resizable handle */}
+      <div
+        className={styles.resizeHandle}
+        onMouseDown={startResize}
+        title="Drag to resize"
+      >
+        {/* This is the draggable resize handle */}
+      </div>
+
       {/* Response Section */}
       <div className={styles.responseSection}>
         <div className={styles.responseMeta}>
@@ -1532,60 +1682,36 @@ export default function RequestPanel({ activeRequest }) {
 
             <div className={styles.responseContent}>
               {responseTab === 'body' && (
-                <div className={styles.responseBody}>
+                <div className={`${styles.responseBody} scrollable`}>
                   {response.body &&
                   response.body.response_code !== undefined ? (
                     // Format for standard API response with response_code and data
                     <div className={styles.structuredResponse}>
-                      <div className={styles.responseCodeSection}>
-                        <strong>Response Code:</strong>{' '}
-                        {response.body.response_code}
-                      </div>
                       {response.body.data && (
-                        <div className={styles.responseDataSection}>
-                          <strong>Data:</strong>
-                          <pre>
-                            {JSON.stringify(response.body.data, null, 2)}
-                          </pre>
+                        <div
+                          className={`${styles.responseDataSection} ${styles.jsonContainer}`}
+                        >
+                          <CopyButton
+                            textToCopy={JSON.stringify(response.body, null, 2)}
+                          />
+                          <pre>{JSON.stringify(response.body, null, 2)}</pre>
                         </div>
                       )}
                     </div>
                   ) : (
                     // For other response formats
-                    <pre>{JSON.stringify(response.body, null, 2)}</pre>
-                  )}
-
-                  {/* Debug information - helps developers understand the response structure */}
-                  {process.env.NODE_ENV === 'development' && (
-                    <div className={styles.debugInfo}>
-                      <details>
-                        <summary>Debug Info</summary>
-                        <small>Response structure:</small>
-                        <pre>
-                          {JSON.stringify(
-                            {
-                              keys: Object.keys(response),
-                              bodyType: typeof response.body,
-                              bodyIsArray: Array.isArray(response.body),
-                              bodyKeys:
-                                typeof response.body === 'object'
-                                  ? Object.keys(response.body)
-                                  : [],
-                              responseCode: response.body?.response_code,
-                              hasData: !!response.body?.data,
-                            },
-                            null,
-                            2
-                          )}
-                        </pre>
-                      </details>
+                    <div className={styles.jsonContainer}>
+                      <CopyButton
+                        textToCopy={JSON.stringify(response.body, null, 2)}
+                      />
+                      <pre>{JSON.stringify(response.body, null, 2)}</pre>
                     </div>
                   )}
                 </div>
               )}
 
               {responseTab === 'headers' && (
-                <div className={styles.responseHeaders}>
+                <div className={`${styles.responseHeaders} scrollable`}>
                   {Object.entries(response.headers).map(([key, value]) => (
                     <div key={key} className={styles.headerRow}>
                       <span className={styles.headerKey}>{key}:</span>

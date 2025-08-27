@@ -15,7 +15,7 @@ from routers.sso import create_user, forget_password, login, logout, otp_generat
 from routers.workspace import create_workspace, update_workspace, list_workspace, list_workspace_tree,delete_workspace
 from routers.node import create_node, update_node, list_node, delete_node
 from routers.headers import complete_headers, set_headers,list_headers,delete_headers, update_headers
-from routers.api import list_apis, create_dup, delete_api, save_api
+from routers.api import list_apis, create_dup, save_api
 from routers.api_cases import delete_case, get_case, list_search_api_case, create_dup_case, save_api_case
 from security import AuthMiddleware
 
@@ -161,7 +161,6 @@ app.include_router(complete_headers.router, tags=["Headers"])
 # apis
 app.include_router(list_apis.router, tags=["APIs"])
 app.include_router(create_dup.router, tags=["APIs"])
-app.include_router(delete_api.router, tags=["APIs"])
 app.include_router(save_api.router, tags=["APIs"])
 
 #api cases

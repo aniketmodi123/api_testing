@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useApi } from '../../store/api';
 import { useNode } from '../../store/node';
 import { useWorkspace } from '../../store/workspace';
 import HeaderEditor from '../HeaderEditor/HeaderEditor';
@@ -359,6 +360,7 @@ export default function CollectionTree({ onSelectRequest }) {
     updateNode,
     deleteNode,
   } = useNode();
+  const { duplicateApi } = useApi();
 
   const [expandedFolders, setExpandedFolders] = useState([]);
   const [selectedItem, setSelectedItem] = useState(null);
@@ -576,26 +578,67 @@ export default function CollectionTree({ onSelectRequest }) {
     setNewItemName('');
   };
 
+  // Handle duplicate API functionality
+
   // Handle duplicate node
-  const handleDuplicateNode = node => {
+  const handleDuplicateNode = async node => {
     if (activeWorkspace) {
       const duplicateName = `${node.name} (Copy)`;
 
-      // Directly duplicate without confirmation
-      const duplicateData = {
-        name: duplicateName,
-        workspace_id: activeWorkspace.id,
-        parent_id: node.parent_id,
-      };
+      try {
+        // If this is a file node that contains an API, use the API duplication endpoint
+        if (node.type === 'file' && node.id) {
+          // Ask for custom API name
+          const customName = prompt(
+            'Enter a name for the duplicated API:',
+            duplicateName
+          );
 
-      if (node.type === 'folder') {
-        createFolder(duplicateData);
-      } else {
-        createFile({
-          ...duplicateData,
-          method: node.method || 'GET',
-          url: node.url || '',
-        });
+          if (customName === null) {
+            // User canceled the prompt
+            return;
+          }
+
+          // Ask if test cases should be included
+          const includeCases = confirm(
+            'Include test cases in the duplication?'
+          );
+
+          // Call the duplicateApi function
+          const result = await duplicateApi(node.id, customName, includeCases);
+
+          if (result && result.response_code === 201) {
+            alert(
+              `API duplicated successfully to file: ${result.data.new_file_name}`
+            );
+            // Refresh the node tree to show the new file
+            if (activeWorkspace) {
+              fetchNodesByWorkspaceId(activeWorkspace.id);
+            }
+          } else {
+            alert('Failed to duplicate API. Please try again.');
+          }
+        } else {
+          // For folder nodes or if API duplication fails, use the standard file/folder duplication
+          const duplicateData = {
+            name: duplicateName,
+            workspace_id: activeWorkspace.id,
+            parent_id: node.parent_id,
+          };
+
+          if (node.type === 'folder') {
+            createFolder(duplicateData);
+          } else {
+            createFile({
+              ...duplicateData,
+              method: node.method || 'GET',
+              url: node.url || '',
+            });
+          }
+        }
+      } catch (err) {
+        console.error('Error duplicating node:', err);
+        alert(`Error during duplication: ${err.message || 'Unknown error'}`);
       }
     }
   };
@@ -662,7 +705,7 @@ export default function CollectionTree({ onSelectRequest }) {
         </button>
       </div>
 
-      <div className={styles.treeContainer}>
+      <div className={`${styles.treeContainer} scrollable`}>
         {isAddingFolder && (
           <div className={styles.newFolderForm}>
             <input

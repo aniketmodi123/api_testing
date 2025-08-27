@@ -43,6 +43,34 @@
 
 .jsonEditor {
   margin-top: 16px;
+  position: relative;
+}
+
+.copyButton {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background-color: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0.7;
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+  z-index: 10;
+  width: 28px;
+  height: 28px;
+}
+
+.copyButton:hover {
+  opacity: 1;
+  transform: scale(1.05);
 }
 
 .jsonEditor label {
@@ -229,7 +257,6 @@
 .tabContent {
   padding: 16px;
   background-color: #2b2b2b;
-  overflow: auto;
   height: 100%;
 }
 

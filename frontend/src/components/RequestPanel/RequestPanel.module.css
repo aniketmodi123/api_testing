@@ -6,6 +6,7 @@
   padding: 15px;
   overflow: hidden;
   box-sizing: border-box;
+  gap: 0; /* Remove default gap between flex items */
 }
 
 @media (max-width: 768px) {
@@ -214,12 +215,13 @@
 
 /* Tab Content */
 .tabContent {
-  height: 200px;
   border: 1px solid var(--border);
   border-radius: 4px;
-  margin-bottom: 15px;
+  margin-bottom: 0;
   overflow: auto;
   background-color: var(--background-lighter);
+  min-height: 100px;
+  flex-shrink: 0;
 }
 
 /* Headers Content */
@@ -333,20 +335,20 @@
   padding: 10px;
   font-family: monospace;
   font-size: 13px;
-  overflow: auto;
+  height: calc(100% - 40px); /* Subtract the height of the bodyTypeSelector */
 }
 
 .bodyTextarea {
   width: 100%;
   height: 100%;
-  min-height: 200px;
+  min-height: 100px;
   font-family: monospace;
   font-size: 13px;
   padding: 10px;
   border: 1px solid var(--border);
   border-radius: 4px;
   background-color: var(--background-lighter);
-  resize: vertical;
+  resize: none; /* Disable default resize as we use our own */
   color: var(--text);
   overflow: auto;
   white-space: pre;
@@ -394,6 +396,34 @@
   border-radius: 4px;
   background-color: var(--background-lighter);
   overflow: hidden;
+  min-height: 200px;
+}
+
+/* Resizer */
+.resizeHandle {
+  height: 10px;
+  background-color: var(--background);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  cursor: row-resize;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 8px 0;
+  user-select: none;
+}
+
+.resizeHandle:hover {
+  background-color: var(--primary-light);
+}
+
+.resizeHandle::before {
+  content: "";
+  width: 30px;
+  height: 2px;
+  background-color: var(--text-muted);
+  border-radius: 2px;
 }
 
 .responseMeta {
@@ -455,6 +485,8 @@
 .responseContent {
   flex-grow: 1;
   overflow: auto;
+  height: calc(100% - 80px); /* Subtract the height of the header tabs */
+  min-height: 100px;
 }
 
 .responseBody {
@@ -1194,4 +1226,40 @@
     width: 100%;
     margin-left: 0;
   }
+}
+
+/* Use the global scrollable class instead */
+
+/* Copy Button styles */
+.copyButton {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background-color: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0.7;
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+  z-index: 10;
+  width: 28px;
+  height: 28px;
+}
+
+.copyButton:hover {
+  opacity: 1;
+  transform: scale(1.05);
+}
+
+/* Container for JSON display with copy button */
+.jsonContainer {
+  position: relative;
+  width: 100%;
 }

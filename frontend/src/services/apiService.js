@@ -219,6 +219,29 @@ export const apiService = {
   },
 
   /**
+   * Duplicates an API to a new file within the same folder
+   * @param {number} fileId - Original file ID containing the API to duplicate
+   * @param {string} newApiName - Optional name for the duplicated API
+   * @param {boolean} includeCases - Whether to include test cases in the duplication
+   * @returns {Promise} Promise with duplication result
+   */
+  async duplicateApi(fileId, newApiName = null, includeCases = true) {
+    try {
+      console.log(`Duplicating API from file ${fileId}`);
+      const response = await api.post(`/file/${fileId}/api/duplicate`, null, {
+        params: {
+          include_cases: includeCases,
+          new_api_name: newApiName,
+        },
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error duplicating API:', error, error.response?.data);
+      throw error;
+    }
+  },
+
+  /**
    * Save a test case (create or update) for an API
    * @param {number} fileId - File ID containing the API
    * @param {Object} testCaseData - Test case data
@@ -232,9 +255,15 @@ export const apiService = {
         testCaseData
       );
 
+      if (!fileId) {
+        console.error('Missing fileId when saving test case');
+        throw new Error('Missing file ID');
+      }
+
       // Ensure the data structure matches the API schema
       const formattedData = {
-        name: testCaseData.name,
+        name:
+          testCaseData.name || `Test case - ${new Date().toLocaleTimeString()}`,
         headers: testCaseData.headers || {},
         // Keep the body as a string to match FastAPI endpoint expectations
         body: testCaseData.body || null,
@@ -243,18 +272,29 @@ export const apiService = {
 
       console.log('Formatted data for API endpoint:', formattedData);
 
-      const response = await api.post(
-        `/file/${fileId}/api/cases/save${caseId ? `?case_id=${caseId}` : ''}`,
-        formattedData,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      // Log the API endpoint URL for debugging
+      const endpoint = `/file/${fileId}/api/cases/save${caseId ? `?case_id=${caseId}` : ''}`;
+      console.log('Saving test case to endpoint:', endpoint);
+
+      const response = await api.post(endpoint, formattedData, {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      console.log('Save test case response:', response.data);
       return response.data;
     } catch (error) {
-      console.error('Error saving test case:', error, error.response?.data);
+      console.error('Error saving test case:', error);
+      if (error.response) {
+        console.error('Response data:', error.response.data);
+        console.error('Response status:', error.response.status);
+        console.error('Response headers:', error.response.headers);
+      } else if (error.request) {
+        console.error('No response received. Request details:', error.request);
+      } else {
+        console.error('Error setting up request:', error.message);
+      }
       throw error;
     }
   },
@@ -271,6 +311,25 @@ export const apiService = {
       return response.data;
     } catch (error) {
       console.error(`Error fetching test case ${caseId}:`, error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get detailed test case information by ID
+   * @param {number} caseId - Test case ID
+   * @returns {Promise} Promise with detailed test case information
+   */
+  async getTestCaseDetails(caseId) {
+    try {
+      console.log('Fetching detailed test case information:', caseId);
+      const response = await api.get(`/case/${caseId}`);
+      return response.data;
+    } catch (error) {
+      console.error(
+        `Error fetching detailed test case information ${caseId}:`,
+        error
+      );
       throw error;
     }
   },

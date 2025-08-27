@@ -18,6 +18,7 @@ export const useApi = create((set, get) => ({
   isLoading: false,
   error: null,
   testResults: null,
+  testCaseDetails: null,
 
   // Actions
   setLoading: isLoading => set({ isLoading }),
@@ -207,6 +208,29 @@ export const useApi = create((set, get) => ({
   },
 
   /**
+   * Duplicate an API to a new file
+   * @param {number} fileId - File ID
+   * @param {string} newApiName - Optional name for the new API
+   * @param {boolean} includeCases - Whether to include test cases
+   */
+  duplicateApi: async (fileId, newApiName = null, includeCases = true) => {
+    try {
+      set({ isLoading: true, error: null });
+      const result = await apiService.duplicateApi(
+        fileId,
+        newApiName,
+        includeCases
+      );
+      return result;
+    } catch (error) {
+      set({ error: error.message || 'Failed to duplicate API' });
+      throw error;
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  /**
    * Create a new test case
    * @param {number} fileId - File ID
    * @param {Object} testCaseData - Test case data
@@ -318,6 +342,21 @@ export const useApi = create((set, get) => ({
       if (typeof testCase === 'number') {
         set({ isLoading: true, error: null });
         const result = await apiService.getTestCase(testCase);
+
+        // Also fetch the detailed test case information
+        try {
+          const detailsResult = await apiService.getTestCaseDetails(testCase);
+          if (detailsResult && detailsResult.data) {
+            set({ testCaseDetails: detailsResult.data });
+          }
+        } catch (detailsError) {
+          console.error(
+            'Failed to fetch detailed test case information:',
+            detailsError
+          );
+          // Don't throw this error, as we want to continue even if detailed info fails
+        }
+
         if (result && result.data) {
           set({ selectedTestCase: result.data });
         }
@@ -425,6 +464,33 @@ export const useApi = create((set, get) => ({
    * Clear test results
    */
   clearTestResults: () => set({ testResults: null }),
+
+  /**
+   * Get detailed test case information by ID
+   * @param {number} caseId - Test case ID
+   */
+  getTestCaseDetails: async caseId => {
+    try {
+      set({ isLoading: true, error: null });
+      const result = await apiService.getTestCaseDetails(caseId);
+
+      if (result && result.data) {
+        set({ testCaseDetails: result.data });
+      }
+
+      return result;
+    } catch (error) {
+      set({ error: error.message || 'Failed to get test case details' });
+      throw error;
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  /**
+   * Clear test case details
+   */
+  clearTestCaseDetails: () => set({ testCaseDetails: null }),
 }));
 
 /**

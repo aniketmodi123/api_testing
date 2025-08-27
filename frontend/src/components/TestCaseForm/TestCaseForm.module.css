@@ -90,6 +90,100 @@
   margin-bottom: 20px;
 }
 
+/* Detailed test case information styles */
+.detailedInfoSection {
+  background-color: var(--background);
+  border-radius: 4px;
+  padding: 15px;
+  margin-bottom: 20px;
+  border: 1px solid var(--border);
+}
+
+.detailedInfoSection h3 {
+  margin-top: 0;
+  margin-bottom: 15px;
+  font-size: 1.2rem;
+  color: var(--text);
+}
+
+.detailGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  margin-bottom: 15px;
+}
+
+.detailItem {
+  display: flex;
+  flex-direction: column;
+}
+
+.detailLabel {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+
+.detailValue {
+  font-size: 0.95rem;
+  color: var(--text);
+}
+
+.description {
+  margin-bottom: 15px;
+}
+
+.description h5 {
+  margin-top: 0;
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.description p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.executionHistory {
+  margin-bottom: 15px;
+}
+
+.executionHistory h5 {
+  margin-top: 0;
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.historyTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.historyTable th,
+.historyTable td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.historyTable th {
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.success {
+  color: #4caf50;
+}
+
+.failure {
+  color: #f44336;
+}
+
 @media (max-width: 768px) {
   .formContainer {
     padding: 15px;

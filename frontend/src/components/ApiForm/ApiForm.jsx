@@ -2,6 +2,66 @@ import { useEffect, useState } from 'react';
 import { useApi } from '../../store/api';
 import styles from './ApiForm.module.css';
 
+// Copy to clipboard utility function
+const copyToClipboard = async text => {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (err) {
+    console.error('Failed to copy text: ', err);
+    return false;
+  }
+};
+
+// Reusable copy button component
+const CopyButton = ({ textToCopy }) => {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    const success = await copyToClipboard(textToCopy);
+    if (success) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000); // Reset after 2 seconds
+    }
+  };
+
+  return (
+    <button
+      className={styles.copyButton}
+      onClick={handleCopy}
+      title="Copy to clipboard"
+    >
+      {copied ? (
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"
+            fill="currentColor"
+          />
+        </svg>
+      ) : (
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="M16 1H4C2.9 1 2 1.9 2 3V17H4V3H16V1ZM19 5H8C6.9 5 6 5.9 6 7V21C6 22.1 6.9 23 8 23H19C20.1 23 21 22.1 21 21V7C21 5.9 20.1 5 19 5ZM19 21H8V7H19V21Z"
+            fill="currentColor"
+          />
+        </svg>
+      )}
+    </button>
+  );
+};
+
 /**
  * Component for directly creating and editing APIs in the tester view
  */
@@ -55,7 +115,10 @@ const ApiForm = ({
     const loadApi = async () => {
       if (apiId) {
         try {
-          await getApi(apiId);
+          // For existing APIs, we need to use fileId which is actually the same as apiId in this context
+          // The getApi function expects a fileId, not an apiId
+          console.log('Loading API with ID/fileId:', apiId);
+          await getApi(apiId, true); // Include cases for comprehensive data
         } catch (err) {
           console.error('Failed to load API:', err);
         }
@@ -68,6 +131,15 @@ const ApiForm = ({
   // Update form when activeApi changes
   useEffect(() => {
     if (activeApi && apiId) {
+      console.log('Active API data received:', activeApi);
+
+      // Extract validation data if available
+      const validationData = activeApi.validation || {
+        requestSchema: {},
+        responseSchema: {},
+        rules: [],
+      };
+
       setFormData({
         name: activeApi.name || '',
         method: activeApi.method || 'GET',
@@ -77,6 +149,7 @@ const ApiForm = ({
         headers: activeApi.headers || {},
         params: activeApi.params || {},
         request_body: activeApi.request_body || {},
+        validation: validationData,
         expected: {
           status: activeApi.expected?.status || 200,
           headers: activeApi.expected?.headers || {},
@@ -84,6 +157,8 @@ const ApiForm = ({
         },
         extra_meta: activeApi.extra_meta || {},
       });
+
+      console.log('Form data updated with API values');
     }
   }, [activeApi, apiId]);
 
@@ -685,7 +760,10 @@ const ApiForm = ({
             + Add Header
           </button>
 
-          <div className={styles.jsonEditor}>
+          <div className={`${styles.jsonEditor} scrollable`}>
+            <CopyButton
+              textToCopy={JSON.stringify(formData.headers, null, 2)}
+            />
             <label htmlFor="headers_json">Headers as JSON:</label>
             <textarea
               id="headers_json"
@@ -741,6 +819,7 @@ const ApiForm = ({
           </button>
 
           <div className={styles.jsonEditor}>
+            <CopyButton textToCopy={JSON.stringify(formData.params, null, 2)} />
             <label htmlFor="params_json">Parameters as JSON:</label>
             <textarea
               id="params_json"
@@ -779,6 +858,13 @@ const ApiForm = ({
           <div className={styles.validationSection}>
             <h4>Request Schema</h4>
             <div className={styles.jsonEditor}>
+              <CopyButton
+                textToCopy={JSON.stringify(
+                  formData.validation.requestSchema,
+                  null,
+                  2
+                )}
+              />
               <textarea
                 value={JSON.stringify(
                   formData.validation.requestSchema,
@@ -787,6 +873,7 @@ const ApiForm = ({
                 )}
                 onChange={e => {
                   try {
+                    console.log('Updating request schema validation');
                     const schema = e.target.value
                       ? JSON.parse(e.target.value)
                       : {};

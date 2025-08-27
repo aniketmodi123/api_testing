@@ -42,7 +42,6 @@
 }
 
 .treeContainer {
-  overflow-y: auto;
   flex-grow: 1;
   padding: 5px 0;
 }

@@ -190,8 +190,97 @@
 
 .responseSection,
 .errorSection,
-.diffSection {
+.diffSection,
+.detailedInfoSection {
   margin-bottom: 15px;
+}
+
+.detailedInfoSection {
+  background-color: var(--background-lighter);
+  border-radius: 4px;
+  padding: 15px;
+  margin-bottom: 20px;
+}
+
+.detailGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  margin-bottom: 15px;
+}
+
+.detailItem {
+  display: flex;
+  flex-direction: column;
+}
+
+.detailLabel {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+
+.detailValue {
+  font-size: 0.95rem;
+  color: var(--text);
+}
+
+.description {
+  margin-bottom: 15px;
+}
+
+.description h5 {
+  margin-top: 0;
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.description p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.executionHistory {
+  margin-bottom: 15px;
+}
+
+.executionHistory h5 {
+  margin-top: 0;
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.historyTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.historyTable th,
+.historyTable td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.historyTable th {
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.metadataSection {
+  margin-top: 15px;
+}
+
+.metadataSection h5 {
+  margin-top: 0;
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+  color: var(--text);
 }
 
 .statusCode {
@@ -206,12 +295,40 @@
   border: 1px solid var(--border);
   border-radius: 4px;
   padding: 10px;
-  overflow: auto;
   max-height: 300px;
   font-family: monospace;
   font-size: 0.85rem;
   color: var(--text);
   white-space: pre-wrap;
+  overflow: auto;
+  position: relative;
+}
+
+.copyButton {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background-color: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0.7;
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+  width: 28px;
+  height: 28px;
+  z-index: 10;
+}
+
+.copyButton:hover {
+  opacity: 1;
+  transform: scale(1.05);
 }
 
 .errorMessage {
@@ -243,4 +360,9 @@
     flex: 1;
     text-align: center;
   }
+}
+
+/* Utility class for consistent scrollable areas */
+.scrollable {
+  overflow: auto;
 }

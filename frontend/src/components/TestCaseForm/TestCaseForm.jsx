@@ -27,6 +27,7 @@ const TestCaseForm = ({
     error,
     selectTestCase,
     saveTestCase,
+    testCaseDetails,
   } = useApi();
 
   // Load test case data if editing an existing case
@@ -97,6 +98,79 @@ const TestCaseForm = ({
       <h2>{caseId ? 'Edit Test Case' : 'Create New Test Case'}</h2>
 
       {error && <div className={styles.error}>{error}</div>}
+
+      {/* Display detailed test case info if available */}
+      {caseId && testCaseDetails && (
+        <div className={styles.detailedInfoSection}>
+          <h3>Test Case Details</h3>
+          <div className={styles.detailGrid}>
+            <div className={styles.detailItem}>
+              <span className={styles.detailLabel}>Created:</span>
+              <span className={styles.detailValue}>
+                {new Date(testCaseDetails.created_at).toLocaleString()}
+              </span>
+            </div>
+            <div className={styles.detailItem}>
+              <span className={styles.detailLabel}>Last Updated:</span>
+              <span className={styles.detailValue}>
+                {new Date(testCaseDetails.updated_at).toLocaleString()}
+              </span>
+            </div>
+            <div className={styles.detailItem}>
+              <span className={styles.detailLabel}>Status:</span>
+              <span className={styles.detailValue}>
+                {testCaseDetails.status || 'N/A'}
+              </span>
+            </div>
+            <div className={styles.detailItem}>
+              <span className={styles.detailLabel}>Type:</span>
+              <span className={styles.detailValue}>
+                {testCaseDetails.type || 'N/A'}
+              </span>
+            </div>
+          </div>
+
+          {testCaseDetails.description && (
+            <div className={styles.description}>
+              <h5>Description:</h5>
+              <p>{testCaseDetails.description}</p>
+            </div>
+          )}
+
+          {testCaseDetails.execution_history &&
+            testCaseDetails.execution_history.length > 0 && (
+              <div className={styles.executionHistory}>
+                <h5>Execution History:</h5>
+                <table className={styles.historyTable}>
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Result</th>
+                      <th>Duration</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {testCaseDetails.execution_history.map((history, idx) => (
+                      <tr key={idx}>
+                        <td>
+                          {new Date(history.execution_time).toLocaleString()}
+                        </td>
+                        <td
+                          className={
+                            history.success ? styles.success : styles.failure
+                          }
+                        >
+                          {history.success ? 'PASS' : 'FAIL'}
+                        </td>
+                        <td>{history.duration || 'N/A'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+        </div>
+      )}
 
       <form onSubmit={handleSubmit}>
         <div className={styles.formGroup}>
