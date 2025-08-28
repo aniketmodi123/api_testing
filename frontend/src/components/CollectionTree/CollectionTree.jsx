@@ -3,6 +3,7 @@ import { useApi } from '../../store/api';
 import { useNode } from '../../store/node';
 import { useWorkspace } from '../../store/workspace';
 import HeaderEditor from '../HeaderEditor/HeaderEditor';
+import { Button } from '../common';
 import styles from './CollectionTree.module.css';
 
 // Custom Modal Component for confirmations
@@ -28,25 +29,15 @@ const ConfirmModal = ({
           <p>{message}</p>
         </div>
         <div className={styles.modalActions}>
-          <button className={styles.cancelButton} onClick={onCancel}>
+          <Button variant="secondary" onClick={onCancel}>
             {cancelText}
-          </button>
-          <button
-            className={styles.confirmButton}
-            style={{
-              backgroundColor:
-                type === 'delete'
-                  ? '#e53935'
-                  : type === 'create'
-                    ? '#4caf50'
-                    : type === 'update'
-                      ? '#2196f3'
-                      : '#ff9800',
-            }}
+          </Button>
+          <Button
+            variant={type === 'delete' ? 'danger' : 'primary'}
             onClick={onConfirm}
           >
             {confirmText}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -161,13 +152,14 @@ const NodeItem = ({
           <span className={styles.folderIcon}>📁</span>
           <span className={styles.folderName}>{node.name}</span>
           <div className={styles.nodeActions}>
-            <button
-              className={styles.menuButton}
+            <Button
+              variant="secondary"
+              size="small"
               onClick={handleMenuClick}
               title="Actions"
             >
               ⋮
-            </button>
+            </Button>
             {menuOpen && (
               <div
                 className={styles.contextMenu}
@@ -254,13 +246,14 @@ const NodeItem = ({
         </span>
         <span className={styles.requestName}>{node.name}</span>
         <div className={styles.nodeActions}>
-          <button
-            className={styles.menuButton}
+          <Button
+            variant="secondary"
+            size="small"
             onClick={handleMenuClick}
             title="Actions"
           >
             ⋮
-          </button>
+          </Button>
           {menuOpen && (
             <div
               className={styles.contextMenu}
@@ -696,13 +689,14 @@ export default function CollectionTree({ onSelectRequest }) {
           value={filterText}
           onChange={e => setFilterText(e.target.value)}
         />
-        <button
-          className={styles.addButton}
+        <Button
+          variant="primary"
+          size="small"
           onClick={handleAddFolder}
           title="Add new folder"
         >
           +
-        </button>
+        </Button>
       </div>
 
       <div className={`${styles.treeContainer} scrollable`}>
@@ -717,8 +711,20 @@ export default function CollectionTree({ onSelectRequest }) {
               className={styles.newFolderInput}
             />
             <div className={styles.newFolderActions}>
-              <button onClick={handleCreateFolder}>Create</button>
-              <button onClick={handleCancelAddFolder}>Cancel</button>
+              <Button
+                variant="primary"
+                size="small"
+                onClick={handleCreateFolder}
+              >
+                Create
+              </Button>
+              <Button
+                variant="secondary"
+                size="small"
+                onClick={handleCancelAddFolder}
+              >
+                Cancel
+              </Button>
             </div>
           </div>
         )}
@@ -734,8 +740,16 @@ export default function CollectionTree({ onSelectRequest }) {
               className={styles.newFolderInput}
             />
             <div className={styles.newFolderActions}>
-              <button onClick={handleRename}>Rename</button>
-              <button onClick={handleCancelRename}>Cancel</button>
+              <Button variant="primary" size="small" onClick={handleRename}>
+                Rename
+              </Button>
+              <Button
+                variant="secondary"
+                size="small"
+                onClick={handleCancelRename}
+              >
+                Cancel
+              </Button>
             </div>
           </div>
         )}
@@ -743,18 +757,20 @@ export default function CollectionTree({ onSelectRequest }) {
         {isCreatingItem && (
           <div className={styles.newFolderForm}>
             <div className={styles.itemTypeSelector}>
-              <button
-                className={`${styles.typeButton} ${isCreatingFolder ? styles.selected : ''}`}
+              <Button
+                variant={isCreatingFolder ? 'primary' : 'secondary'}
+                size="small"
                 onClick={() => setIsCreatingFolder(true)}
               >
                 Folder
-              </button>
-              <button
-                className={`${styles.typeButton} ${!isCreatingFolder ? styles.selected : ''}`}
+              </Button>
+              <Button
+                variant={!isCreatingFolder ? 'primary' : 'secondary'}
+                size="small"
                 onClick={() => setIsCreatingFolder(false)}
               >
                 API Request
-              </button>
+              </Button>
             </div>
 
             <input
@@ -785,8 +801,16 @@ export default function CollectionTree({ onSelectRequest }) {
             )}
 
             <div className={styles.newFolderActions}>
-              <button onClick={handleCreateItem}>Create</button>
-              <button onClick={handleCancelCreateItem}>Cancel</button>
+              <Button variant="primary" size="small" onClick={handleCreateItem}>
+                Create
+              </Button>
+              <Button
+                variant="secondary"
+                size="small"
+                onClick={handleCancelCreateItem}
+              >
+                Cancel
+              </Button>
             </div>
           </div>
         )}
@@ -819,9 +843,9 @@ export default function CollectionTree({ onSelectRequest }) {
               {activeWorkspace ? 'No folders found' : 'No workspace selected'}
             </p>
             {activeWorkspace && (
-              <button className={styles.createButton} onClick={handleAddFolder}>
+              <Button variant="primary" onClick={handleAddFolder}>
                 Create Folder
-              </button>
+              </Button>
             )}
           </div>
         )}

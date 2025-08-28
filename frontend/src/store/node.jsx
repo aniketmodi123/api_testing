@@ -27,6 +27,32 @@ export function NodeProvider({ children }) {
 
   // Fetch nodes for the current workspace
   useEffect(() => {
+    let retryCount = 0;
+    const maxRetries = 3;
+    let retryTimeout;
+
+    // Implement retry with exponential backoff
+    const retryWithBackoff = () => {
+      if (retryCount < maxRetries) {
+        // Exponential backoff - wait longer between each retry
+        const delay = Math.pow(2, retryCount) * 1000;
+        console.log(
+          `Retrying node loading in ${delay}ms (attempt ${retryCount + 1}/${maxRetries})`
+        );
+
+        clearTimeout(retryTimeout);
+        retryTimeout = setTimeout(() => {
+          retryCount++;
+          fetchWorkspaceNodes();
+        }, delay);
+      } else {
+        console.error('Max retries reached. Could not load nodes.');
+        setLoading(false);
+        setError('Failed to load folders and files after multiple attempts.');
+        setNodes([]);
+      }
+    };
+
     const fetchWorkspaceNodes = async () => {
       if (!activeWorkspace || !shouldLoadWorkspaces) {
         setNodes([]);
@@ -36,22 +62,38 @@ export function NodeProvider({ children }) {
       try {
         setLoading(true);
         setError(null);
+        console.log(`Fetching nodes for workspace: ${activeWorkspace.id}`);
         const result = await fetchNodesByWorkspaceId(activeWorkspace.id);
         if (result && result.data && result.data.file_tree) {
+          console.log(
+            `Successfully loaded ${result.data.file_tree.length} nodes for workspace`
+          );
           setNodes(result.data.file_tree);
+          // Reset retry count on success
+          retryCount = 0;
         } else {
+          console.error('Invalid node data format:', result);
           setNodes([]);
+          retryWithBackoff();
         }
       } catch (err) {
         console.error('Error fetching workspace nodes:', err);
-        setError('Failed to load folders and files. Please try again later.');
-        setNodes([]);
+        setError('Failed to load folders and files. Retrying...');
+        retryWithBackoff();
       } finally {
-        setLoading(false);
+        // Only set loading to false if we're not in a retry cycle
+        if (retryCount === 0) {
+          setLoading(false);
+        }
       }
     };
 
     fetchWorkspaceNodes();
+
+    // Cleanup function to clear any pending timeouts
+    return () => {
+      clearTimeout(retryTimeout);
+    };
   }, [activeWorkspace, debouncedRefresh, shouldLoadWorkspaces]);
 
   // Function to fetch nodes by workspace ID
@@ -66,32 +108,40 @@ export function NodeProvider({ children }) {
       if (cachedData) {
         const parsed = JSON.parse(cachedData);
         const cacheTime = parsed.timestamp;
-        // Use cache if it's less than 30 seconds old
-        if (Date.now() - cacheTime < 30000) {
+        // Use cache if it's less than 5 seconds old (reduced from 30s to help with startup)
+        if (Date.now() - cacheTime < 5000) {
           console.log('Using cached workspace data for:', workspaceId);
           return parsed.data;
         }
       }
 
       // Fetch fresh data
-      console.log('Fetching fresh workspace data for:', workspaceId);
+      console.log(
+        'Fetching fresh workspace data for workspace ID:',
+        workspaceId
+      );
       const result = await nodeService.getNodesByWorkspaceId(workspaceId);
 
-      // Cache the result
-      if (result) {
-        sessionStorage.setItem(
-          cacheKey,
-          JSON.stringify({
-            data: result,
-            timestamp: Date.now(),
-          })
-        );
+      if (!result || !result.data) {
+        console.error('Invalid node data format received:', result);
+        throw new Error('Failed to load node data: Invalid format');
       }
+
+      // Cache the result
+      sessionStorage.setItem(
+        cacheKey,
+        JSON.stringify({
+          data: result,
+          timestamp: Date.now(),
+        })
+      );
 
       return result;
     } catch (err) {
       console.error('Error fetching nodes by workspace ID:', err);
-      setError('Failed to load folders and files. Please try again later.');
+      setError(
+        `Failed to load folders and files: ${err.message || 'Unknown error'}`
+      );
       return null;
     }
   };

@@ -3,6 +3,7 @@ import { api } from '../../api';
 import { useApi } from '../../store/api';
 import { useNode } from '../../store/node';
 import { TestCaseForm } from '../TestCaseForm';
+import { Button } from '../common';
 import styles from './RequestPanel.module.css';
 import './buttonStyles.css';
 import './dropdown.css';
@@ -31,8 +32,10 @@ const CopyButton = ({ textToCopy, className }) => {
   };
 
   return (
-    <button
-      className={`${styles.copyButton} ${className || ''}`}
+    <Button
+      variant="secondary"
+      size="small"
+      className={className || ''}
       onClick={handleCopy}
       title="Copy to clipboard"
     >
@@ -63,7 +66,7 @@ const CopyButton = ({ textToCopy, className }) => {
           />
         </svg>
       )}
-    </button>
+    </Button>
   );
 };
 
@@ -652,13 +655,14 @@ export default function RequestPanel({ activeRequest }) {
 
         <div className={styles.buttonGroup}>
           <div className="sendButtonContainer">
-            <button
+            <Button
+              variant="primary"
               className={`${styles.sendButton} overrideSendButton`}
               onClick={handleDirectApiCall} // Now uses direct call functionality instead of handleSend
               disabled={isSending || !url}
             >
               {isSending ? 'Sending...' : 'Send'}
-            </button>
+            </Button>
 
             <div className="dropdownContainer">
               <button
@@ -678,19 +682,21 @@ export default function RequestPanel({ activeRequest }) {
                 className="dropdownContent"
                 onClick={e => e.stopPropagation()}
               >
-                <button
+                <Button
+                  variant="secondary"
                   onClick={handleValidateApi}
                   disabled={isSending || !url || !selectedNode?.id}
                 >
                   Validate
-                </button>
+                </Button>
               </div>
             </div>
           </div>
         </div>
 
         <div className="actionsContainer">
-          <button
+          <Button
+            variant="primary"
             className="actionsButton"
             onClick={async () => {
               if (!selectedNode?.id) {
@@ -752,9 +758,11 @@ export default function RequestPanel({ activeRequest }) {
             title="Save API"
           >
             {isUpdatingConfig ? 'Saving...' : 'Save'}
-          </button>
+          </Button>
           <div className="dropdownContainer">
-            <button
+            <Button
+              variant="secondary"
+              size="small"
               className="dropdownButton"
               onClick={e => {
                 e.stopPropagation();
@@ -764,12 +772,13 @@ export default function RequestPanel({ activeRequest }) {
               }}
             >
               ▼
-            </button>
+            </Button>
             <div
               className="dropdownContent saveActionsDropdown"
               onClick={e => e.stopPropagation()}
             >
-              <button
+              <Button
+                variant="secondary"
                 onClick={async () => {
                   if (!response) {
                     alert('Send a request first to record as a test case');
@@ -906,7 +915,7 @@ export default function RequestPanel({ activeRequest }) {
                 title="Record current request/response as a test case"
               >
                 Record as Test Case
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -1443,7 +1452,8 @@ export default function RequestPanel({ activeRequest }) {
             <div className={styles.testsHeader}>
               <h3>API Test Cases</h3>
               <div className={styles.testHeaderButtons}>
-                <button
+                <Button
+                  variant="primary"
                   className={styles.addTestButton}
                   onClick={() => {
                     setEditingTestCaseId(null);
@@ -1451,10 +1461,11 @@ export default function RequestPanel({ activeRequest }) {
                   }}
                 >
                   {activeApi ? 'Add Test Case' : 'Save API First'}
-                </button>
+                </Button>
                 {activeApi && testCases && testCases.length > 0 && (
                   <>
-                    <button
+                    <Button
+                      variant="secondary"
                       className={styles.runSelectedTestsButton}
                       onClick={handleRunSelectedTests}
                       disabled={isSending || selectedTestCases.length === 0}
@@ -1462,14 +1473,15 @@ export default function RequestPanel({ activeRequest }) {
                       {isSending
                         ? 'Running...'
                         : `Run Selected (${selectedTestCases.length})`}
-                    </button>
-                    <button
+                    </Button>
+                    <Button
+                      variant="primary"
                       className={styles.runAllTestsButton}
                       onClick={() => runTest(selectedNode?.id)}
                       disabled={isSending}
                     >
                       {isSending ? 'Running...' : 'Run All Tests'}
-                    </button>
+                    </Button>
                   </>
                 )}
               </div>
@@ -1479,12 +1491,14 @@ export default function RequestPanel({ activeRequest }) {
               <div className={styles.testResultsSummary}>
                 <div className={styles.testResultsHeader}>
                   <h4>Test Results</h4>
-                  <button
+                  <Button
+                    variant="secondary"
+                    size="small"
                     className={styles.clearResultsButton}
                     onClick={clearTestResults}
                   >
                     Clear Results
-                  </button>
+                  </Button>
                 </div>
                 <div className={styles.testResultsContent}>
                   {(() => {
@@ -1578,7 +1592,9 @@ export default function RequestPanel({ activeRequest }) {
                           </h4>
                         </div>
                         <div className={styles.testActions}>
-                          <button
+                          <Button
+                            variant="primary"
+                            size="small"
                             className={styles.runTestButton}
                             onClick={() =>
                               runTest(
@@ -1589,8 +1605,10 @@ export default function RequestPanel({ activeRequest }) {
                             disabled={isSending}
                           >
                             {isSending ? 'Running...' : 'Run'}
-                          </button>
-                          <button
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            size="small"
                             className={styles.editTestButton}
                             onClick={() => {
                               setEditingTestCaseId(
@@ -1600,8 +1618,10 @@ export default function RequestPanel({ activeRequest }) {
                             }}
                           >
                             Edit
-                          </button>
-                          <button
+                          </Button>
+                          <Button
+                            variant="danger"
+                            size="small"
                             className={styles.deleteTestButton}
                             onClick={async () => {
                               const id = testCase.id || testCase.case_id;
@@ -1622,7 +1642,7 @@ export default function RequestPanel({ activeRequest }) {
                             }}
                           >
                             Delete
-                          </button>
+                          </Button>
                         </div>
                       </div>
                       {testCase.description && (
@@ -1648,7 +1668,8 @@ export default function RequestPanel({ activeRequest }) {
               ) : (
                 <div className={styles.emptyState}>
                   <p>No test cases created yet for this API</p>
-                  <button
+                  <Button
+                    variant="primary"
                     className={styles.createButton}
                     onClick={() => {
                       setEditingTestCaseId(null);
@@ -1656,7 +1677,7 @@ export default function RequestPanel({ activeRequest }) {
                     }}
                   >
                     Create Test Case
-                  </button>
+                  </Button>
                 </div>
               )
             ) : (
@@ -1768,12 +1789,14 @@ export default function RequestPanel({ activeRequest }) {
               <h3>
                 {editingTestCaseId ? 'Edit Test Case' : 'Create Test Case'}
               </h3>
-              <button
+              <Button
+                variant="secondary"
+                size="small"
                 className={styles.closeButton}
                 onClick={() => setShowTestCaseForm(false)}
               >
                 ×
-              </button>
+              </Button>
             </div>
             <div className={styles.modalBody}>
               <TestCaseForm

@@ -46,19 +46,11 @@
   position: relative;
 }
 
+/* Button styles moved to Button component */
 .copyButton {
   position: absolute;
   top: 8px;
   right: 8px;
-  background-color: var(--primary);
-  color: white;
-  border: none;
-  border-radius: 4px;
-  padding: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
   opacity: 0.7;
   transition:
     opacity 0.2s ease,
@@ -133,24 +125,7 @@
   margin-top: 20px;
 }
 
-.saveButton,
-.cancelButton {
-  padding: 10px 20px;
-  border-radius: 4px;
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.saveButton {
-  background-color: var(--primary);
-  color: white;
-  border: none;
-}
-
-.saveButton:hover:not(:disabled) {
-  background-color: var(--primary-dark);
-}
+/* Button styles moved to Button component */
 
 .apiTester {
   display: flex;
@@ -208,21 +183,7 @@
   background-color: #3b7ae0;
 }
 
-.cancelButton {
-  background-color: transparent;
-  color: var(--text);
-  border: 1px solid var(--border);
-}
-
-.cancelButton:hover:not(:disabled) {
-  background-color: var(--hover-background);
-}
-
-.saveButton:disabled,
-.cancelButton:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
+/* Button styles moved to Button component */
 
 .error {
   background-color: rgba(244, 67, 54, 0.1);
@@ -313,20 +274,7 @@
   gap: 8px;
 }
 
-.secondaryButton {
-  padding: 6px 12px;
-  background-color: transparent;
-  color: #f0f0f0;
-  border: 1px solid #555;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 13px;
-}
-
-.secondaryButton:hover {
-  background-color: #4c4c4c;
-  border-radius: 4px;
-}
+/* Button styles moved to Button component */
 
 .responseTabs {
   display: flex;
@@ -423,25 +371,9 @@
   font-size: 0.9rem;
 }
 
+/* Button styles moved to Button component */
 .sendButton {
-  padding: 8px 20px;
   margin-left: 10px;
-  background-color: var(--primary);
-  color: white;
-  border: none;
-  border-radius: 4px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.sendButton:hover:not(:disabled) {
-  background-color: var(--primary-dark);
-}
-
-.sendButton:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
 }
 
 /* Tab styles */
@@ -509,40 +441,19 @@
   color: var(--text);
 }
 
+/* Button styles moved to Button component */
 .removeButton {
-  background-color: rgba(244, 67, 54, 0.8);
-  color: white;
-  border: none;
-  border-radius: 4px;
   width: 30px;
   height: 30px;
-  font-size: 1rem;
-  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background-color 0.2s;
 }
 
-.removeButton:hover {
-  background-color: rgba(244, 67, 54, 1);
-}
-
+/* Button styles moved to Button component */
 .addButton {
-  background-color: var(--primary);
-  color: white;
-  border: none;
-  border-radius: 4px;
-  padding: 8px 12px;
   margin-top: 10px;
   margin-bottom: 20px;
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.addButton:hover {
-  background-color: var(--primary-dark);
 }
 
 .jsonEditor {
@@ -822,19 +733,7 @@
   margin: 20px 0;
 }
 
-.validationButton {
-  padding: 8px 16px;
-  background-color: #2a6496;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
-}
-
-.validationButton:hover {
-  background-color: #1e5080;
-}
+/* Button styles moved to Button component */
 
 .validationResult {
   padding: 12px;

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useApi } from '../../store/api';
+import { Button } from '../common';
 import styles from './ApiForm.module.css';
 
 // Copy to clipboard utility function
@@ -26,10 +27,12 @@ const CopyButton = ({ textToCopy }) => {
   };
 
   return (
-    <button
-      className={styles.copyButton}
+    <Button
+      variant="secondary"
+      size="small"
       onClick={handleCopy}
       title="Copy to clipboard"
+      className={styles.copyButton}
     >
       {copied ? (
         <svg
@@ -58,7 +61,7 @@ const CopyButton = ({ textToCopy }) => {
           />
         </svg>
       )}
-    </button>
+    </Button>
   );
 };
 
@@ -402,33 +405,26 @@ const ApiForm = ({
           className={styles.endpointInput}
         />
 
-        <button
-          type="button"
-          className={styles.sendButton}
-          onClick={handleSubmit}
-          disabled={isLoading}
-        >
+        <Button variant="primary" onClick={handleSubmit} disabled={isLoading}>
           {isLoading ? 'Sending...' : 'Send'}
-        </button>
+        </Button>
 
-        <button
-          type="button"
-          className={styles.saveButton}
+        <Button
+          variant="secondary"
           onClick={saveApiDefinition}
           disabled={isLoading}
         >
           Save
-        </button>
+        </Button>
 
-        <button
-          type="button"
-          className={styles.actionButton}
+        <Button
+          variant="secondary"
           onClick={saveRequestConfig}
           disabled={isLoading}
           title="Update request configuration (params, headers, body)"
         >
           Update Config
-        </button>
+        </Button>
 
         <button
           type="button"
@@ -737,17 +733,18 @@ const ApiForm = ({
                 onChange={e => handleHeaderChange(index, key, e.target.value)}
                 placeholder="Header value"
               />
-              <button
-                type="button"
+              <Button
+                variant="danger"
+                size="small"
                 className={styles.removeButton}
                 onClick={() => handleRemove('headers', key)}
               >
                 ✕
-              </button>
+              </Button>
             </div>
           ))}
-          <button
-            type="button"
+          <Button
+            variant="primary"
             className={styles.addButton}
             onClick={() =>
               handleHeaderChange(
@@ -758,7 +755,7 @@ const ApiForm = ({
             }
           >
             + Add Header
-          </button>
+          </Button>
 
           <div className={`${styles.jsonEditor} scrollable`}>
             <CopyButton
@@ -795,17 +792,18 @@ const ApiForm = ({
                 onChange={e => handleParamChange(index, key, e.target.value)}
                 placeholder="Parameter value"
               />
-              <button
-                type="button"
+              <Button
+                variant="danger"
+                size="small"
                 className={styles.removeButton}
                 onClick={() => handleRemove('params', key)}
               >
                 ✕
-              </button>
+              </Button>
             </div>
           ))}
-          <button
-            type="button"
+          <Button
+            variant="primary"
             className={styles.addButton}
             onClick={() =>
               handleParamChange(
@@ -816,7 +814,7 @@ const ApiForm = ({
             }
           >
             + Add Parameter
-          </button>
+          </Button>
 
           <div className={styles.jsonEditor}>
             <CopyButton textToCopy={JSON.stringify(formData.params, null, 2)} />
@@ -926,9 +924,8 @@ const ApiForm = ({
           </div>
 
           <div className={styles.validationActions}>
-            <button
-              type="button"
-              className={styles.validationButton}
+            <Button
+              variant="primary"
               onClick={() => {
                 try {
                   // Simple validation logic
@@ -959,7 +956,7 @@ const ApiForm = ({
               }}
             >
               Validate Current JSON
-            </button>
+            </Button>
           </div>
 
           {validationResult && (
@@ -1073,22 +1070,20 @@ const ApiForm = ({
           className={styles.formActions}
           style={{ display: !responseData ? 'flex' : 'none' }}
         >
-          <button
-            type="button"
+          <Button
+            variant="secondary"
             onClick={onCancel}
-            className={styles.cancelButton}
             disabled={isLoading || isTestRunning}
           >
             Cancel
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="primary"
             onClick={saveApiDefinition}
-            className={styles.saveButton}
             disabled={isLoading || isTestRunning}
           >
             {isLoading ? 'Saving...' : apiId ? 'Update API' : 'Save API'}
-          </button>
+          </Button>
         </div>
       </form>
       {/* Response section - always visible */}
@@ -1116,18 +1111,12 @@ const ApiForm = ({
             )}
 
             <div className={styles.responseActions}>
-              <button
-                className={styles.secondaryButton}
-                onClick={() => setResponseData(null)}
-              >
+              <Button variant="secondary" onClick={() => setResponseData(null)}>
                 Clear
-              </button>
-              <button
-                className={styles.secondaryButton}
-                onClick={saveApiDefinition}
-              >
+              </Button>
+              <Button variant="secondary" onClick={saveApiDefinition}>
                 Save API
-              </button>
+              </Button>
             </div>
           </div>
         ) : (

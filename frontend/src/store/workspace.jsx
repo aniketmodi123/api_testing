@@ -15,6 +15,41 @@ export function WorkspaceProvider({ children }) {
 
   // Load workspaces from API only when enabled
   useEffect(() => {
+    let retryCount = 0;
+    const maxRetries = 3;
+    let retryTimeout;
+
+    // Implement retry with exponential backoff
+    const retryWithBackoff = () => {
+      if (retryCount < maxRetries) {
+        // Exponential backoff - wait longer between each retry
+        const delay = Math.pow(2, retryCount) * 1000;
+        console.log(
+          `Retrying workspace loading in ${delay}ms (attempt ${retryCount + 1}/${maxRetries})`
+        );
+
+        clearTimeout(retryTimeout);
+        retryTimeout = setTimeout(() => {
+          retryCount++;
+          fetchWorkspaces();
+        }, delay);
+      } else {
+        console.error('Max retries reached. Could not load workspaces.');
+        setLoading(false);
+        setError('Failed to load workspaces after multiple attempts.');
+
+        // For development/demo: fallback to sample data after retries
+        const sampleWorkspaces = [
+          { id: 1, name: 'Personal Workspace' },
+          { id: 2, name: 'Team Workspace' },
+        ];
+        setWorkspaces(sampleWorkspaces);
+        if (!activeWorkspace) {
+          setActiveWorkspace(sampleWorkspaces[0]);
+        }
+      }
+    };
+
     const fetchWorkspaces = async () => {
       // Only fetch workspaces when explicitly enabled
       if (!shouldLoadWorkspaces) {
@@ -28,35 +63,44 @@ export function WorkspaceProvider({ children }) {
         const data = await workspaceService.getWorkspaces();
 
         if (data && Array.isArray(data.data)) {
+          console.log(
+            'Workspaces loaded successfully:',
+            data.data.length,
+            'workspaces'
+          );
           setWorkspaces(data.data);
 
           // Set first workspace as active if none is selected
           if (!activeWorkspace && data.data.length > 0) {
+            console.log('Setting active workspace:', data.data[0]);
             setActiveWorkspace(data.data[0]);
           }
+          // Reset retry count on success
+          retryCount = 0;
         } else {
           console.error('Invalid workspace data format:', data);
           setWorkspaces([]);
+          retryWithBackoff();
         }
       } catch (err) {
         console.error('Error fetching workspaces:', err);
-        setError('Failed to load workspaces. Please try again later.');
-        // For development/demo: fallback to sample data
-        const sampleWorkspaces = [
-          { id: 1, name: 'Personal Workspace' },
-          { id: 2, name: 'Team Workspace' },
-        ];
-        setWorkspaces(sampleWorkspaces);
-        if (!activeWorkspace) {
-          setActiveWorkspace(sampleWorkspaces[0]);
-        }
+        setError('Failed to load workspaces. Retrying...');
+        retryWithBackoff();
       } finally {
-        setLoading(false);
+        // Only set loading to false if we're not in a retry cycle
+        if (retryCount === 0) {
+          setLoading(false);
+        }
       }
     };
 
     fetchWorkspaces();
-  }, [refreshTrigger, shouldLoadWorkspaces]);
+
+    // Cleanup function to clear any pending timeouts
+    return () => {
+      clearTimeout(retryTimeout);
+    };
+  }, [refreshTrigger, shouldLoadWorkspaces, activeWorkspace]);
 
   // Load workspace tree when active workspace changes and workspaces are enabled
   useEffect(() => {

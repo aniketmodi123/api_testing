@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useApi } from '../../store/api';
+import { Button } from '../common';
 import styles from './TestCaseForm.module.css';
 
 /**
@@ -151,13 +152,13 @@ const TestCaseForm = ({
       <div className={styles.formHeader}>
         <h2>{caseId ? 'Edit Test Case' : 'Create New Test Case'}</h2>
         {!caseId && ( // Only show bulk import toggle in create mode
-          <button
-            type="button"
-            className={styles.bulkImportToggle}
+          <Button
+            variant="secondary"
+            size="small"
             onClick={toggleBulkImportMode}
           >
             {bulkImportMode ? 'Single Case Mode' : 'Bulk Import Mode'}
-          </button>
+          </Button>
         )}
       </div>
 
@@ -258,22 +259,16 @@ const TestCaseForm = ({
             </div>
           </div>
           <div className={styles.formActions}>
-            <button
-              type="button"
-              onClick={onCancel}
-              className={styles.cancelButton}
-              disabled={isLoading}
-            >
+            <Button variant="secondary" onClick={onCancel} disabled={isLoading}>
               Cancel
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              variant="primary"
               onClick={handleBulkImport}
-              className={styles.saveButton}
               disabled={isLoading}
             >
               {isLoading ? 'Importing...' : 'Import Test Cases'}
-            </button>
+            </Button>
           </div>
         </div>
       ) : (
@@ -346,25 +341,16 @@ const TestCaseForm = ({
           </div>
 
           <div className={styles.formActions}>
-            <button
-              type="button"
-              onClick={onCancel}
-              className={styles.cancelButton}
-              disabled={isLoading}
-            >
+            <Button variant="secondary" onClick={onCancel} disabled={isLoading}>
               Cancel
-            </button>
-            <button
-              type="submit"
-              className={styles.saveButton}
-              disabled={isLoading}
-            >
+            </Button>
+            <Button variant="primary" type="submit" disabled={isLoading}>
               {isLoading
                 ? 'Saving...'
                 : caseId
                   ? 'Update Test Case'
                   : 'Create Test Case'}
-            </button>
+            </Button>
           </div>
         </form>
       )}

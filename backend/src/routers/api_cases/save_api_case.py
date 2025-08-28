@@ -247,7 +247,7 @@ async def bulk_create_api_cases(
                 "params": c.params,
                 "body": c.body,
                 "expected": c.expected,
-                "created_at": c.created_at
+                "created_at": c.created_at.strftime("%Y-%m-%d %H:%M:%S")
             })
 
         return create_response(201, {"created": out, "count": len(out)})

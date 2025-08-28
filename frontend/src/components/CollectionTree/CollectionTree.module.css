@@ -22,23 +22,9 @@
   color: var(--text);
 }
 
+/* Button styles moved to Button component */
 .addButton {
-  width: 28px;
-  height: 28px;
   margin-left: 8px;
-  border-radius: 4px;
-  border: none;
-  background-color: var(--primary);
-  color: white;
-  font-size: 18px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-}
-
-.addButton:hover {
-  background-color: var(--primary-dark);
 }
 
 .treeContainer {
@@ -63,18 +49,9 @@
   margin-bottom: 15px;
 }
 
+/* Button styles moved to Button component */
 .createButton {
   margin-top: 10px;
-  padding: 6px 12px;
-  background-color: var(--primary);
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.createButton:hover {
-  background-color: var(--primary-dark);
 }
 
 /* Folder styling */
@@ -377,19 +354,7 @@
   gap: 10px;
 }
 
-.confirmButton {
-  padding: 6px 12px;
-  border-radius: 4px;
-  border: none;
-  background-color: #e53935;
-  color: white;
-  cursor: pointer;
-}
-
-.cancelButton {
-  padding: 6px 12px;
-  border-radius: 4px;
-  border: 1px solid #ddd;
-  background-color: white;
-  cursor: pointer;
+/* Button styles moved to Button component */
+.modalActions {
+  gap: 10px;
 }

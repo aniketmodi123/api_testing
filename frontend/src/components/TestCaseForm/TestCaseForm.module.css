@@ -20,20 +20,7 @@
   font-weight: 500;
 }
 
-.bulkImportToggle {
-  background-color: var(--background);
-  border: 1px solid var(--border);
-  color: var(--text);
-  padding: 8px 12px;
-  border-radius: 4px;
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.bulkImportToggle:hover {
-  background-color: var(--hover-background);
-}
+/* Button styles moved to Button component */
 
 .formGroup {
   margin-bottom: 16px;
@@ -91,40 +78,7 @@
   margin-top: 20px;
 }
 
-.saveButton,
-.cancelButton {
-  padding: 10px 20px;
-  border-radius: 4px;
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.saveButton {
-  background-color: var(--primary);
-  color: white;
-  border: none;
-}
-
-.saveButton:hover:not(:disabled) {
-  background-color: var(--primary-dark);
-}
-
-.cancelButton {
-  background-color: transparent;
-  color: var(--text);
-  border: 1px solid var(--border);
-}
-
-.cancelButton:hover:not(:disabled) {
-  background-color: var(--hover-background);
-}
-
-.saveButton:disabled,
-.cancelButton:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
+/* Button styles moved to Button component */
 
 .error {
   background-color: rgba(244, 67, 54, 0.1);
