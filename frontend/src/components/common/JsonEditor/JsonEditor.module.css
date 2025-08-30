@@ -1,0 +1,330 @@
+.jsonEditorContainer {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background-color: var(--input-background);
+  display: flex;
+  flex-direction: column;
+  min-height: 150px;
+  max-height: 600px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.editorHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background-color: var(--background-lighter);
+  border-bottom: 1px solid var(--border);
+  min-height: 40px;
+  box-sizing: border-box;
+}
+
+.editorControls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.formatButton,
+.minifyButton {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  background-color: var(--background);
+  color: var(--text);
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: 500;
+}
+
+.formatButton:hover,
+.minifyButton:hover {
+  background-color: var(--hover-background);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.formatButton:disabled,
+.minifyButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.errorIndicator {
+  color: #ef4444;
+  font-size: 12px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.copyButton {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  background-color: var(--background);
+  color: var(--text);
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 500;
+}
+
+.copyButton:hover {
+  background-color: var(--hover-background);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.editorContent {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.textarea {
+  width: 100%;
+  border: none;
+  background-color: var(--input-background);
+  color: var(--text);
+  font-family: "SF Mono", "Monaco", "Inconsolata", "Roboto Mono", "Source Code Pro", monospace;
+  font-size: 14px;
+  line-height: 1.5;
+  padding: 16px;
+  box-sizing: border-box;
+  resize: none;
+  outline: none;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+  transition: background-color 0.2s ease;
+}
+
+/* Enhanced scrollbar styling */
+.textarea::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.textarea::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.textarea::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+  border: 2px solid var(--input-background);
+}
+
+.textarea::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+.textarea::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.textarea.error {
+  border-left: 3px solid #ef4444;
+  background-color: rgba(239, 68, 68, 0.05);
+}
+
+.textarea::placeholder {
+  color: var(--text-muted);
+  font-style: italic;
+  opacity: 0.7;
+}
+
+.textarea:focus {
+  background-color: var(--background);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+/* Resize handle */
+.resizeHandle {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 8px;
+  cursor: ns-resize;
+  background-color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.jsonEditorContainer:hover .resizeHandle {
+  opacity: 1;
+}
+
+.resizeHandle::before {
+  content: "⋯⋯⋯";
+  color: var(--text-muted);
+  font-size: 12px;
+  letter-spacing: 2px;
+  background-color: var(--background-lighter);
+  padding: 2px 8px;
+  border-radius: 2px;
+  border: 1px solid var(--border);
+}
+
+/* Theme-specific enhancements */
+[data-theme="dark"] .textarea {
+  background-color: #1a1a1a;
+}
+
+[data-theme="dark"] .textarea:focus {
+  background-color: #0f0f0f;
+}
+
+[data-theme="light"] .textarea {
+  background-color: #fafafa;
+  border: 1px solid #e5e7eb;
+}
+
+[data-theme="light"] .textarea:focus {
+  background-color: #ffffff;
+  border-color: var(--primary);
+}
+
+/* JSON syntax highlighting simulation through CSS */
+.textarea {
+  /* This creates better contrast for JSON content */
+  tab-size: 2;
+  -moz-tab-size: 2;
+}
+
+/* Read-only mode styling */
+.textarea[readonly] {
+  background-color: var(--background-lighter);
+  cursor: default;
+  opacity: 0.9;
+}
+
+.textarea[readonly]:focus {
+  background-color: var(--background-lighter);
+  box-shadow: none;
+}
+
+/* Size variants */
+.jsonEditorContainer.compact {
+  min-height: 100px;
+  max-height: 300px;
+}
+
+.jsonEditorContainer.large {
+  min-height: 200px;
+  max-height: 800px;
+}
+
+/* Status indicators */
+.validIcon {
+  color: #10b981;
+  font-size: 14px;
+}
+
+.invalidIcon {
+  color: #ef4444;
+  font-size: 14px;
+}
+
+/* Resize handle active state */
+.resizeHandle.resizing {
+  opacity: 1;
+}
+
+.resizeHandle.resizing::before {
+  background-color: var(--primary);
+  color: white;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .jsonEditorContainer {
+    border-radius: 4px;
+  }
+
+  .textarea {
+    font-size: 13px;
+    padding: 12px;
+  }
+
+  .editorHeader {
+    padding: 6px 10px;
+  }
+
+  .formatButton,
+  .minifyButton,
+  .copyButton {
+    padding: 4px 6px;
+    font-size: 11px;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .jsonEditorContainer {
+    border-width: 2px;
+  }
+
+  .textarea {
+    border-width: 2px;
+  }
+
+  .formatButton,
+  .minifyButton,
+  .copyButton {
+    border-width: 2px;
+    font-weight: 600;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .formatButton,
+  .minifyButton,
+  .copyButton,
+  .textarea {
+    transition: none;
+  }
+
+  .resizeHandle {
+    transition: none;
+  }
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .editorHeader {
+    padding: 6px 8px;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .editorControls {
+    gap: 4px;
+  }
+
+  .formatButton,
+  .minifyButton,
+  .copyButton {
+    font-size: 11px;
+    padding: 3px 6px;
+  }
+
+  .textarea {
+    font-size: 12px;
+    padding: 8px;
+  }
+}

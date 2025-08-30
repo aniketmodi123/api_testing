@@ -470,10 +470,20 @@ export const apiService = {
   async runTest(fileId, caseId = null) {
     try {
       console.log(`Running test for file ${fileId}, case IDs:`, caseId);
+
+      // Validate fileId is provided
+      if (!fileId) {
+        throw new Error('fileId is required to run tests');
+      }
+
       const body = { file_id: fileId };
       if (caseId) {
         body.case_id = Array.isArray(caseId) ? caseId : [caseId];
       }
+      console.log(
+        'Request body being sent to /run endpoint:',
+        JSON.stringify(body, null, 2)
+      );
       const response = await api.post(`/run`, body);
 
       // Handle both shapes:

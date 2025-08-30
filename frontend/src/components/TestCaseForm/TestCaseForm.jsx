@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useApi } from '../../store/api';
-import { Button } from '../common';
+import { Button, JsonEditor } from '../common';
 import styles from './TestCaseForm.module.css';
 
 /**
@@ -20,6 +20,15 @@ const TestCaseForm = ({
     body: {},
     expected: {},
   });
+
+  // Store raw JSON strings for editing
+  const [jsonStrings, setJsonStrings] = useState({
+    headers: '{}',
+    params: '{}',
+    body: '{}',
+    expected: '{}',
+  });
+
   const [bulkImportMode, setBulkImportMode] = useState(false);
   const [bulkImportJson, setBulkImportJson] = useState('');
   const [bulkImportError, setBulkImportError] = useState('');
@@ -62,6 +71,14 @@ const TestCaseForm = ({
         body: selectedTestCase.body || {},
         expected: selectedTestCase.expected || {},
       });
+
+      // Update JSON strings for editing
+      setJsonStrings({
+        headers: JSON.stringify(selectedTestCase.headers || {}, null, 2),
+        params: JSON.stringify(selectedTestCase.params || {}, null, 2),
+        body: JSON.stringify(selectedTestCase.body || {}, null, 2),
+        expected: JSON.stringify(selectedTestCase.expected || {}, null, 2),
+      });
     }
   }, [selectedTestCase, caseId]);
 
@@ -76,6 +93,13 @@ const TestCaseForm = ({
 
   // Handle JSON field changes
   const handleJsonChange = (field, value) => {
+    // Always update the raw string so user can edit freely
+    setJsonStrings(prev => ({
+      ...prev,
+      [field]: value,
+    }));
+
+    // Try to parse and update the actual data
     try {
       const jsonValue = value ? JSON.parse(value) : {};
       setFormData(prev => ({
@@ -83,8 +107,8 @@ const TestCaseForm = ({
         [field]: jsonValue,
       }));
     } catch (err) {
-      // Don't update if invalid JSON
-      console.error(`Invalid JSON for ${field}:`, err);
+      // Don't update formData if invalid JSON, but keep the string for editing
+      console.warn(`Invalid JSON for ${field}:`, err.message);
     }
   };
 
@@ -298,39 +322,33 @@ const TestCaseForm = ({
 
           <div className={styles.formGroup}>
             <label htmlFor="headers">Headers (JSON)</label>
-            <textarea
-              id="headers"
-              name="headers"
-              value={JSON.stringify(formData.headers, null, 2)}
-              onChange={e => handleJsonChange('headers', e.target.value)}
+            <JsonEditor
+              value={jsonStrings.headers}
+              onChange={value => handleJsonChange('headers', value)}
               placeholder='{"Content-Type": "application/json"}'
-              rows={5}
+              minHeight={120}
               className={styles.jsonEditor}
             />
           </div>
 
           <div className={styles.formGroup}>
             <label htmlFor="params">Query Params (JSON)</label>
-            <textarea
-              id="params"
-              name="params"
-              value={JSON.stringify(formData.params, null, 2)}
-              onChange={e => handleJsonChange('params', e.target.value)}
+            <JsonEditor
+              value={jsonStrings.params}
+              onChange={value => handleJsonChange('params', value)}
               placeholder='{"search": "value", "limit": 10}'
-              rows={4}
+              minHeight={100}
               className={styles.jsonEditor}
             />
           </div>
 
           <div className={styles.formGroup}>
             <label htmlFor="body">Request Body (JSON)</label>
-            <textarea
-              id="body"
-              name="body"
-              value={JSON.stringify(formData.body, null, 2)}
-              onChange={e => handleJsonChange('body', e.target.value)}
+            <JsonEditor
+              value={jsonStrings.body}
+              onChange={value => handleJsonChange('body', value)}
               placeholder="{}"
-              rows={8}
+              minHeight={160}
               className={styles.jsonEditor}
               required
             />
@@ -338,13 +356,11 @@ const TestCaseForm = ({
 
           <div className={styles.formGroup}>
             <label htmlFor="expected">Expected Response (JSON)</label>
-            <textarea
-              id="expected"
-              name="expected"
-              value={JSON.stringify(formData.expected, null, 2)}
-              onChange={e => handleJsonChange('expected', e.target.value)}
+            <JsonEditor
+              value={jsonStrings.expected}
+              onChange={value => handleJsonChange('expected', value)}
               placeholder="{}"
-              rows={8}
+              minHeight={160}
               className={styles.jsonEditor}
               required
             />

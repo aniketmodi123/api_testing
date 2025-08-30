@@ -3,7 +3,7 @@ import { api } from '../../api';
 import { useApi } from '../../store/api';
 import { useNode } from '../../store/node';
 import { TestCaseForm } from '../TestCaseForm';
-import { Button } from '../common';
+import { Button, JsonEditor } from '../common';
 import styles from './RequestPanel.module.css';
 import './buttonStyles.css';
 import './dropdown.css';
@@ -180,7 +180,14 @@ export default function RequestPanel({ activeRequest }) {
   const [editingTestCaseId, setEditingTestCaseId] = useState(null);
   const [bodyContent, setBodyContent] = useState('');
   const [bodyType, setBodyType] = useState('JSON');
+  const [validationSchema, setValidationSchema] = useState('');
   const [requestHeight, setRequestHeight] = useState(200); // Default height for request section
+
+  // State for detailed test result modal
+  const [showDetailedResult, setShowDetailedResult] = useState(false);
+  const [selectedTestResult, setSelectedTestResult] = useState(null);
+  const [editingApiInModal, setEditingApiInModal] = useState(false);
+  const [modalApiData, setModalApiData] = useState(null);
 
   // Handle resizing between request and response sections
   const startResize = useCallback(
@@ -235,6 +242,7 @@ export default function RequestPanel({ activeRequest }) {
       const bodyTypeFromApi = extractValue(activeApi, 'bodyType') || 'JSON';
       setBodyType(bodyTypeFromApi);
 
+      // Set default body content after determining type
       if (requestBody) {
         if (typeof requestBody === 'string') {
           try {
@@ -277,10 +285,26 @@ export default function RequestPanel({ activeRequest }) {
   }
 }`);
       }
+
+      // Initialize validation schema
+      const schema =
+        extractValue(activeApi, 'expected') ||
+        extractValue(activeApi, 'validation.responseSchema') ||
+        extractValue(activeApi, 'validationSchema.response') ||
+        defaultValidationSchema;
+
+      if (schema) {
+        setValidationSchema(
+          typeof schema === 'string' ? schema : JSON.stringify(schema, null, 2)
+        );
+      } else {
+        setValidationSchema(JSON.stringify(defaultValidationSchema, null, 2));
+      }
     } else {
-      // No active API, set default
+      // No active API, set defaults
       setBodyType('none');
       setBodyContent('');
+      setValidationSchema(JSON.stringify(defaultValidationSchema, null, 2));
     }
   }, [activeApi]);
 
@@ -370,8 +394,6 @@ export default function RequestPanel({ activeRequest }) {
         },
       ],
     },
-    _mirror_http_status: true,
-    _require_content_for_error: true,
   });
 
   const handleTestCaseSelection = testCaseId => {
@@ -387,9 +409,18 @@ export default function RequestPanel({ activeRequest }) {
   const handleRunSelectedTests = async () => {
     if (selectedTestCases.length === 0) return;
 
+    // Debug logging to check selectedNode
+    console.log('handleRunSelectedTests - selectedNode:', selectedNode);
+    console.log('handleRunSelectedTests - selectedNode.id:', selectedNode?.id);
+
+    if (!selectedNode?.id) {
+      console.error('No selected node or node ID available for running tests');
+      return;
+    }
+
     setIsSending(true);
     try {
-      const result = await runTest(selectedNode?.id, selectedTestCases);
+      const result = await runTest(selectedNode.id, selectedTestCases);
       console.log('Selected tests result:', result);
       setActiveTab('apiTests');
     } catch (error) {
@@ -496,6 +527,12 @@ export default function RequestPanel({ activeRequest }) {
 
       if (!createResult || !createResult.case_id) {
         throw new Error('Failed to create test case for validation');
+      }
+
+      if (!selectedNode?.id) {
+        throw new Error(
+          'No selected node ID available for running validation test'
+        );
       }
 
       // Run the test using the new case ID
@@ -622,6 +659,84 @@ export default function RequestPanel({ activeRequest }) {
         },
         headers: error.response?.headers || {},
       });
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  // Handler functions for the detailed test result modal
+  const handleOpenDetailedResult = testResult => {
+    setSelectedTestResult(testResult);
+    setShowDetailedResult(true);
+    setEditingApiInModal(false);
+
+    // Pre-populate API data for editing
+    if (testResult.api) {
+      setModalApiData({
+        name: testResult.api.name || activeApi?.name || '',
+        method: testResult.api.method || method,
+        endpoint: testResult.api.endpoint || url,
+        description: activeApi?.description || '',
+        headers: testResult.request?.headers || {},
+        body: testResult.request?.body || {},
+        params: testResult.request?.params || {},
+      });
+    }
+  };
+
+  const handleCloseDetailedResult = () => {
+    setShowDetailedResult(false);
+    setSelectedTestResult(null);
+    setEditingApiInModal(false);
+    setModalApiData(null);
+  };
+
+  const handleEditApiInModal = () => {
+    setEditingApiInModal(true);
+  };
+
+  const handleSaveApiFromModal = async () => {
+    if (!modalApiData || !selectedNode?.id) return;
+
+    try {
+      setIsUpdatingConfig(true);
+      const result = await saveApi(selectedNode.id, modalApiData);
+      console.log('API saved successfully from modal:', result);
+      alert('API configuration updated successfully');
+
+      // Reload the API details
+      await getApi(selectedNode.id);
+      setEditingApiInModal(false);
+    } catch (err) {
+      console.error('Error saving API configuration:', err);
+      alert(`Failed to save configuration: ${err.message}`);
+    } finally {
+      setIsUpdatingConfig(false);
+    }
+  };
+
+  const handleRunTestFromModal = async () => {
+    if (!selectedNode?.id || !selectedTestResult) return;
+
+    try {
+      setIsSending(true);
+      const result = await runTest(selectedNode.id);
+      console.log('Test run from modal:', result);
+
+      // Update the selected test result with new data if available
+      if (result && result.data && Array.isArray(result.data)) {
+        const updatedResult = result.data.find(
+          r =>
+            r.case === selectedTestResult.case ||
+            r.name === selectedTestResult.name
+        );
+        if (updatedResult) {
+          setSelectedTestResult(updatedResult);
+        }
+      }
+    } catch (err) {
+      console.error('Error running test from modal:', err);
+      alert(`Failed to run test: ${err.message}`);
     } finally {
       setIsSending(false);
     }
@@ -795,18 +910,15 @@ export default function RequestPanel({ activeRequest }) {
 
                   // Save the current request/response as a test case
                   try {
-                    // Get the validation schema from the validation tab textarea
-                    const schemaTextarea = document.getElementById(
-                      'validationSchemaTextarea'
-                    );
-                    let validationSchema;
+                    // Get the validation schema from the state
+                    let validationSchemaData;
 
                     try {
-                      if (schemaTextarea && schemaTextarea.value) {
-                        validationSchema = JSON.parse(schemaTextarea.value);
+                      if (validationSchema && validationSchema.trim()) {
+                        validationSchemaData = JSON.parse(validationSchema);
                       } else {
                         // Get schema from active API or use default
-                        validationSchema =
+                        validationSchemaData =
                           extractValue(activeApi, 'expected') ||
                           extractValue(
                             activeApi,
@@ -823,7 +935,7 @@ export default function RequestPanel({ activeRequest }) {
                         'Failed to parse validation schema, using default',
                         e
                       );
-                      validationSchema = defaultValidationSchema;
+                      validationSchemaData = defaultValidationSchema;
                     }
 
                     // Ask user for a custom test case name
@@ -848,7 +960,7 @@ export default function RequestPanel({ activeRequest }) {
                       // Pass body as string if it's JSON or other formats
                       body: bodyType === 'none' ? null : bodyContent,
                       // Use the validation schema from the validation tab
-                      expected: validationSchema,
+                      expected: validationSchemaData,
                     };
 
                     console.log('Recording test case with data:', testCaseData);
@@ -1366,29 +1478,27 @@ export default function RequestPanel({ activeRequest }) {
             </div>
 
             {bodyType !== 'none' && (
-              <div
-                className={`${styles.jsonEditor} ${styles[bodyType.toLowerCase() + 'Editor']} scrollable ${styles.jsonContainer}`}
-              >
-                {bodyType === 'JSON' && <CopyButton textToCopy={bodyContent} />}
-                <textarea
-                  className={styles.bodyTextarea}
-                  value={bodyContent}
-                  onChange={e => {
-                    setBodyContent(e.target.value);
-                  }}
-                  placeholder={
-                    bodyType === 'raw'
-                      ? 'Enter raw text'
-                      : bodyType === 'JSON'
-                        ? 'Enter JSON data'
-                        : bodyType === 'XML'
-                          ? 'Enter XML data'
-                          : bodyType === 'form-data'
-                            ? 'name=value&name2=value2'
-                            : ''
-                  }
-                />
-              </div>
+              <JsonEditor
+                value={bodyContent}
+                onChange={setBodyContent}
+                placeholder={
+                  bodyType === 'raw'
+                    ? 'Enter raw text'
+                    : bodyType === 'JSON'
+                      ? 'Enter JSON data'
+                      : bodyType === 'XML'
+                        ? 'Enter XML data'
+                        : bodyType === 'form-data'
+                          ? 'name=value&name2=value2'
+                          : ''
+                }
+                language={bodyType === 'JSON' ? 'json' : 'text'}
+                showCopyButton={true}
+                resizable={true}
+                minHeight={150}
+                maxHeight={400}
+                className={styles.bodyJsonEditor}
+              />
             )}
             {bodyType === 'none' && (
               <div className={styles.emptyBodyMessage}>
@@ -1409,38 +1519,18 @@ export default function RequestPanel({ activeRequest }) {
         {activeTab === 'validation' && (
           <div className={styles.validationContent}>
             <div className={styles.validationSection}>
-              <div
-                className={`${styles.jsonEditor} scrollable ${styles.jsonContainer}`}
-              >
-                <CopyButton
-                  textToCopy={(() => {
-                    const schema =
-                      extractValue(activeApi, 'expected') ||
-                      extractValue(activeApi, 'validation.responseSchema') ||
-                      defaultValidationSchema;
-                    return typeof schema === 'string'
-                      ? schema
-                      : JSON.stringify(schema, null, 2);
-                  })()}
-                />
-                <textarea
-                  id="validationSchemaTextarea"
-                  rows={16}
-                  placeholder="Enter validation schema for API responses"
-                  defaultValue={(() => {
-                    // Try to get validation schema if it exists
-                    const schema =
-                      extractValue(activeApi, 'expected') ||
-                      extractValue(activeApi, 'validation.responseSchema') ||
-                      extractValue(activeApi, 'validationSchema.response');
-
-                    // If no schema exists, use our default validation schema
-                    return schema
-                      ? JSON.stringify(schema, null, 2)
-                      : JSON.stringify(defaultValidationSchema, null, 2);
-                  })()}
-                />
-              </div>
+              <JsonEditor
+                value={validationSchema}
+                onChange={setValidationSchema}
+                placeholder="Enter validation schema for API responses"
+                language="json"
+                showCopyButton={true}
+                resizable={true}
+                minHeight={200}
+                maxHeight={500}
+                editorId="validationSchemaTextarea"
+                className={styles.validationJsonEditor}
+              />
             </div>
 
             {/* Validation buttons have been removed as requested */}
@@ -1477,7 +1567,15 @@ export default function RequestPanel({ activeRequest }) {
                     <Button
                       variant="primary"
                       className={styles.runAllTestsButton}
-                      onClick={() => runTest(selectedNode?.id)}
+                      onClick={() => {
+                        if (!selectedNode?.id) {
+                          console.error(
+                            'No selected node ID available for running all tests'
+                          );
+                          return;
+                        }
+                        runTest(selectedNode.id);
+                      }}
                       disabled={isSending}
                     >
                       {isSending ? 'Running...' : 'Run All Tests'}
@@ -1502,13 +1600,26 @@ export default function RequestPanel({ activeRequest }) {
                 </div>
                 <div className={styles.testResultsContent}>
                   {(() => {
-                    const resultsArray =
-                      testResults.test_cases ?? testResults.data ?? [];
+                    // Handle different result formats based on your API response structure
+                    let resultsArray = [];
 
-                    if (
-                      Array.isArray(resultsArray) &&
-                      resultsArray.length > 0
-                    ) {
+                    if (Array.isArray(testResults)) {
+                      // If testResults is directly an array (like your sample data)
+                      resultsArray = testResults;
+                    } else if (testResults.test_cases) {
+                      // If wrapped in test_cases property
+                      resultsArray = testResults.test_cases;
+                    } else if (testResults.data) {
+                      // If wrapped in data property
+                      resultsArray = Array.isArray(testResults.data)
+                        ? testResults.data
+                        : [testResults.data];
+                    } else if (testResults) {
+                      // Single result object
+                      resultsArray = [testResults];
+                    }
+
+                    if (resultsArray.length > 0) {
                       return (
                         <>
                           <div className={styles.testResultsStats}>
@@ -1517,34 +1628,147 @@ export default function RequestPanel({ activeRequest }) {
                             </div>
                             <div className={styles.testStat}>
                               <span>Passed:</span>{' '}
-                              {resultsArray.filter(r => r.passed).length}
+                              {
+                                resultsArray.filter(
+                                  r => r.ok ?? r.passed ?? false
+                                ).length
+                              }
                             </div>
                             <div className={styles.testStat}>
                               <span>Failed:</span>{' '}
-                              {resultsArray.filter(r => !r.passed).length}
+                              {
+                                resultsArray.filter(
+                                  r => !(r.ok ?? r.passed ?? false)
+                                ).length
+                              }
                             </div>
                           </div>
                           <div className={styles.testResultsList}>
-                            {resultsArray.map((result, index) => (
-                              <div
-                                key={result.id ?? index}
-                                className={`${styles.testResultItem} ${result.passed ? styles.testPassed : styles.testFailed}`}
-                              >
-                                <div className={styles.testResultHeader}>
-                                  <span className={styles.testName}>
-                                    {result.name || `Test Case ${index + 1}`}
-                                  </span>
-                                  <span className={styles.testStatus}>
-                                    {result.passed ? 'Passed' : 'Failed'}
-                                  </span>
-                                </div>
-                                {!result.passed && result.error && (
-                                  <div className={styles.testError}>
-                                    {result.error}
+                            {resultsArray.map((result, index) => {
+                              // Handle different result formats to support your API response structure
+                              const testResult = result;
+                              const passed =
+                                testResult.ok ?? testResult.passed ?? false;
+                              const testName =
+                                testResult.case ||
+                                testResult.name ||
+                                `Test Case ${index + 1}`;
+                              const statusCode =
+                                testResult.status_code ||
+                                testResult.response?.status_code;
+                              const duration = testResult.duration_ms;
+                              const failures = testResult.failures || [];
+                              const request = testResult.request;
+                              const response = testResult.response;
+
+                              return (
+                                <div
+                                  key={result.id ?? index}
+                                  className={`${styles.testResultItem} ${passed ? styles.testPassed : styles.testFailed}`}
+                                >
+                                  <div className={styles.testResultHeader}>
+                                    <div className={styles.testResultBasicInfo}>
+                                      <span className={styles.testName}>
+                                        {testName}
+                                      </span>
+                                      <span className={styles.testStatus}>
+                                        {passed ? 'Passed' : 'Failed'}
+                                      </span>
+                                      {statusCode && (
+                                        <span className={styles.testStatusCode}>
+                                          Status: {statusCode}
+                                        </span>
+                                      )}
+                                      {duration && (
+                                        <span className={styles.testDuration}>
+                                          {duration.toFixed(2)}ms
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className={styles.testResultActions}>
+                                      <Button
+                                        variant="primary"
+                                        size="small"
+                                        onClick={() =>
+                                          handleOpenDetailedResult(testResult)
+                                        }
+                                      >
+                                        View Details
+                                      </Button>
+                                      <Button
+                                        variant="secondary"
+                                        size="small"
+                                        onClick={() => {
+                                          // Re-run this specific test
+                                          if (request && selectedNode?.id) {
+                                            runTest(selectedNode.id);
+                                          }
+                                        }}
+                                        disabled={isSending}
+                                      >
+                                        Re-run
+                                      </Button>
+                                      <Button
+                                        variant="secondary"
+                                        size="small"
+                                        onClick={() => {
+                                          // Edit test case (find matching test case)
+                                          const matchingTestCase =
+                                            testCases.find(
+                                              tc =>
+                                                tc.name === testName ||
+                                                tc.case === testName
+                                            );
+                                          if (matchingTestCase) {
+                                            setEditingTestCaseId(
+                                              matchingTestCase.id ||
+                                                matchingTestCase.case_id
+                                            );
+                                            setShowTestCaseForm(true);
+                                          }
+                                        }}
+                                      >
+                                        Edit
+                                      </Button>
+                                    </div>
                                   </div>
-                                )}
-                              </div>
-                            ))}
+
+                                  {/* Failures section */}
+                                  {!passed && failures.length > 0 && (
+                                    <div className={styles.testFailures}>
+                                      <h5>Failures:</h5>
+                                      <ul className={styles.failuresList}>
+                                        {failures.map((failure, idx) => (
+                                          <li
+                                            key={idx}
+                                            className={styles.failureItem}
+                                          >
+                                            {failure}
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
+
+                                  {/* API Info section */}
+                                  {testResult.api && (
+                                    <div className={styles.testApiInfo}>
+                                      <h5>API Details:</h5>
+                                      <div className={styles.testApiDetails}>
+                                        <span className={styles.testApiMethod}>
+                                          {testResult.api.method}
+                                        </span>
+                                        <span
+                                          className={styles.testApiEndpoint}
+                                        >
+                                          {testResult.api.endpoint}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                         </>
                       );
@@ -1596,12 +1820,18 @@ export default function RequestPanel({ activeRequest }) {
                             variant="primary"
                             size="small"
                             className={styles.runTestButton}
-                            onClick={() =>
+                            onClick={() => {
+                              if (!selectedNode?.id) {
+                                console.error(
+                                  'No selected node ID available for running test'
+                                );
+                                return;
+                              }
                               runTest(
-                                selectedNode?.id,
+                                selectedNode.id,
                                 testCase.id || testCase.case_id
-                              )
-                            }
+                              );
+                            }}
                             disabled={isSending}
                           >
                             {isSending ? 'Running...' : 'Run'}
@@ -1744,24 +1974,30 @@ export default function RequestPanel({ activeRequest }) {
                     // Format for standard API response with response_code and data
                     <div className={styles.structuredResponse}>
                       {response.body.data && (
-                        <div
-                          className={`${styles.responseDataSection} ${styles.jsonContainer}`}
-                        >
-                          <CopyButton
-                            textToCopy={JSON.stringify(response.body, null, 2)}
-                          />
-                          <pre>{JSON.stringify(response.body, null, 2)}</pre>
-                        </div>
+                        <JsonEditor
+                          value={JSON.stringify(response.body, null, 2)}
+                          language="json"
+                          showCopyButton={true}
+                          resizable={true}
+                          minHeight={150}
+                          maxHeight={400}
+                          disabled={true}
+                          className={styles.responseJsonEditor}
+                        />
                       )}
                     </div>
                   ) : (
                     // For other response formats
-                    <div className={styles.jsonContainer}>
-                      <CopyButton
-                        textToCopy={JSON.stringify(response.body, null, 2)}
-                      />
-                      <pre>{JSON.stringify(response.body, null, 2)}</pre>
-                    </div>
+                    <JsonEditor
+                      value={JSON.stringify(response.body, null, 2)}
+                      language="json"
+                      showCopyButton={true}
+                      resizable={true}
+                      minHeight={150}
+                      maxHeight={400}
+                      disabled={true}
+                      className={styles.responseJsonEditor}
+                    />
                   )}
                 </div>
               )}
@@ -1808,6 +2044,594 @@ export default function RequestPanel({ activeRequest }) {
                 }}
                 onCancel={() => setShowTestCaseForm(false)}
               />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Detailed Test Result Modal */}
+      {showDetailedResult && selectedTestResult && (
+        <div className={styles.modalOverlay} style={{ zIndex: 1000 }}>
+          <div className={styles.detailedResultModal}>
+            <div className={styles.modalHeader}>
+              <h3>Test Result Details</h3>
+              <div className={styles.modalHeaderActions}>
+                <Button
+                  variant="primary"
+                  size="small"
+                  onClick={handleEditApiInModal}
+                  disabled={editingApiInModal}
+                >
+                  {editingApiInModal ? 'Editing...' : 'Edit API'}
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="small"
+                  onClick={handleRunTestFromModal}
+                  disabled={isSending}
+                >
+                  {isSending ? 'Running...' : 'Re-run Test'}
+                </Button>
+                <Button
+                  variant="primary"
+                  size="small"
+                  onClick={() => {
+                    // Save the modified test result data
+                    console.log(
+                      'Saving test data changes:',
+                      selectedTestResult
+                    );
+                    // Here you would implement saving logic to your backend
+                    // For now, just show a confirmation
+                    alert(
+                      'Test data changes saved locally. Implement backend save as needed.'
+                    );
+                  }}
+                >
+                  Save Changes
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="small"
+                  className={styles.closeButton}
+                  onClick={handleCloseDetailedResult}
+                >
+                  ×
+                </Button>
+              </div>
+            </div>
+
+            <div className={styles.detailedResultContent}>
+              {/* Test Summary */}
+              <div className={styles.testSummary}>
+                <div className={styles.testSummaryHeader}>
+                  <h4>
+                    {selectedTestResult.case ||
+                      selectedTestResult.name ||
+                      'Test Result'}
+                  </h4>
+                  <span
+                    className={`${styles.testStatusBadge} ${
+                      (selectedTestResult.ok ?? selectedTestResult.passed)
+                        ? styles.passed
+                        : styles.failed
+                    }`}
+                  >
+                    {(selectedTestResult.ok ?? selectedTestResult.passed)
+                      ? 'PASSED'
+                      : 'FAILED'}
+                  </span>
+                </div>
+
+                {/* Test Case Summary - Clean Simple Layout */}
+                <div className={styles.testCaseSummary}>
+                  <div className={styles.testCaseHeader}>
+                    <h3>
+                      {selectedTestResult.case ||
+                        selectedTestResult.name ||
+                        'Test Case'}
+                    </h3>
+                    <div
+                      className={`${styles.statusBadge} ${
+                        (selectedTestResult.ok ??
+                        selectedTestResult.passed ??
+                        false)
+                          ? styles.statusPassed
+                          : styles.statusFailed
+                      }`}
+                    >
+                      {(selectedTestResult.ok ??
+                      selectedTestResult.passed ??
+                      false)
+                        ? 'PASSED'
+                        : 'FAILED'}
+                    </div>
+                  </div>
+
+                  <div className={styles.testMetricsGrid}>
+                    <div className={styles.metricItem}>
+                      <span className={styles.metricLabel}>STATUS CODE:</span>
+                      <span className={styles.metricValue}>
+                        {selectedTestResult.status_code ||
+                          selectedTestResult.response?.status_code ||
+                          'N/A'}
+                      </span>
+                    </div>
+
+                    <div className={styles.metricItem}>
+                      <span className={styles.metricLabel}>DURATION:</span>
+                      <span className={styles.metricValue}>
+                        {selectedTestResult.duration_ms
+                          ? `${selectedTestResult.duration_ms.toFixed(2)}ms`
+                          : 'N/A'}
+                      </span>
+                    </div>
+
+                    <div className={styles.metricItem}>
+                      <span className={styles.metricLabel}>FAILURES:</span>
+                      <span className={styles.metricValue}>
+                        {selectedTestResult.failures?.length || 0}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Failures Display */}
+                  {selectedTestResult.failures &&
+                    selectedTestResult.failures.length > 0 && (
+                      <div className={styles.failuresDisplay}>
+                        <h4>Failures:</h4>
+                        <div className={styles.failuresList}>
+                          {selectedTestResult.failures.map((failure, idx) => (
+                            <div key={idx} className={styles.failureBlock}>
+                              {failure}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                </div>
+              </div>
+
+              {/* API Edit Section */}
+              {editingApiInModal && modalApiData && (
+                <div className={styles.apiEditSection}>
+                  <div className={styles.sectionHeader}>
+                    <h4>Edit API Configuration</h4>
+                    <div className={styles.apiEditActions}>
+                      <Button
+                        variant="primary"
+                        size="small"
+                        onClick={handleSaveApiFromModal}
+                        disabled={isUpdatingConfig}
+                      >
+                        {isUpdatingConfig ? 'Saving...' : 'Save API'}
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        size="small"
+                        onClick={() => setEditingApiInModal(false)}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className={styles.apiEditForm}>
+                    <div className={styles.formRow}>
+                      <label>API Name:</label>
+                      <input
+                        type="text"
+                        value={modalApiData.name}
+                        onChange={e =>
+                          setModalApiData({
+                            ...modalApiData,
+                            name: e.target.value,
+                          })
+                        }
+                        className={styles.formInput}
+                      />
+                    </div>
+
+                    <div className={styles.formRow}>
+                      <label>Method:</label>
+                      <select
+                        value={modalApiData.method}
+                        onChange={e =>
+                          setModalApiData({
+                            ...modalApiData,
+                            method: e.target.value,
+                          })
+                        }
+                        className={styles.formSelect}
+                      >
+                        <option value="GET">GET</option>
+                        <option value="POST">POST</option>
+                        <option value="PUT">PUT</option>
+                        <option value="DELETE">DELETE</option>
+                        <option value="PATCH">PATCH</option>
+                      </select>
+                    </div>
+
+                    <div className={styles.formRow}>
+                      <label>Endpoint:</label>
+                      <input
+                        type="text"
+                        value={modalApiData.endpoint}
+                        onChange={e =>
+                          setModalApiData({
+                            ...modalApiData,
+                            endpoint: e.target.value,
+                          })
+                        }
+                        className={styles.formInput}
+                      />
+                    </div>
+
+                    <div className={styles.formRow}>
+                      <label>Description:</label>
+                      <textarea
+                        value={modalApiData.description}
+                        onChange={e =>
+                          setModalApiData({
+                            ...modalApiData,
+                            description: e.target.value,
+                          })
+                        }
+                        className={styles.formTextarea}
+                        rows="3"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Request Details */}
+              {selectedTestResult.request && (
+                <div className={styles.detailSection}>
+                  <div className={styles.sectionHeader}>
+                    <h4>Request Details</h4>
+                    <CopyButton
+                      textToCopy={JSON.stringify(
+                        selectedTestResult.request,
+                        null,
+                        2
+                      )}
+                    />
+                  </div>
+
+                  <div className={styles.requestDetails}>
+                    <div className={styles.requestLine}>
+                      <span className={styles.requestMethod}>
+                        {selectedTestResult.request.method}
+                      </span>
+                      <span className={styles.requestUrl}>
+                        {selectedTestResult.request.url}
+                      </span>
+                    </div>
+
+                    {/* Headers Section - Always show */}
+                    <div className={styles.detailSubsection}>
+                      <h5>Headers:</h5>
+                      {selectedTestResult.request.headers &&
+                      Object.keys(selectedTestResult.request.headers).length >
+                        0 ? (
+                        <JsonEditor
+                          value={JSON.stringify(
+                            selectedTestResult.request.headers,
+                            null,
+                            2
+                          )}
+                          onChange={value => {
+                            try {
+                              const parsed = JSON.parse(value);
+                              // Update the test result data
+                              setSelectedTestResult(prev => ({
+                                ...prev,
+                                request: {
+                                  ...prev.request,
+                                  headers: parsed,
+                                },
+                              }));
+                            } catch (err) {
+                              console.warn('Invalid JSON for headers:', err);
+                            }
+                          }}
+                          language="json"
+                          showCopyButton={true}
+                          resizable={true}
+                          minHeight={100}
+                          maxHeight={300}
+                          className={styles.modalJsonEditor}
+                        />
+                      ) : (
+                        <div className={styles.emptyState}>
+                          <p>No headers found</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Parameters Section - Always show */}
+                    <div className={styles.detailSubsection}>
+                      <h5>Parameters:</h5>
+                      {selectedTestResult.request.params &&
+                      Object.keys(selectedTestResult.request.params).length >
+                        0 ? (
+                        <JsonEditor
+                          value={JSON.stringify(
+                            selectedTestResult.request.params,
+                            null,
+                            2
+                          )}
+                          onChange={value => {
+                            try {
+                              const parsed = JSON.parse(value);
+                              setSelectedTestResult(prev => ({
+                                ...prev,
+                                request: {
+                                  ...prev.request,
+                                  params: parsed,
+                                },
+                              }));
+                            } catch (err) {
+                              console.warn('Invalid JSON for params:', err);
+                            }
+                          }}
+                          language="json"
+                          showCopyButton={true}
+                          resizable={true}
+                          minHeight={100}
+                          maxHeight={300}
+                          className={styles.modalJsonEditor}
+                        />
+                      ) : (
+                        <div className={styles.emptyState}>
+                          <p>No parameters found</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Body Section - Always show */}
+                    <div className={styles.detailSubsection}>
+                      <h5>Body:</h5>
+                      {selectedTestResult.request.body ? (
+                        <JsonEditor
+                          value={JSON.stringify(
+                            selectedTestResult.request.body,
+                            null,
+                            2
+                          )}
+                          onChange={value => {
+                            try {
+                              const parsed = JSON.parse(value);
+                              setSelectedTestResult(prev => ({
+                                ...prev,
+                                request: {
+                                  ...prev.request,
+                                  body: parsed,
+                                },
+                              }));
+                            } catch (err) {
+                              console.warn('Invalid JSON for body:', err);
+                            }
+                          }}
+                          language="json"
+                          showCopyButton={true}
+                          resizable={true}
+                          minHeight={100}
+                          maxHeight={400}
+                          className={styles.modalJsonEditor}
+                        />
+                      ) : (
+                        <div className={styles.emptyState}>
+                          <p>No body content</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Response Details */}
+              {selectedTestResult.response && (
+                <div className={styles.detailSection}>
+                  <div className={styles.sectionHeader}>
+                    <h4>Response Details</h4>
+                    <CopyButton
+                      textToCopy={JSON.stringify(
+                        selectedTestResult.response,
+                        null,
+                        2
+                      )}
+                    />
+                  </div>
+
+                  <div className={styles.responseDetails}>
+                    <div className={styles.responseStatusLine}>
+                      <span className={styles.responseStatus}>
+                        Status:{' '}
+                        {selectedTestResult.response.status_code ||
+                          selectedTestResult.status_code ||
+                          'Unknown'}
+                      </span>
+                    </div>
+
+                    {/* Response Headers - if available */}
+                    {selectedTestResult.response.headers && (
+                      <div className={styles.detailSubsection}>
+                        <h5>Response Headers:</h5>
+                        <JsonEditor
+                          value={JSON.stringify(
+                            selectedTestResult.response.headers,
+                            null,
+                            2
+                          )}
+                          onChange={value => {
+                            try {
+                              const parsed = JSON.parse(value);
+                              setSelectedTestResult(prev => ({
+                                ...prev,
+                                response: {
+                                  ...prev.response,
+                                  headers: parsed,
+                                },
+                              }));
+                            } catch (err) {
+                              console.warn(
+                                'Invalid JSON for response headers:',
+                                err
+                              );
+                            }
+                          }}
+                          language="json"
+                          showCopyButton={true}
+                          resizable={true}
+                          minHeight={100}
+                          maxHeight={300}
+                          className={styles.modalJsonEditor}
+                        />
+                      </div>
+                    )}
+
+                    {/* Response Body */}
+                    <div className={styles.detailSubsection}>
+                      <h5>Response Body:</h5>
+                      {selectedTestResult.response.json ? (
+                        <JsonEditor
+                          value={JSON.stringify(
+                            selectedTestResult.response.json,
+                            null,
+                            2
+                          )}
+                          onChange={value => {
+                            try {
+                              const parsed = JSON.parse(value);
+                              setSelectedTestResult(prev => ({
+                                ...prev,
+                                response: {
+                                  ...prev.response,
+                                  json: parsed,
+                                },
+                              }));
+                            } catch (err) {
+                              console.warn(
+                                'Invalid JSON for response body:',
+                                err
+                              );
+                            }
+                          }}
+                          language="json"
+                          showCopyButton={true}
+                          resizable={true}
+                          minHeight={150}
+                          maxHeight={400}
+                          className={styles.modalJsonEditor}
+                        />
+                      ) : selectedTestResult.response.text ? (
+                        <JsonEditor
+                          value={selectedTestResult.response.text}
+                          onChange={value => {
+                            setSelectedTestResult(prev => ({
+                              ...prev,
+                              response: {
+                                ...prev.response,
+                                text: value,
+                              },
+                            }));
+                          }}
+                          language="text"
+                          showCopyButton={true}
+                          resizable={true}
+                          minHeight={100}
+                          maxHeight={300}
+                          className={styles.modalJsonEditor}
+                        />
+                      ) : (
+                        <div className={styles.emptyState}>
+                          <p>No response body content</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Expected vs Actual (if available) */}
+              {selectedTestResult.expected && (
+                <div className={styles.detailSection}>
+                  <div className={styles.sectionHeader}>
+                    <h4>Expected Results</h4>
+                    <CopyButton
+                      textToCopy={JSON.stringify(
+                        selectedTestResult.expected,
+                        null,
+                        2
+                      )}
+                    />
+                  </div>
+
+                  <div className={styles.expectedDetails}>
+                    <JsonEditor
+                      value={JSON.stringify(
+                        selectedTestResult.expected,
+                        null,
+                        2
+                      )}
+                      onChange={value => {
+                        try {
+                          const parsed = JSON.parse(value);
+                          setSelectedTestResult(prev => ({
+                            ...prev,
+                            expected: parsed,
+                          }));
+                        } catch (err) {
+                          console.warn(
+                            'Invalid JSON for expected results:',
+                            err
+                          );
+                        }
+                      }}
+                      language="json"
+                      showCopyButton={true}
+                      resizable={true}
+                      minHeight={150}
+                      maxHeight={400}
+                      className={styles.modalJsonEditor}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* API Configuration (if available) */}
+              {selectedTestResult.api && (
+                <div className={styles.detailSection}>
+                  <div className={styles.sectionHeader}>
+                    <h4>API Configuration</h4>
+                  </div>
+
+                  <div className={styles.apiConfigDetails}>
+                    <div className={styles.configRow}>
+                      <span className={styles.configLabel}>Method:</span>
+                      <span className={styles.configValue}>
+                        {selectedTestResult.api.method}
+                      </span>
+                    </div>
+                    <div className={styles.configRow}>
+                      <span className={styles.configLabel}>Endpoint:</span>
+                      <span className={styles.configValue}>
+                        {selectedTestResult.api.endpoint}
+                      </span>
+                    </div>
+                    {selectedTestResult.api.path && (
+                      <div className={styles.configRow}>
+                        <span className={styles.configLabel}>Path:</span>
+                        <span className={styles.configValue}>
+                          {selectedTestResult.api.path}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

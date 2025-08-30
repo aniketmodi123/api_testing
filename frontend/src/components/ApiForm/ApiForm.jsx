@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useApi } from '../../store/api';
-import { Button } from '../common';
+import { Button, JsonEditor } from '../common';
 import styles from './ApiForm.module.css';
 
 // Copy to clipboard utility function
@@ -758,16 +758,15 @@ const ApiForm = ({
           </Button>
 
           <div className={`${styles.jsonEditor} scrollable`}>
-            <CopyButton
-              textToCopy={JSON.stringify(formData.headers, null, 2)}
-            />
             <label htmlFor="headers_json">Headers as JSON:</label>
-            <textarea
-              id="headers_json"
+            <JsonEditor
               value={JSON.stringify(formData.headers, null, 2)}
-              onChange={e => handleJsonChange('headers', e)}
-              rows={5}
+              onChange={value =>
+                handleJsonChange('headers', { target: { value } })
+              }
               placeholder="{}"
+              minHeight={120}
+              showCopyButton={true}
             />
           </div>
         </div>
@@ -817,14 +816,15 @@ const ApiForm = ({
           </Button>
 
           <div className={styles.jsonEditor}>
-            <CopyButton textToCopy={JSON.stringify(formData.params, null, 2)} />
             <label htmlFor="params_json">Parameters as JSON:</label>
-            <textarea
-              id="params_json"
+            <JsonEditor
               value={JSON.stringify(formData.params, null, 2)}
-              onChange={e => handleJsonChange('params', e)}
-              rows={5}
+              onChange={value =>
+                handleJsonChange('params', { target: { value } })
+              }
               placeholder="{}"
+              minHeight={120}
+              showCopyButton={true}
             />
           </div>
         </div>
@@ -836,12 +836,13 @@ const ApiForm = ({
         >
           <h3>Request Body</h3>
           <div className={styles.jsonEditor}>
-            <textarea
-              id="request_body"
+            <JsonEditor
               value={JSON.stringify(formData.request_body, null, 2)}
-              onChange={e => handleJsonChange('request_body', e)}
-              rows={15}
+              onChange={value =>
+                handleJsonChange('request_body', { target: { value } })
+              }
               placeholder="{}"
+              minHeight={300}
             />
           </div>
         </div>
@@ -856,25 +857,16 @@ const ApiForm = ({
           <div className={styles.validationSection}>
             <h4>Request Schema</h4>
             <div className={styles.jsonEditor}>
-              <CopyButton
-                textToCopy={JSON.stringify(
-                  formData.validation.requestSchema,
-                  null,
-                  2
-                )}
-              />
-              <textarea
+              <JsonEditor
                 value={JSON.stringify(
                   formData.validation.requestSchema,
                   null,
                   2
                 )}
-                onChange={e => {
+                onChange={value => {
                   try {
                     console.log('Updating request schema validation');
-                    const schema = e.target.value
-                      ? JSON.parse(e.target.value)
-                      : {};
+                    const schema = value ? JSON.parse(value) : {};
                     setFormData(prev => ({
                       ...prev,
                       validation: {
@@ -886,8 +878,9 @@ const ApiForm = ({
                     console.error('Invalid JSON schema:', err);
                   }
                 }}
-                rows={8}
                 placeholder="Enter JSON schema for request validation"
+                minHeight={160}
+                showCopyButton={true}
               />
             </div>
           </div>
@@ -895,17 +888,15 @@ const ApiForm = ({
           <div className={styles.validationSection}>
             <h4>Response Schema</h4>
             <div className={styles.jsonEditor}>
-              <textarea
+              <JsonEditor
                 value={JSON.stringify(
                   formData.validation.responseSchema,
                   null,
                   2
                 )}
-                onChange={e => {
+                onChange={value => {
                   try {
-                    const schema = e.target.value
-                      ? JSON.parse(e.target.value)
-                      : {};
+                    const schema = value ? JSON.parse(value) : {};
                     setFormData(prev => ({
                       ...prev,
                       validation: {
@@ -917,8 +908,8 @@ const ApiForm = ({
                     console.error('Invalid JSON schema:', err);
                   }
                 }}
-                rows={8}
                 placeholder="Enter JSON schema for response validation"
+                minHeight={160}
               />
             </div>
           </div>
@@ -998,14 +989,11 @@ const ApiForm = ({
 
           <h4>Expected Headers</h4>
           <div className={styles.jsonEditor}>
-            <textarea
-              id="expected_headers"
+            <JsonEditor
               value={JSON.stringify(formData.expected?.headers || {}, null, 2)}
-              onChange={e => {
+              onChange={value => {
                 try {
-                  const headersValue = e.target.value
-                    ? JSON.parse(e.target.value)
-                    : {};
+                  const headersValue = value ? JSON.parse(value) : {};
                   setFormData(prev => ({
                     ...prev,
                     expected: {
@@ -1017,21 +1005,18 @@ const ApiForm = ({
                   console.error('Invalid JSON for expected headers:', err);
                 }
               }}
-              rows={5}
               placeholder="{}"
+              minHeight={120}
             />
           </div>
 
           <h4>Expected Body</h4>
           <div className={styles.jsonEditor}>
-            <textarea
-              id="expected_body"
+            <JsonEditor
               value={JSON.stringify(formData.expected?.body || {}, null, 2)}
-              onChange={e => {
+              onChange={value => {
                 try {
-                  const bodyValue = e.target.value
-                    ? JSON.parse(e.target.value)
-                    : {};
+                  const bodyValue = value ? JSON.parse(value) : {};
                   setFormData(prev => ({
                     ...prev,
                     expected: {
@@ -1043,8 +1028,8 @@ const ApiForm = ({
                   console.error('Invalid JSON for expected body:', err);
                 }
               }}
-              rows={10}
               placeholder="{}"
+              minHeight={200}
             />
           </div>
         </div>
@@ -1055,13 +1040,11 @@ const ApiForm = ({
           style={{ display: activeTab === 'basic' ? 'block' : 'none' }}
         >
           <label htmlFor="extra_meta">Extra Metadata (JSON)</label>
-          <textarea
-            id="extra_meta"
-            name="extra_meta"
+          <JsonEditor
             value={JSON.stringify(formData.extra_meta, null, 2)}
-            onChange={handleMetaChange}
+            onChange={value => handleMetaChange({ target: { value } })}
             placeholder="{}"
-            rows={5}
+            minHeight={120}
           />
         </div>
 
