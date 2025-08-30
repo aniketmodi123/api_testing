@@ -1,0 +1,1148 @@
+import { useCallback, useEffect, useState } from 'react';
+import { api } from '../../api';
+import { useApi } from '../../store/api';
+import { useNode } from '../../store/node';
+import { TestCaseForm } from '../TestCaseForm';
+import { Button } from '../common';
+import styles from './RequestPanel.module.css';
+import './buttonStyles.css';
+import './dropdown.css';
+
+// Copy to clipboard utility function
+const copyToClipboard = async text => {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (err) {
+    console.error('Failed to copy text: ', err);
+    return false;
+  }
+};
+
+// Reusable copy button component
+const CopyButton = ({ textToCopy, className }) => {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    const success = await copyToClipboard(textToCopy);
+    if (success) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000); // Reset after 2 seconds
+    }
+  };
+
+  return (
+    <Button
+      variant="secondary"
+      size="small"
+      className={className || ''}
+      onClick={handleCopy}
+      title="Copy to clipboard"
+    >
+      {copied ? (
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"
+            fill="currentColor"
+          />
+        </svg>
+      ) : (
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="M16 1H4C2.9 1 2 1.9 2 3V17H4V3H16V1ZM19 5H8C6.9 5 6 5.9 6 7V21C6 22.1 6.9 23 8 23H19C20.1 23 21 22.1 21 21V7C21 5.9 20.1 5 19 5ZM19 21H8V7H19V21Z"
+            fill="currentColor"
+          />
+        </svg>
+      )}
+    </Button>
+  );
+};
+
+// Helper function to safely extract values from possibly nested API response objects
+const extractValue = (obj, key, defaultValue = '') => {
+  if (!obj) return defaultValue;
+
+  try {
+    // For our specific response format with response_code and data
+    if (obj.response_code !== undefined && obj.data) {
+      // Check if the key exists in the data object
+      if (obj.data[key] !== undefined) {
+        return obj.data[key];
+      }
+    }
+
+    // Direct property
+    if (obj[key] !== undefined) return obj[key];
+
+    // Check if nested in data
+    if (obj.data && obj.data[key] !== undefined) return obj.data[key];
+
+    // Check if nested in response
+    if (obj.response && obj.response[key] !== undefined)
+      return obj.response[key];
+
+    // Check if nested in response.data
+    if (
+      obj.response &&
+      obj.response.data &&
+      obj.response.data[key] !== undefined
+    )
+      return obj.response.data[key];
+
+    return defaultValue;
+  } catch (err) {
+    console.error('Error extracting value:', err);
+    return defaultValue;
+  }
+};
+
+export function RequestPanel() {
+  // State for API request params
+  const [url, setUrl] = useState('');
+  const [method, setMethod] = useState('GET');
+  const [headers, setHeaders] = useState({});
+  const [body, setBody] = useState('');
+  const [params, setParams] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [response, setResponse] = useState(null);
+  const [error, setError] = useState(null);
+  const [statusCode, setStatusCode] = useState(null);
+  const [responseTime, setResponseTime] = useState(null);
+  const [activeTab, setActiveTab] = useState('raw');
+  const [testResults, setTestResults] = useState([]);
+  const [recentTestResults, setRecentTestResults] = useState([]);
+  const [showTestCaseForm, setShowTestCaseForm] = useState(false);
+  const [selectedTestCaseId, setSelectedTestCaseId] = useState(null);
+  const [editingTestCaseId, setEditingTestCaseId] = useState(null);
+  const [showResultDrawer, setShowResultDrawer] = useState(false);
+  const [activeResultForDrawer, setActiveResultForDrawer] = useState(null);
+  const [isEditingInDrawer, setIsEditingInDrawer] = useState(false);
+
+  const { state: apiState, dispatch: apiDispatch } = useApi();
+  const { state: nodeState } = useNode();
+
+  const apiUrl = apiState.apiUrl || import.meta.env.VITE_API_URL || '';
+  const workspace = nodeState.workspace;
+
+  const selectTestCase = useCallback(
+    id => {
+      apiDispatch({
+        type: 'SELECT_TEST_CASE',
+        payload: { id },
+      });
+    },
+    [apiDispatch]
+  );
+
+  // Update URL when workspace changes
+  useEffect(() => {
+    if (workspace) {
+      setUrl(`${apiUrl}/workspaces/${workspace}/collections`);
+    }
+  }, [workspace, apiUrl]);
+
+  // Function to validate URL
+  const validateUrl = url => {
+    try {
+      new URL(url);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  };
+
+  // Execute API call
+  const executeRequest = async () => {
+    if (!url || !validateUrl(url)) {
+      setError('Please enter a valid URL');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setResponse(null);
+    setStatusCode(null);
+    setResponseTime(null);
+
+    const startTime = performance.now();
+
+    try {
+      // Prepare request options
+      const requestOptions = {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          ...headers,
+        },
+      };
+
+      // Add body for non-GET requests
+      if (method !== 'GET' && body) {
+        requestOptions.body = body;
+      }
+
+      // Add URL parameters
+      let requestUrl = url;
+      if (Object.keys(params).length > 0) {
+        const urlObj = new URL(url);
+        Object.entries(params).forEach(([key, value]) => {
+          if (value) {
+            urlObj.searchParams.append(key, value);
+          }
+        });
+        requestUrl = urlObj.toString();
+      }
+
+      // Execute fetch
+      const response = await fetch(requestUrl, requestOptions);
+      const endTime = performance.now();
+      setResponseTime(endTime - startTime);
+      setStatusCode(response.status);
+
+      // Try to parse as JSON
+      try {
+        const responseData = await response.json();
+        setResponse(responseData);
+      } catch (e) {
+        // If not JSON, get as text
+        const responseText = await response.text();
+        setResponse(responseText);
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Execute test cases
+  const runTest = async testCase => {
+    if (!testCase) return null;
+
+    setLoading(true);
+    try {
+      const result = await api.testCase.run(testCase.id);
+      // Update results
+      setRecentTestResults(prev => {
+        // Add to front, maintain uniqueness by ID
+        const existing = prev.findIndex(
+          r => r.id === result.id || r.result?.id === result.id
+        );
+        if (existing >= 0) {
+          const newResults = [...prev];
+          newResults[existing] = { ...result, timestamp: Date.now() };
+          return newResults;
+        }
+        return [{ ...result, timestamp: Date.now() }, ...prev];
+      });
+      return result;
+    } catch (err) {
+      console.error('Test execution failed:', err);
+      return {
+        error: err.message || 'Test execution failed',
+        passed: false,
+        timestamp: Date.now(),
+      };
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Run all tests in the current collection
+  const runAllTests = async () => {
+    if (!nodeState.currentNode) {
+      setError('No collection selected');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const testCases = await api.testCase.list(nodeState.currentNode.id);
+      const results = [];
+
+      for (const testCase of testCases) {
+        const result = await runTest(testCase);
+        if (result) results.push(result);
+      }
+
+      setTestResults(results);
+    } catch (err) {
+      setError('Failed to run tests: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreateTestCase = () => {
+    setShowTestCaseForm(true);
+    setSelectedTestCaseId(null);
+    setEditingTestCaseId(null);
+  };
+
+  const handleTestCaseSave = () => {
+    setShowTestCaseForm(false);
+    setSelectedTestCaseId(null);
+    setEditingTestCaseId(null);
+    // Refresh test cases
+    if (nodeState.currentNode) {
+      api.testCase
+        .list(nodeState.currentNode.id)
+        .then(cases => setTestResults(cases))
+        .catch(err => console.error('Failed to refresh test cases:', err));
+    }
+  };
+
+  const handleTestCaseCancel = () => {
+    setShowTestCaseForm(false);
+    setSelectedTestCaseId(null);
+    setEditingTestCaseId(null);
+  };
+
+  const handleShowResultDetails = (result) => {
+    setActiveResultForDrawer(result);
+    setShowResultDrawer(true);
+    setIsEditingInDrawer(false);
+  };
+
+  const formatJson = jsonString => {
+    try {
+      if (typeof jsonString === 'object') {
+        return JSON.stringify(jsonString, null, 2);
+      }
+      const parsed = JSON.parse(jsonString);
+      return JSON.stringify(parsed, null, 2);
+    } catch (e) {
+      return jsonString;
+    }
+  };
+
+  return (
+    <div className={styles.requestPanel}>
+      {/* API Testing Interface */}
+      <div className={styles.apiInterface}>
+        <div className={styles.urlBar}>
+          <select
+            className={styles.methodSelector}
+            value={method}
+            onChange={e => setMethod(e.target.value)}
+          >
+            <option value="GET">GET</option>
+            <option value="POST">POST</option>
+            <option value="PUT">PUT</option>
+            <option value="PATCH">PATCH</option>
+            <option value="DELETE">DELETE</option>
+          </select>
+          <input
+            type="text"
+            className={styles.urlInput}
+            placeholder="Enter API URL"
+            value={url}
+            onChange={e => setUrl(e.target.value)}
+          />
+          <Button
+            variant="primary"
+            onClick={executeRequest}
+            disabled={loading}
+            className={styles.sendButton}
+          >
+            {loading ? 'Sending...' : 'Send'}
+          </Button>
+        </div>
+
+        <div className={styles.requestOptions}>
+          <div className={styles.tabHeader}>
+            <Button
+              variant={activeTab === 'params' ? 'primary' : 'secondary'}
+              size="small"
+              onClick={() => setActiveTab('params')}
+            >
+              Params
+            </Button>
+            <Button
+              variant={activeTab === 'headers' ? 'primary' : 'secondary'}
+              size="small"
+              onClick={() => setActiveTab('headers')}
+            >
+              Headers
+            </Button>
+            <Button
+              variant={activeTab === 'raw' ? 'primary' : 'secondary'}
+              size="small"
+              onClick={() => setActiveTab('raw')}
+            >
+              Body
+            </Button>
+            <Button
+              variant={activeTab === 'tests' ? 'primary' : 'secondary'}
+              size="small"
+              onClick={() => setActiveTab('tests')}
+            >
+              Tests
+            </Button>
+            <Button
+              variant={activeTab === 'results' ? 'primary' : 'secondary'}
+              size="small"
+              onClick={() => setActiveTab('results')}
+            >
+              Results
+            </Button>
+          </div>
+
+          <div className={styles.tabContent}>
+            {activeTab === 'params' && (
+              <div className={styles.paramsTab}>
+                <div className={styles.paramForm}>
+                  {/* Params form */}
+                  <div className={styles.paramTable}>
+                    <div className={styles.paramTableHeader}>
+                      <div className={styles.paramTableKey}>Key</div>
+                      <div className={styles.paramTableValue}>Value</div>
+                      <div className={styles.paramTableAction}></div>
+                    </div>
+
+                    {Object.entries(params).map(([key, value], index) => (
+                      <div className={styles.paramTableRow} key={key || index}>
+                        <div className={styles.paramTableKey}>
+                          <input
+                            type="text"
+                            value={key}
+                            placeholder="Key"
+                            onChange={e => {
+                              const newKey = e.target.value;
+                              const newParams = { ...params };
+                              delete newParams[key];
+                              newParams[newKey] = value;
+                              setParams(newParams);
+                            }}
+                          />
+                        </div>
+                        <div className={styles.paramTableValue}>
+                          <input
+                            type="text"
+                            value={value}
+                            placeholder="Value"
+                            onChange={e => {
+                              setParams({
+                                ...params,
+                                [key]: e.target.value,
+                              });
+                            }}
+                          />
+                        </div>
+                        <div className={styles.paramTableAction}>
+                          <Button
+                            variant="secondary"
+                            size="small"
+                            onClick={() => {
+                              const newParams = { ...params };
+                              delete newParams[key];
+                              setParams(newParams);
+                            }}
+                          >
+                            <svg
+                              width="16"
+                              height="16"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              xmlns="http://www.w3.org/2000/svg"
+                            >
+                              <path
+                                d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"
+                                fill="currentColor"
+                              />
+                            </svg>
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+
+                    <div className={styles.paramTableActions}>
+                      <Button
+                        variant="secondary"
+                        size="small"
+                        className={styles.addParamButton}
+                        onClick={() => {
+                          // Generate a unique placeholder key
+                          const newKey = `param${Object.keys(params).length + 1}`;
+                          setParams(prev => ({ ...prev, [newKey]: '' }));
+                        }}
+                      >
+                        Add Parameter
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'headers' && (
+              <div className={styles.headersTab}>
+                <div className={styles.headerForm}>
+                  {/* Headers form */}
+                  <div className={styles.headerTable}>
+                    <div className={styles.headerTableHeader}>
+                      <div className={styles.headerTableKey}>Name</div>
+                      <div className={styles.headerTableValue}>Value</div>
+                      <div className={styles.headerTableAction}></div>
+                    </div>
+
+                    {Object.entries(headers).map(([key, value], index) => (
+                      <div className={styles.headerTableRow} key={key || index}>
+                        <div className={styles.headerTableKey}>
+                          <input
+                            type="text"
+                            value={key}
+                            placeholder="Header name"
+                            onChange={e => {
+                              const newKey = e.target.value;
+                              const newHeaders = { ...headers };
+                              delete newHeaders[key];
+                              newHeaders[newKey] = value;
+                              setHeaders(newHeaders);
+                            }}
+                          />
+                        </div>
+                        <div className={styles.headerTableValue}>
+                          <input
+                            type="text"
+                            value={value}
+                            placeholder="Header value"
+                            onChange={e => {
+                              setHeaders({
+                                ...headers,
+                                [key]: e.target.value,
+                              });
+                            }}
+                          />
+                        </div>
+                        <div className={styles.headerTableAction}>
+                          <Button
+                            variant="secondary"
+                            size="small"
+                            onClick={() => {
+                              const newHeaders = { ...headers };
+                              delete newHeaders[key];
+                              setHeaders(newHeaders);
+                            }}
+                          >
+                            <svg
+                              width="16"
+                              height="16"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              xmlns="http://www.w3.org/2000/svg"
+                            >
+                              <path
+                                d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"
+                                fill="currentColor"
+                              />
+                            </svg>
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+
+                    <div className={styles.headerTableActions}>
+                      <Button
+                        variant="secondary"
+                        size="small"
+                        className={styles.addHeaderButton}
+                        onClick={() => {
+                          // Generate a unique placeholder key
+                          const newKey = `header${Object.keys(headers).length + 1}`;
+                          setHeaders(prev => ({ ...prev, [newKey]: '' }));
+                        }}
+                      >
+                        Add Header
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'raw' && (
+              <div className={styles.bodyTab}>
+                {/* Raw body input with JSON support */}
+                <div className={styles.jsonEditor}>
+                  <div className={styles.editorActions}>
+                    <Button
+                      variant="secondary"
+                      size="small"
+                      onClick={() => {
+                        try {
+                          // Format the JSON
+                          setBody(formatJson(body));
+                        } catch (e) {
+                          // If not valid JSON, just keep as is
+                        }
+                      }}
+                    >
+                      Format JSON
+                    </Button>
+                  </div>
+                  <textarea
+                    className={styles.bodyInput}
+                    value={body}
+                    onChange={e => setBody(e.target.value)}
+                    placeholder="Enter request body here (JSON)"
+                  ></textarea>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'tests' && (
+              <div className={styles.testsTab}>
+                <div className={styles.testsHeader}>
+                  <h3>Test Cases</h3>
+                  <div className={styles.testsActions}>
+                    <Button
+                      variant="primary"
+                      size="small"
+                      onClick={handleCreateTestCase}
+                    >
+                      Create Test Case
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="small"
+                      onClick={runAllTests}
+                      disabled={loading}
+                    >
+                      {loading ? 'Running...' : 'Run All Tests'}
+                    </Button>
+                  </div>
+                </div>
+
+                {showTestCaseForm && (
+                  <div className={styles.testCaseFormOverlay}>
+                    <div
+                      className={styles.testCaseFormContainer}
+                      onClick={e => e.stopPropagation()}
+                    >
+                      <TestCaseForm
+                        onSave={handleTestCaseSave}
+                        onCancel={handleTestCaseCancel}
+                        testCaseId={editingTestCaseId}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className={styles.testCaseList}>
+                  {/* List of test cases */}
+                  {testResults && testResults.length > 0 ? (
+                    <div className={styles.testCaseTable}>
+                      <div className={styles.testCaseTableHeader}>
+                        <div className={styles.testCaseTableName}>Name</div>
+                        <div className={styles.testCaseTableMethod}>Method</div>
+                        <div className={styles.testCaseTableEndpoint}>Endpoint</div>
+                        <div className={styles.testCaseTableActions}></div>
+                      </div>
+
+                      {testResults.map(testCase => (
+                        <div
+                          className={styles.testCaseTableRow}
+                          key={testCase.id}
+                          onClick={() => selectTestCase(testCase.id)}
+                        >
+                          <div className={styles.testCaseTableName}>
+                            {testCase.name}
+                          </div>
+                          <div className={styles.testCaseTableMethod}>
+                            {testCase.method || 'GET'}
+                          </div>
+                          <div className={styles.testCaseTableEndpoint}>
+                            {testCase.url || testCase.endpoint || ''}
+                          </div>
+                          <div className={styles.testCaseTableActions}>
+                            <Button
+                              variant="secondary"
+                              size="small"
+                              onClick={e => {
+                                e.stopPropagation();
+                                runTest(testCase);
+                              }}
+                              disabled={loading}
+                            >
+                              Run
+                            </Button>
+                            <Button
+                              variant="secondary"
+                              size="small"
+                              onClick={e => {
+                                e.stopPropagation();
+                                setEditingTestCaseId(testCase.id);
+                                setShowTestCaseForm(true);
+                              }}
+                            >
+                              Edit
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className={styles.noTests}>
+                      <p>No test cases available. Create one to get started.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'results' && (
+              <div className={styles.resultsTab}>
+                <div className={styles.resultsHeader}>
+                  <h3>Test Results</h3>
+                </div>
+
+                <div className={styles.testResultsList}>
+                  {recentTestResults && recentTestResults.length > 0 ? (
+                    <div className={styles.testResultsTable}>
+                      <div className={styles.testResultsTableHeader}>
+                        <div className={styles.testResultsTableName}>Test</div>
+                        <div className={styles.testResultsTableStatus}>Status</div>
+                        <div className={styles.testResultsTableDuration}>Duration</div>
+                        <div className={styles.testResultsTableTime}>Timestamp</div>
+                        <div className={styles.testResultsTableActions}></div>
+                      </div>
+
+                      {recentTestResults.map((result, index) => {
+                        // Handle different result formats
+                        const testResult = result.result || result;
+                        const passed = testResult.passed !== undefined
+                          ? testResult.passed
+                          : testResult.status === 'passed';
+                        const name = testResult.name ||
+                                    testResult.test_name ||
+                                    `Test Result ${index + 1}`;
+                        const duration = testResult.duration_ms ||
+                                        testResult.duration ||
+                                        'N/A';
+                        const timestamp = result.timestamp || Date.now();
+
+                        return (
+                          <div
+                            className={styles.testResultsTableRow}
+                            key={testResult.id || index}
+                          >
+                            <div className={styles.testResultsTableName}>
+                              {name}
+                            </div>
+                            <div
+                              className={
+                                `${styles.testResultsTableStatus} ${
+                                  passed
+                                    ? styles.passed
+                                    : styles.failed
+                                }`
+                              }
+                            >
+                              {passed ? 'Passed' : 'Failed'}
+                            </div>
+                            <div className={styles.testResultsTableDuration}>
+                              {typeof duration === 'number'
+                                ? `${duration.toFixed(2)} ms`
+                                : duration
+                              }
+                            </div>
+                            <div className={styles.testResultsTableTime}>
+                              {new Date(timestamp).toLocaleTimeString()}
+                            </div>
+                            <div className={styles.testResultsTableActions}>
+                              <Button
+                                variant="secondary"
+                                size="small"
+                                onClick={() => handleShowResultDetails(result)}
+                              >
+                                Show details
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className={styles.noResults}>
+                      <p>No test results available. Run tests to see results here.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Response Display */}
+      <div className={styles.responsePanel}>
+        <div className={styles.responseHeader}>
+          <h3>Response</h3>
+          {statusCode && (
+            <div className={styles.responseStatus}>
+              Status: <span className={styles.statusCode}>{statusCode}</span>
+            </div>
+          )}
+          {responseTime && (
+            <div className={styles.responseTime}>
+              Time: <span>{responseTime.toFixed(2)} ms</span>
+            </div>
+          )}
+        </div>
+
+        <div className={styles.responseBody}>
+          {loading ? (
+            <div className={styles.loading}>Loading...</div>
+          ) : error ? (
+            <div className={styles.error}>{error}</div>
+          ) : response ? (
+            <div className={styles.jsonResponse}>
+              <div className={styles.responseActions}>
+                <CopyButton
+                  textToCopy={
+                    typeof response === 'object'
+                      ? JSON.stringify(response, null, 2)
+                      : String(response)
+                  }
+                  className={styles.copyButton}
+                />
+              </div>
+              <pre className={styles.responseContent}>
+                {typeof response === 'object'
+                  ? JSON.stringify(response, null, 2)
+                  : String(response)}
+              </pre>
+            </div>
+          ) : (
+            <div className={styles.noResponse}>
+              <p>Send a request to see the response here</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Right-side Drawer for Result Details and Inline Edit */}
+      {showResultDrawer && activeResultForDrawer && (
+        <div
+          className={styles.drawerOverlay}
+          onClick={() => {
+            setShowResultDrawer(false);
+            setActiveResultForDrawer(null);
+            setIsEditingInDrawer(false);
+          }}
+        >
+          <div
+            className={styles.drawerPanel}
+            onClick={(e) => e.stopPropagation()}
+            style={{ zIndex: 1100 }} /* Ensure drawer is above TestCaseForm */
+          >
+            <div className={styles.drawerHeader}>
+              <div className={styles.drawerHeaderContent}>
+                <h3>{isEditingInDrawer ? 'Edit Test Case' : 'Test Result Details'}</h3>
+                <div className={styles.drawerHeaderActions}>
+                  {!isEditingInDrawer && (
+                    <Button
+                      variant="primary"
+                      size="small"
+                      className={styles.editDrawerButton}
+                      onClick={() => {
+                        // Get test case ID from the result
+                        const testCaseId = activeResultForDrawer.result.test_case_id ||
+                                          activeResultForDrawer.result.case_id ||
+                                          activeResultForDrawer.result.id;
+                        if (testCaseId) {
+                          setEditingTestCaseId(testCaseId);
+                          setIsEditingInDrawer(true);
+                          // Select this test case for editing
+                          selectTestCase(testCaseId);
+                        }
+                      }}
+                    >
+                      Edit Test
+                    </Button>
+                  )}
+                  <Button
+                    variant="secondary"
+                    size="small"
+                    className={styles.closeButton}
+                    onClick={() => {
+                      setShowResultDrawer(false);
+                      setActiveResultForDrawer(null);
+                      setIsEditingInDrawer(false);
+                    }}
+                  >
+                    ×
+                  </Button>
+                </div>
+              </div>
+            </div>
+            <div className={styles.drawerBody}>
+              {isEditingInDrawer ? (
+                // Render the edit form if in editing mode
+                <TestCaseForm
+                  onSave={() => {
+                    setIsEditingInDrawer(false);
+                    // Refresh the result data after edit
+                    if (recentTestResults && recentTestResults.length > 0) {
+                      // Re-fetch the test result or update it from the form data
+                      // This depends on your app's logic
+                    }
+                  }}
+                  onCancel={() => setIsEditingInDrawer(false)}
+                  testCaseId={editingTestCaseId}
+                />
+              ) : (
+                // Otherwise render the test result details
+                <>
+                  <div className={styles.testResultDetails}>
+                    {activeResultForDrawer && activeResultForDrawer.result && (
+                      <div className={styles.testResult}>
+                        <div className={styles.drawerSection}>
+                          <div className={styles.testResultHeader}>
+                            <h3>
+                              {activeResultForDrawer.result.name ||
+                                activeResultForDrawer.result.test_name ||
+                                'Test Result'}
+                            </h3>
+                            <span
+                              className={
+                                activeResultForDrawer.result.passed
+                                  ? styles.passedBadge
+                                  : styles.failedBadge
+                              }
+                            >
+                              {activeResultForDrawer.result.passed
+                                ? 'Passed'
+                                : 'Failed'}
+                            </span>
+                          </div>
+
+                          {!activeResultForDrawer.result.passed &&
+                            activeResultForDrawer.result.error && (
+                              <div className={styles.testError}>
+                                {String(activeResultForDrawer.result.error)}
+                              </div>
+                            )}
+
+                          {!activeResultForDrawer.result.passed &&
+                            Array.isArray(activeResultForDrawer.result.failures) &&
+                            activeResultForDrawer.result.failures.length > 0 && (
+                              <div className={styles.testError}>
+                                <strong>Failures:</strong>
+                                <ul>
+                                  {activeResultForDrawer.result.failures.map((f, i) => (
+                                    <li key={i}>{String(f)}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                        </div>
+
+                        <div className={styles.drawerSection}>
+                          <h4>Run Output</h4>
+                          <div className={styles.testResultMetaRow}>
+                            {activeResultForDrawer.result.status_code != null && (
+                              <span className={styles.testStat}>
+                                Status: {activeResultForDrawer.result.status_code}
+                              </span>
+                            )}
+                            {activeResultForDrawer.result.duration_ms != null && (
+                              <span className={styles.testStat}>
+                                Duration:{' '}
+                                {Number(activeResultForDrawer.result.duration_ms).toFixed(
+                                  2
+                                )}{' '}
+                                ms
+                              </span>
+                            )}
+                            {Array.isArray(activeResultForDrawer.result.failures) && (
+                              <span className={styles.testStat}>
+                                Failures: {activeResultForDrawer.result.failures.length}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Request Section */}
+                          {activeResultForDrawer.result.request && (
+                            <div className={styles.testSection}>
+                              <div className={styles.sectionHeader}>
+                                <strong>Request Details</strong>
+                              </div>
+
+                              <div className={styles.testRequestInfo}>
+                                <div className={styles.requestMethodUrl}>
+                                  <span className={styles.requestMethod}>
+                                    {activeResultForDrawer.result.request.method}
+                                  </span>
+                                  <span className={styles.requestUrl}>
+                                    {activeResultForDrawer.result.request.url}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Request Headers */}
+                              {activeResultForDrawer.result.request.headers && (
+                                <div className={styles.requestHeadersSection}>
+                                  <div className={styles.sectionSubHeader}>Headers</div>
+                                  <div className={`${styles.jsonContainer} scrollable`}>
+                                    <pre>
+                                      {JSON.stringify(
+                                        activeResultForDrawer.result.request.headers,
+                                        null,
+                                        2
+                                      )}
+                                    </pre>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Request Body */}
+                              {activeResultForDrawer.result.request.body && (
+                                <div className={styles.requestBodySection}>
+                                  <div className={styles.sectionSubHeader}>
+                                    <span>Body</span>
+                                    <CopyButton
+                                      textToCopy={(() => {
+                                        try {
+                                          return JSON.stringify(
+                                            typeof activeResultForDrawer.result.request
+                                              .body === 'string'
+                                              ? JSON.parse(
+                                                  activeResultForDrawer.result.request
+                                                    .body
+                                                )
+                                              : activeResultForDrawer.result.request.body,
+                                            null,
+                                            2
+                                          );
+                                        } catch {
+                                          return String(
+                                            activeResultForDrawer.result.request.body
+                                          );
+                                        }
+                                      })()}
+                                    />
+                                  </div>
+                                  <div className={`${styles.jsonContainer} scrollable`}>
+                                    <pre>
+                                      {(() => {
+                                        try {
+                                          return JSON.stringify(
+                                            typeof activeResultForDrawer.result.request
+                                              .body === 'string'
+                                              ? JSON.parse(
+                                                  activeResultForDrawer.result.request
+                                                    .body
+                                                )
+                                              : activeResultForDrawer.result.request.body,
+                                            null,
+                                            2
+                                          );
+                                        } catch {
+                                          return String(
+                                            activeResultForDrawer.result.request.body
+                                          );
+                                        }
+                                      })()}
+                                    </pre>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Response Section */}
+                          {activeResultForDrawer.result.response && (
+                            <div className={styles.testSection}>
+                              <div className={styles.sectionHeader}>
+                                <strong>Response Details</strong>
+                                <span className={styles.statusCode}>
+                                  Status:{' '}
+                                  {activeResultForDrawer.result.status_code || 'Unknown'}
+                                </span>
+                              </div>
+
+                              {/* Response Headers */}
+                              {activeResultForDrawer.result.response.headers && (
+                                <div className={styles.responseHeadersSection}>
+                                  <div className={styles.sectionSubHeader}>Headers</div>
+                                  <div className={`${styles.jsonContainer} scrollable`}>
+                                    <pre>
+                                      {JSON.stringify(
+                                        activeResultForDrawer.result.response.headers,
+                                        null,
+                                        2
+                                      )}
+                                    </pre>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Response Body */}
+                              <div className={styles.responseBodySection}>
+                                <div className={styles.sectionSubHeader}>
+                                  <span>Response Body</span>
+                                  <CopyButton
+                                    textToCopy={(() => {
+                                      try {
+                                        return JSON.stringify(
+                                          activeResultForDrawer.result.response.json ??
+                                            activeResultForDrawer.result.response,
+                                          null,
+                                          2
+                                        );
+                                      } catch {
+                                        return String(
+                                          activeResultForDrawer.result.response
+                                        );
+                                      }
+                                    })()}
+                                  />
+                                </div>
+                                <div className={`${styles.jsonContainer} scrollable`}>
+                                  <pre>
+                                    {(() => {
+                                      try {
+                                        return JSON.stringify(
+                                          activeResultForDrawer.result.response.json ??
+                                            activeResultForDrawer.result.response,
+                                          null,
+                                          2
+                                        );
+                                      } catch {
+                                        return String(
+                                          activeResultForDrawer.result.response
+                                        );
+                                      }
+                                    })()}
+                                  </pre>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

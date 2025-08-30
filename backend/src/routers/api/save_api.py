@@ -52,16 +52,6 @@ async def save_api(
         # Prepare the extra_meta field to store API data
         extra_meta = request.extra_meta or {}
 
-        # Store headers, body, and params in the extra_meta
-        if request.headers is not None:
-            extra_meta['headers'] = request.headers
-
-        if request.body is not None:
-            extra_meta['body'] = request.body
-
-        if request.params is not None:
-            extra_meta['params'] = request.params
-
         if existing_api:
             # Update existing API
             update_fields = request.model_dump(exclude_unset=True)

@@ -157,7 +157,26 @@ export const apiService = {
   async saveApi(fileId, apiData) {
     try {
       console.log(`Saving API in file ${fileId}:`, apiData);
-      const response = await api.post(`/file/${fileId}/api/save`, apiData);
+      // Normalize payload to backend schema: headers/params/body under extra_meta
+      const {
+        headers,
+        params,
+        body,
+        bodyType,
+        extra_meta = {},
+        ...rest
+      } = apiData || {};
+      const payload = {
+        ...rest,
+        extra_meta: {
+          ...(typeof extra_meta === 'object' ? extra_meta : {}),
+          ...(headers ? { headers } : {}),
+          ...(params ? { params } : {}),
+          ...(body !== undefined ? { body } : {}),
+          ...(bodyType ? { bodyType } : {}),
+        },
+      };
+      const response = await api.post(`/file/${fileId}/api/save`, payload);
       return response.data;
     } catch (error) {
       console.error('Error saving API:', error);
@@ -293,8 +312,21 @@ export const apiService = {
           testCaseData.name || `Test case - ${new Date().toLocaleTimeString()}`,
         headers: testCaseData.headers || {},
         params: testCaseData.params || {},
-        // Keep the body as a string to match FastAPI endpoint expectations
-        body: testCaseData.body || null,
+        // Parse JSON string body to match FastAPI endpoint expectations of an object
+        body: (() => {
+          try {
+            const body = testCaseData.body;
+            if (!body) return null;
+            if (typeof body === 'object') return body;
+            if (typeof body === 'string' && body.trim().startsWith('{')) {
+              return JSON.parse(body);
+            }
+            return body;
+          } catch (e) {
+            console.warn('Could not parse body as JSON, sending as-is', e);
+            return testCaseData.body;
+          }
+        })(),
         expected: testCaseData.expected || null,
       };
 
@@ -444,11 +476,24 @@ export const apiService = {
       }
       const response = await api.post(`/run`, body);
 
-      // Handle the specific response structure
+      // Handle both shapes:
+      // 1) Wrapped: { response_code, message, data: [...] }
+      // 2) Raw array: [ { ...caseResult }, ... ]
+      const payload = response?.data;
+
+      if (Array.isArray(payload)) {
+        return {
+          data: payload,
+          status: 200,
+          message: 'Test executed',
+        };
+      }
+
+      // Fallback to wrapped structure
       return {
-        data: response.data.data,
-        status: response.data.response_code,
-        message: response.data.message || 'Test executed successfully',
+        data: payload?.data ?? [],
+        status: payload?.response_code ?? 200,
+        message: payload?.message || 'Test executed successfully',
       };
     } catch (error) {
       console.error('Error running test:', error);

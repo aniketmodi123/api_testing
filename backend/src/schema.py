@@ -494,9 +494,6 @@ class ApiCreateRequest(BaseModel):
     endpoint: str = Field(..., description="API endpoint path")
     description: Optional[str] = Field(None, description="API description")
     is_active: bool = Field(True, description="API active status")
-    headers: Optional[Dict[str, Any]] = Field(None, description="API request headers")
-    body: Optional[Dict[str, Any]] = Field(None, description="API request body")
-    params: Optional[Dict[str, Any]] = Field(None, description="API request parameters")
     extra_meta: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
 
     @validator('name')

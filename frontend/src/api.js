@@ -29,7 +29,7 @@ api.interceptors.request.use(config => {
   }
 
   // Add auth headers if available
-  if (token) {
+  if (token && !('Authorization' in config.headers)) {
     // Ensure backend receives Bearer token format
     config.headers['Authorization'] =
       typeof token === 'string' && token.startsWith('Bearer ')
@@ -37,7 +37,7 @@ api.interceptors.request.use(config => {
         : `Bearer ${token}`;
   }
 
-  if (userObj?.email) {
+  if (userObj?.email && !('username' in config.headers)) {
     config.headers['username'] = userObj.email;
   }
 

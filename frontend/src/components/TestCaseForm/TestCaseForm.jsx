@@ -11,6 +11,7 @@ const TestCaseForm = ({
   caseId = null,
   onSave = () => {},
   onCancel = () => {},
+  isInDrawer = false,
 }) => {
   const [formData, setFormData] = useState({
     name: '',
@@ -147,19 +148,28 @@ const TestCaseForm = ({
     }
   };
 
+  // Adapt styles based on whether the component is in a drawer
+  const containerStyle = isInDrawer
+    ? {
+        padding: '0',
+        backgroundColor: 'transparent',
+      }
+    : {};
+
   return (
-    <div className={styles.formContainer}>
+    <div className={styles.formContainer} style={containerStyle}>
       <div className={styles.formHeader}>
         <h2>{caseId ? 'Edit Test Case' : 'Create New Test Case'}</h2>
-        {!caseId && ( // Only show bulk import toggle in create mode
-          <Button
-            variant="secondary"
-            size="small"
-            onClick={toggleBulkImportMode}
-          >
-            {bulkImportMode ? 'Single Case Mode' : 'Bulk Import Mode'}
-          </Button>
-        )}
+        {!caseId &&
+          !isInDrawer && ( // Only show bulk import toggle in create mode and not in drawer
+            <Button
+              variant="secondary"
+              size="small"
+              onClick={toggleBulkImportMode}
+            >
+              {bulkImportMode ? 'Single Case Mode' : 'Bulk Import Mode'}
+            </Button>
+          )}
       </div>
 
       {error && <div className={styles.error}>{error}</div>}

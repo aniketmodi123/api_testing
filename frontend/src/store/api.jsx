@@ -469,10 +469,31 @@ export const useApi = create((set, get) => ({
         // Normalize different backend shapes into { test_cases: [...] }
         let normalized = null;
 
+        // Helper to map various case result shapes into a consistent one
+        const mapCase = (tc, index = 0) => ({
+          id: tc?.id ?? tc?.case_id ?? index,
+          name: tc?.name ?? tc?.case ?? `Test Case ${index + 1}`,
+          // unify pass flag
+          passed: Boolean(tc?.passed ?? tc?.ok ?? tc?.success ?? false),
+          // unify failures/errors
+          failures: Array.isArray(tc?.failures)
+            ? tc.failures
+            : tc?.error
+              ? [tc.error]
+              : [],
+          status_code:
+            tc?.status_code ?? tc?.status ?? tc?.response?.status_code ?? null,
+          duration_ms:
+            tc?.duration_ms ?? tc?.duration ?? tc?.execution_time ?? null,
+          request: tc?.request ?? null,
+          response: tc?.response ?? (tc?.json ? { json: tc.json } : null),
+          raw: tc,
+        });
+
         // If backend returned an array of case results
         if (Array.isArray(result.data)) {
           normalized = {
-            test_cases: result.data,
+            test_cases: result.data.map((tc, idx) => mapCase(tc, idx)),
             status: result.status,
             message: result.message,
           };
@@ -480,24 +501,30 @@ export const useApi = create((set, get) => ({
           // Already in the expected shape
           normalized = {
             ...result.data,
+            test_cases: (result.data.test_cases || []).map((tc, idx) =>
+              mapCase(tc, idx)
+            ),
             status: result.status,
             message: result.message,
           };
         } else {
           // Fallback: convert known fields into a single-item test_cases array
+          const single = mapCase(
+            {
+              case_id: result.data.case_id,
+              name:
+                result.data.name || result.data.case || 'Single Test Execution',
+              response: result.data.response || result.data.body,
+              passed: result.data.passed,
+              error: result.data.error,
+              status_code: result.data.status_code ?? result.status,
+              duration: result.data.execution_time || result.data.duration,
+            },
+            0
+          );
+
           normalized = {
-            test_cases: [
-              {
-                id: result.data.case_id || null,
-                name: result.data.name || `Run ${new Date().toISOString()}`,
-                response: result.data.response || result.data.body || {},
-                success: result.data.passed || false,
-                error: result.data.error || null,
-                status_code: result.data.status_code || result.status || null,
-                duration:
-                  result.data.execution_time || result.data.duration || null,
-              },
-            ],
+            test_cases: [single],
             status: result.status,
             message: result.message,
           };
