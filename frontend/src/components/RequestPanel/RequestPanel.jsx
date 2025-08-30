@@ -3,6 +3,7 @@ import { api } from '../../api';
 import { useApi } from '../../store/api';
 import { useNode } from '../../store/node';
 import { TestCaseForm } from '../TestCaseForm';
+import TestResultsGrid from '../TestResultsGrid';
 import { Button, JsonEditor } from '../common';
 import styles from './RequestPanel.module.css';
 import './buttonStyles.css';
@@ -189,6 +190,9 @@ export default function RequestPanel({ activeRequest }) {
   const [editingApiInModal, setEditingApiInModal] = useState(false);
   const [modalApiData, setModalApiData] = useState(null);
 
+  // State for test results view toggle
+  const [useGridView, setUseGridView] = useState(true); // Default to grid view
+
   // Handle resizing between request and response sections
   const startResize = useCallback(
     e => {
@@ -328,12 +332,10 @@ export default function RequestPanel({ activeRequest }) {
         // Load the API details
         getApi(selectedNode.id)
           .then(apiResponse => {
-            console.log('API data loaded:', apiResponse);
+            ('API data loaded:', apiResponse);
 
             // Check if we got a 206 status (no API data)
             if (apiResponse.status === 206) {
-              console.log('No API configured for this file yet.');
-              // Keep the current values since there's no API data
             } else {
               // Extract the API data from the response structure
               const apiData = apiResponse?.data || {};
@@ -360,9 +362,7 @@ export default function RequestPanel({ activeRequest }) {
         // Load test cases for this API and reset selected test cases
         setSelectedTestCases([]);
         getTestCases(selectedNode.id)
-          .then(testCasesResponse => {
-            console.log('Test cases loaded:', testCasesResponse);
-          })
+          .then(testCasesResponse => {})
           .catch(err => console.error('Error loading test cases:', err));
       }
     }
@@ -410,8 +410,6 @@ export default function RequestPanel({ activeRequest }) {
     if (selectedTestCases.length === 0) return;
 
     // Debug logging to check selectedNode
-    console.log('handleRunSelectedTests - selectedNode:', selectedNode);
-    console.log('handleRunSelectedTests - selectedNode.id:', selectedNode?.id);
 
     if (!selectedNode?.id) {
       console.error('No selected node or node ID available for running tests');
@@ -421,7 +419,6 @@ export default function RequestPanel({ activeRequest }) {
     setIsSending(true);
     try {
       const result = await runTest(selectedNode.id, selectedTestCases);
-      console.log('Selected tests result:', result);
       setActiveTab('apiTests');
     } catch (error) {
       console.error('Error running selected tests:', error);
@@ -447,8 +444,6 @@ export default function RequestPanel({ activeRequest }) {
       if (method !== 'GET') {
         requestConfig.data = extractValue(activeApi, 'request_body', {});
       }
-
-      console.log('Making direct API call with config:', requestConfig);
 
       // Make the API call using the Axios instance
       const directResponse = await api(requestConfig);
@@ -519,11 +514,8 @@ export default function RequestPanel({ activeRequest }) {
         expected: validationSchema, // Store the validation schema directly in the expected field
       };
 
-      console.log('Creating test case for validation:', testCaseData);
-
       // Create the test case
       const createResult = await createTestCase(selectedNode.id, testCaseData);
-      console.log('Test case created:', createResult);
 
       if (!createResult || !createResult.case_id) {
         throw new Error('Failed to create test case for validation');
@@ -539,9 +531,6 @@ export default function RequestPanel({ activeRequest }) {
       const validationResult = await runTest(selectedNode.id, [
         createResult.case_id,
       ]);
-      console.log('Validation result:', validationResult);
-
-      // Set the test results and switch to the API Tests tab
       setActiveTab('apiTests');
     } catch (error) {
       console.error('Error validating API:', error);
@@ -573,8 +562,6 @@ export default function RequestPanel({ activeRequest }) {
       // If we have a file node selected, try to run the API test
       if (selectedNode?.type === 'file' && selectedNode?.id) {
         const result = await runTest(selectedNode.id);
-        console.log('API test result:', result);
-        // Switch to the API Tests tab to show results
         setActiveTab('apiTests');
 
         if (result) {
@@ -594,11 +581,6 @@ export default function RequestPanel({ activeRequest }) {
                 `${JSON.stringify(apiResponseData).length} B`,
               body: apiResponseData, // Keep the full response data for display
               headers: apiResponseData.headers || {},
-            });
-
-            console.log('Formatted API response:', {
-              status: responseCode,
-              body: apiResponseData,
             });
           } else {
             // Direct response object
@@ -701,7 +683,6 @@ export default function RequestPanel({ activeRequest }) {
     try {
       setIsUpdatingConfig(true);
       const result = await saveApi(selectedNode.id, modalApiData);
-      console.log('API saved successfully from modal:', result);
       alert('API configuration updated successfully');
 
       // Reload the API details
@@ -721,7 +702,6 @@ export default function RequestPanel({ activeRequest }) {
     try {
       setIsSending(true);
       const result = await runTest(selectedNode.id);
-      console.log('Test run from modal:', result);
 
       // Update the selected test result with new data if available
       if (result && result.data && Array.isArray(result.data)) {
@@ -739,6 +719,30 @@ export default function RequestPanel({ activeRequest }) {
       alert(`Failed to run test: ${err.message}`);
     } finally {
       setIsSending(false);
+    }
+  };
+
+  const handleSaveTestCaseFromCard = async (caseId, updatedData) => {
+    if (!selectedNode?.id) return;
+
+    try {
+      // Use the saveTestCase function from the store
+      const result = await saveTestCase(
+        selectedNode.id,
+        {
+          name: `Test case - ${caseId}`, // You might want to get the actual name
+          headers: updatedData.request?.headers || {},
+          params: updatedData.request?.params || {},
+          body: updatedData.request?.body || null,
+          expected: updatedData.expected || null,
+        },
+        caseId
+      );
+
+      return result;
+    } catch (error) {
+      console.error('Error saving test case from card:', error);
+      throw error;
     }
   };
 
@@ -849,8 +853,6 @@ export default function RequestPanel({ activeRequest }) {
 
                 // Use the unified saveApi function for both create and update
                 const result = await saveApi(selectedNode.id, apiData);
-
-                console.log('API saved successfully:', result);
 
                 const message = activeApi
                   ? 'API configuration updated successfully'
@@ -963,8 +965,6 @@ export default function RequestPanel({ activeRequest }) {
                       expected: validationSchemaData,
                     };
 
-                    console.log('Recording test case with data:', testCaseData);
-
                     // Check if required values are present
                     if (!selectedNode?.id) {
                       console.error(
@@ -976,19 +976,12 @@ export default function RequestPanel({ activeRequest }) {
                       return;
                     }
 
-                    console.log(
-                      'Selected node for saving test case:',
-                      selectedNode
-                    );
-
                     try {
                       // Use our saveTestCase function
                       const result = await saveTestCase(
                         selectedNode.id,
                         testCaseData
                       );
-
-                      console.log('Save test case result:', result);
 
                       if (result && (result.data || result.success)) {
                         alert('Test case saved successfully!');
@@ -1585,205 +1578,6 @@ export default function RequestPanel({ activeRequest }) {
               </div>
             </div>
 
-            {testResults && (
-              <div className={styles.testResultsSummary}>
-                <div className={styles.testResultsHeader}>
-                  <h4>Test Results</h4>
-                  <Button
-                    variant="secondary"
-                    size="small"
-                    className={styles.clearResultsButton}
-                    onClick={clearTestResults}
-                  >
-                    Clear Results
-                  </Button>
-                </div>
-                <div className={styles.testResultsContent}>
-                  {(() => {
-                    // Handle different result formats based on your API response structure
-                    let resultsArray = [];
-
-                    if (Array.isArray(testResults)) {
-                      // If testResults is directly an array (like your sample data)
-                      resultsArray = testResults;
-                    } else if (testResults.test_cases) {
-                      // If wrapped in test_cases property
-                      resultsArray = testResults.test_cases;
-                    } else if (testResults.data) {
-                      // If wrapped in data property
-                      resultsArray = Array.isArray(testResults.data)
-                        ? testResults.data
-                        : [testResults.data];
-                    } else if (testResults) {
-                      // Single result object
-                      resultsArray = [testResults];
-                    }
-
-                    if (resultsArray.length > 0) {
-                      return (
-                        <>
-                          <div className={styles.testResultsStats}>
-                            <div className={styles.testStat}>
-                              <span>Total:</span> {resultsArray.length}
-                            </div>
-                            <div className={styles.testStat}>
-                              <span>Passed:</span>{' '}
-                              {
-                                resultsArray.filter(
-                                  r => r.ok ?? r.passed ?? false
-                                ).length
-                              }
-                            </div>
-                            <div className={styles.testStat}>
-                              <span>Failed:</span>{' '}
-                              {
-                                resultsArray.filter(
-                                  r => !(r.ok ?? r.passed ?? false)
-                                ).length
-                              }
-                            </div>
-                          </div>
-                          <div className={styles.testResultsList}>
-                            {resultsArray.map((result, index) => {
-                              // Handle different result formats to support your API response structure
-                              const testResult = result;
-                              const passed =
-                                testResult.ok ?? testResult.passed ?? false;
-                              const testName =
-                                testResult.case ||
-                                testResult.name ||
-                                `Test Case ${index + 1}`;
-                              const statusCode =
-                                testResult.status_code ||
-                                testResult.response?.status_code;
-                              const duration = testResult.duration_ms;
-                              const failures = testResult.failures || [];
-                              const request = testResult.request;
-                              const response = testResult.response;
-
-                              return (
-                                <div
-                                  key={result.id ?? index}
-                                  className={`${styles.testResultItem} ${passed ? styles.testPassed : styles.testFailed}`}
-                                >
-                                  <div className={styles.testResultHeader}>
-                                    <div className={styles.testResultBasicInfo}>
-                                      <span className={styles.testName}>
-                                        {testName}
-                                      </span>
-                                      <span className={styles.testStatus}>
-                                        {passed ? 'Passed' : 'Failed'}
-                                      </span>
-                                      {statusCode && (
-                                        <span className={styles.testStatusCode}>
-                                          Status: {statusCode}
-                                        </span>
-                                      )}
-                                      {duration && (
-                                        <span className={styles.testDuration}>
-                                          {duration.toFixed(2)}ms
-                                        </span>
-                                      )}
-                                    </div>
-                                    <div className={styles.testResultActions}>
-                                      <Button
-                                        variant="primary"
-                                        size="small"
-                                        onClick={() =>
-                                          handleOpenDetailedResult(testResult)
-                                        }
-                                      >
-                                        View Details
-                                      </Button>
-                                      <Button
-                                        variant="secondary"
-                                        size="small"
-                                        onClick={() => {
-                                          // Re-run this specific test
-                                          if (request && selectedNode?.id) {
-                                            runTest(selectedNode.id);
-                                          }
-                                        }}
-                                        disabled={isSending}
-                                      >
-                                        Re-run
-                                      </Button>
-                                      <Button
-                                        variant="secondary"
-                                        size="small"
-                                        onClick={() => {
-                                          // Edit test case (find matching test case)
-                                          const matchingTestCase =
-                                            testCases.find(
-                                              tc =>
-                                                tc.name === testName ||
-                                                tc.case === testName
-                                            );
-                                          if (matchingTestCase) {
-                                            setEditingTestCaseId(
-                                              matchingTestCase.id ||
-                                                matchingTestCase.case_id
-                                            );
-                                            setShowTestCaseForm(true);
-                                          }
-                                        }}
-                                      >
-                                        Edit
-                                      </Button>
-                                    </div>
-                                  </div>
-
-                                  {/* Failures section */}
-                                  {!passed && failures.length > 0 && (
-                                    <div className={styles.testFailures}>
-                                      <h5>Failures:</h5>
-                                      <ul className={styles.failuresList}>
-                                        {failures.map((failure, idx) => (
-                                          <li
-                                            key={idx}
-                                            className={styles.failureItem}
-                                          >
-                                            {failure}
-                                          </li>
-                                        ))}
-                                      </ul>
-                                    </div>
-                                  )}
-
-                                  {/* API Info section */}
-                                  {testResult.api && (
-                                    <div className={styles.testApiInfo}>
-                                      <h5>API Details:</h5>
-                                      <div className={styles.testApiDetails}>
-                                        <span className={styles.testApiMethod}>
-                                          {testResult.api.method}
-                                        </span>
-                                        <span
-                                          className={styles.testApiEndpoint}
-                                        >
-                                          {testResult.api.endpoint}
-                                        </span>
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </>
-                      );
-                    }
-
-                    return (
-                      <div className={styles.testResultMessage}>
-                        {testResults.message || 'Test execution completed'}
-                      </div>
-                    );
-                  })()}
-                </div>
-              </div>
-            )}
-
             {isLoading ? (
               <div className={styles.loadingIndicator}>
                 Loading test cases...
@@ -1918,6 +1712,261 @@ export default function RequestPanel({ activeRequest }) {
                 </p>
               </div>
             )}
+
+            {testResults && (
+              <div className={styles.testResultsSummary}>
+                <div className={styles.testResultsHeader}>
+                  <h4>Test Results</h4>
+                  <div className={styles.testResultsActions}>
+                    <div className={styles.viewToggle}>
+                      <Button
+                        variant={useGridView ? 'primary' : 'secondary'}
+                        size="small"
+                        onClick={() => setUseGridView(true)}
+                      >
+                        Grid View
+                      </Button>
+                      <Button
+                        variant={!useGridView ? 'primary' : 'secondary'}
+                        size="small"
+                        onClick={() => setUseGridView(false)}
+                      >
+                        List View
+                      </Button>
+                    </div>
+                    <Button
+                      variant="secondary"
+                      size="small"
+                      className={styles.clearResultsButton}
+                      onClick={clearTestResults}
+                    >
+                      Clear Results
+                    </Button>
+                  </div>
+                </div>
+
+                {useGridView ? (
+                  <TestResultsGrid
+                    testResults={(() => {
+                      // Handle different result formats based on your API response structure
+                      let resultsArray = [];
+
+                      if (Array.isArray(testResults)) {
+                        // If testResults is directly an array (like your sample data)
+                        resultsArray = testResults;
+                      } else if (testResults.test_cases) {
+                        // If wrapped in test_cases property
+                        resultsArray = testResults.test_cases;
+                      } else if (testResults.data) {
+                        // If wrapped in data property
+                        resultsArray = Array.isArray(testResults.data)
+                          ? testResults.data
+                          : [testResults.data];
+                      } else if (testResults) {
+                        // Single result object
+                        resultsArray = [testResults];
+                      }
+
+                      return resultsArray;
+                    })()}
+                    title=""
+                    loading={isSending}
+                    error={testResults.error}
+                    onSaveTestCase={handleSaveTestCaseFromCard}
+                  />
+                ) : (
+                  <div className={styles.testResultsContent}>
+                    {(() => {
+                      // Handle different result formats based on your API response structure
+                      let resultsArray = [];
+
+                      if (Array.isArray(testResults)) {
+                        // If testResults is directly an array (like your sample data)
+                        resultsArray = testResults;
+                      } else if (testResults.test_cases) {
+                        // If wrapped in test_cases property
+                        resultsArray = testResults.test_cases;
+                      } else if (testResults.data) {
+                        // If wrapped in data property
+                        resultsArray = Array.isArray(testResults.data)
+                          ? testResults.data
+                          : [testResults.data];
+                      } else if (testResults) {
+                        // Single result object
+                        resultsArray = [testResults];
+                      }
+
+                      if (resultsArray.length > 0) {
+                        return (
+                          <>
+                            <div className={styles.testResultsStats}>
+                              <div className={styles.testStat}>
+                                <span>Total:</span> {resultsArray.length}
+                              </div>
+                              <div className={styles.testStat}>
+                                <span>Passed:</span>{' '}
+                                {
+                                  resultsArray.filter(
+                                    r => r.ok ?? r.passed ?? false
+                                  ).length
+                                }
+                              </div>
+                              <div className={styles.testStat}>
+                                <span>Failed:</span>{' '}
+                                {
+                                  resultsArray.filter(
+                                    r => !(r.ok ?? r.passed ?? false)
+                                  ).length
+                                }
+                              </div>
+                            </div>
+                            <div className={styles.testResultsList}>
+                              {resultsArray.map((result, index) => {
+                                // Handle different result formats to support your API response structure
+                                const testResult = result;
+                                const passed =
+                                  testResult.ok ?? testResult.passed ?? false;
+                                const testName =
+                                  testResult.case ||
+                                  testResult.name ||
+                                  `Test Case ${index + 1}`;
+                                const statusCode =
+                                  testResult.status_code ||
+                                  testResult.response?.status_code;
+                                const duration = testResult.duration_ms;
+                                const failures = testResult.failures || [];
+                                const request = testResult.request;
+                                const response = testResult.response;
+
+                                return (
+                                  <div
+                                    key={result.id ?? index}
+                                    className={`${styles.testResultItem} ${passed ? styles.testPassed : styles.testFailed}`}
+                                  >
+                                    <div className={styles.testResultHeader}>
+                                      <div
+                                        className={styles.testResultBasicInfo}
+                                      >
+                                        <span className={styles.testName}>
+                                          {testName}
+                                        </span>
+                                        <span className={styles.testStatus}>
+                                          {passed ? 'Passed' : 'Failed'}
+                                        </span>
+                                        {statusCode && (
+                                          <span
+                                            className={styles.testStatusCode}
+                                          >
+                                            Status: {statusCode}
+                                          </span>
+                                        )}
+                                        {duration && (
+                                          <span className={styles.testDuration}>
+                                            {duration.toFixed(2)}ms
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className={styles.testResultActions}>
+                                        <Button
+                                          variant="primary"
+                                          size="small"
+                                          onClick={() =>
+                                            handleOpenDetailedResult(testResult)
+                                          }
+                                        >
+                                          View Details
+                                        </Button>
+                                        <Button
+                                          variant="secondary"
+                                          size="small"
+                                          onClick={() => {
+                                            // Re-run this specific test
+                                            if (request && selectedNode?.id) {
+                                              runTest(selectedNode.id);
+                                            }
+                                          }}
+                                          disabled={isSending}
+                                        >
+                                          Re-run
+                                        </Button>
+                                        <Button
+                                          variant="secondary"
+                                          size="small"
+                                          onClick={() => {
+                                            // Edit test case (find matching test case)
+                                            const matchingTestCase =
+                                              testCases.find(
+                                                tc =>
+                                                  tc.name === testName ||
+                                                  tc.case === testName
+                                              );
+                                            if (matchingTestCase) {
+                                              setEditingTestCaseId(
+                                                matchingTestCase.id ||
+                                                  matchingTestCase.case_id
+                                              );
+                                              setShowTestCaseForm(true);
+                                            }
+                                          }}
+                                        >
+                                          Edit
+                                        </Button>
+                                      </div>
+                                    </div>
+
+                                    {/* Failures section */}
+                                    {!passed && failures.length > 0 && (
+                                      <div className={styles.testFailures}>
+                                        <h5>Failures:</h5>
+                                        <ul className={styles.failuresList}>
+                                          {failures.map((failure, idx) => (
+                                            <li
+                                              key={idx}
+                                              className={styles.failureItem}
+                                            >
+                                              {failure}
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    )}
+
+                                    {/* API Info section */}
+                                    {testResult.api && (
+                                      <div className={styles.testApiInfo}>
+                                        <h5>API Details:</h5>
+                                        <div className={styles.testApiDetails}>
+                                          <span
+                                            className={styles.testApiMethod}
+                                          >
+                                            {testResult.api.method}
+                                          </span>
+                                          <span
+                                            className={styles.testApiEndpoint}
+                                          >
+                                            {testResult.api.endpoint}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </>
+                        );
+                      }
+
+                      return (
+                        <div className={styles.testResultMessage}>
+                          {testResults.message || 'Test execution completed'}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -1931,91 +1980,93 @@ export default function RequestPanel({ activeRequest }) {
         {/* This is the draggable resize handle */}
       </div>
 
-      {/* Response Section */}
-      <div className={styles.responseSection}>
-        <div className={styles.responseMeta}>
+      {/* Response Section - Hidden in API Tests tab */}
+      {activeTab !== 'apiTests' && (
+        <div className={styles.responseSection}>
+          <div className={styles.responseMeta}>
+            {response && (
+              <>
+                <div
+                  className={`${styles.statusBadge} ${response.status < 300 ? styles.success : styles.error}`}
+                >
+                  Status: {response.status} {response.statusText}
+                </div>
+                <div className={styles.responseInfo}>
+                  <span>Time: {response.time}</span>
+                  <span>Size: {response.size}</span>
+                </div>
+              </>
+            )}
+          </div>
+
           {response && (
             <>
-              <div
-                className={`${styles.statusBadge} ${response.status < 300 ? styles.success : styles.error}`}
-              >
-                Status: {response.status} {response.statusText}
+              <div className={styles.responseTabs}>
+                <div
+                  className={`${styles.responseTab} ${responseTab === 'body' ? styles.active : ''}`}
+                  onClick={() => setResponseTab('body')}
+                >
+                  Body
+                </div>
+                <div
+                  className={`${styles.responseTab} ${responseTab === 'headers' ? styles.active : ''}`}
+                  onClick={() => setResponseTab('headers')}
+                >
+                  Headers
+                </div>
               </div>
-              <div className={styles.responseInfo}>
-                <span>Time: {response.time}</span>
-                <span>Size: {response.size}</span>
+
+              <div className={styles.responseContent}>
+                {responseTab === 'body' && (
+                  <div className={`${styles.responseBody} scrollable`}>
+                    {response.body &&
+                    response.body.response_code !== undefined ? (
+                      // Format for standard API response with response_code and data
+                      <div className={styles.structuredResponse}>
+                        {response.body.data && (
+                          <JsonEditor
+                            value={JSON.stringify(response.body, null, 2)}
+                            language="json"
+                            showCopyButton={true}
+                            resizable={true}
+                            minHeight={150}
+                            maxHeight={400}
+                            disabled={true}
+                            className={styles.responseJsonEditor}
+                          />
+                        )}
+                      </div>
+                    ) : (
+                      // For other response formats
+                      <JsonEditor
+                        value={JSON.stringify(response.body, null, 2)}
+                        language="json"
+                        showCopyButton={true}
+                        resizable={true}
+                        minHeight={150}
+                        maxHeight={400}
+                        disabled={true}
+                        className={styles.responseJsonEditor}
+                      />
+                    )}
+                  </div>
+                )}
+
+                {responseTab === 'headers' && (
+                  <div className={`${styles.responseHeaders} scrollable`}>
+                    {Object.entries(response.headers).map(([key, value]) => (
+                      <div key={key} className={styles.headerRow}>
+                        <span className={styles.headerKey}>{key}:</span>
+                        <span className={styles.headerValue}>{value}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </>
           )}
         </div>
-
-        {response && (
-          <>
-            <div className={styles.responseTabs}>
-              <div
-                className={`${styles.responseTab} ${responseTab === 'body' ? styles.active : ''}`}
-                onClick={() => setResponseTab('body')}
-              >
-                Body
-              </div>
-              <div
-                className={`${styles.responseTab} ${responseTab === 'headers' ? styles.active : ''}`}
-                onClick={() => setResponseTab('headers')}
-              >
-                Headers
-              </div>
-            </div>
-
-            <div className={styles.responseContent}>
-              {responseTab === 'body' && (
-                <div className={`${styles.responseBody} scrollable`}>
-                  {response.body &&
-                  response.body.response_code !== undefined ? (
-                    // Format for standard API response with response_code and data
-                    <div className={styles.structuredResponse}>
-                      {response.body.data && (
-                        <JsonEditor
-                          value={JSON.stringify(response.body, null, 2)}
-                          language="json"
-                          showCopyButton={true}
-                          resizable={true}
-                          minHeight={150}
-                          maxHeight={400}
-                          disabled={true}
-                          className={styles.responseJsonEditor}
-                        />
-                      )}
-                    </div>
-                  ) : (
-                    // For other response formats
-                    <JsonEditor
-                      value={JSON.stringify(response.body, null, 2)}
-                      language="json"
-                      showCopyButton={true}
-                      resizable={true}
-                      minHeight={150}
-                      maxHeight={400}
-                      disabled={true}
-                      className={styles.responseJsonEditor}
-                    />
-                  )}
-                </div>
-              )}
-
-              {responseTab === 'headers' && (
-                <div className={`${styles.responseHeaders} scrollable`}>
-                  {Object.entries(response.headers).map(([key, value]) => (
-                    <div key={key} className={styles.headerRow}>
-                      <span className={styles.headerKey}>{key}:</span>
-                      <span className={styles.headerValue}>{value}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </>
-        )}
-      </div>
+      )}
 
       {/* Test Case Form Modal */}
       {showTestCaseForm && selectedNode?.type === 'file' && (
@@ -2077,10 +2128,6 @@ export default function RequestPanel({ activeRequest }) {
                   size="small"
                   onClick={() => {
                     // Save the modified test result data
-                    console.log(
-                      'Saving test data changes:',
-                      selectedTestResult
-                    );
                     // Here you would implement saving logic to your backend
                     // For now, just show a confirmation
                     alert(

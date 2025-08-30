@@ -59,38 +59,8 @@ async def get_test_case_details(
         )
         file_node = file_result.scalar_one()
 
-        # Get path from root to target folder
-        folder_path, folder_ids, headers_map, merge_result = await get_headers(db, api.file_id)
-        if not folder_path:
-            return create_response(206, error_message="Folder not found")
 
-        inherited_headers = merge_result.get("merged_headers", {})
-
-        # 5) Optional API-level headers override (from api.extra_meta.headers)
-        api_extra_headers = {}
-        try:
-            if getattr(api, "extra_meta", None):
-                meta = api.extra_meta
-                # if stored as JSON string, parse
-                if isinstance(meta, str):
-                    import json
-                    meta = json.loads(meta)
-                if isinstance(meta, dict) and isinstance(meta.get("headers"), dict):
-                    api_extra_headers = meta["headers"]
-        except Exception:
-            # Silently ignore malformed extra_meta; you can log if needed
-            api_extra_headers = {}
-
-        final_headers = {**inherited_headers, **api_extra_headers}
-
-        # Combine inherited headers with case-specific headers (if any)
-        try:
-            case_headers = case.headers or {}
-        except AttributeError:
-            # Handle the case where headers column doesn't exist yet
-            case_headers = {}
-
-        combined_headers = {**final_headers, **case_headers}
+        case_headers = case.headers or {}
 
         # Params if present on the case
         try:
@@ -102,9 +72,8 @@ async def get_test_case_details(
             "id": case.id,
             "api_id": case.api_id,
             "name": case.name,
-            "headers": combined_headers,  # Combined headers
+            "headers": case_headers,  # Combined headers
             "case_specific_headers": case_headers,  # Case-specific headers only
-            "inherited_headers": final_headers,  # Inherited headers only
             "params": case_params,
             "body": case.body,
             "expected": case.expected,

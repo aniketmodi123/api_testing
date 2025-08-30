@@ -100,14 +100,11 @@ const NodeItem = ({
     e.preventDefault(); // Prevent any default actions
     setMenuOpen(false);
 
-    console.log(`Action ${action} on node:`, node);
-
     switch (action) {
       case 'create':
         // Only available for folders
         if (node.type === 'folder') {
           // Set the parent folder ID and toggle it open
-          console.log('Creating new item in folder:', node.id, node.name);
           handleCreateNewItem(node.id);
         }
         break;
@@ -118,15 +115,11 @@ const NodeItem = ({
         handleDuplicateNode(node);
         break;
       case 'headers':
-        console.log('Headers action triggered for node:', node);
         // Only available for folders
         if (node.type === 'folder' && handleEditHeaders) {
           // Open the header editor modal for this folder
           handleEditHeaders(node);
         } else {
-          console.log(
-            'Headers action ignored - not a folder or handleEditHeaders not available'
-          );
         }
         break;
       case 'delete':
@@ -513,8 +506,6 @@ export default function CollectionTree({ onSelectRequest }) {
 
   // Handle creating a new item (folder or file)
   const handleCreateNewItem = parentId => {
-    console.log('Creating new item in parent folder:', parentId);
-
     // Expand the parent folder
     if (!expandedFolders.includes(parentId)) {
       toggleFolder(parentId);
@@ -534,13 +525,6 @@ export default function CollectionTree({ onSelectRequest }) {
   const handleCreateItem = () => {
     if (newItemName.trim() && activeWorkspace) {
       const itemName = newItemName.trim();
-
-      console.log('Creating new item:', {
-        name: itemName,
-        workspace_id: activeWorkspace.id,
-        parent_id: parentFolderId,
-        type: isCreatingFolder ? 'folder' : 'file',
-      });
 
       // Directly create the item without confirmation
       if (isCreatingFolder) {
@@ -638,11 +622,9 @@ export default function CollectionTree({ onSelectRequest }) {
 
   // Handle opening the header editor
   const handleEditHeaders = node => {
-    console.log('Opening header editor for folder:', node);
     if (node && node.type === 'folder') {
       setCurrentFolder(node);
       setIsHeaderEditorOpen(true);
-      console.log('Header editor modal should be open now');
     } else {
       console.error(
         'Cannot open header editor: Invalid node or not a folder',
@@ -653,7 +635,6 @@ export default function CollectionTree({ onSelectRequest }) {
 
   // Handle saving headers
   const handleSaveHeaders = headerData => {
-    console.log('Headers saved:', headerData);
     setIsHeaderEditorOpen(false);
     setCurrentFolder(null);
   }; // Filter nodes based on search text

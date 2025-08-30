@@ -1,0 +1,56 @@
+.tree { padding: 6px 8px; }
+.small { font-size: 12px; opacity: 0.8; padding: 8px; }
+
+.folder {}
+.file {}
+
+.children { margin-left: 18px; }
+
+/* Full-width anchor for the kebab (right-aligned) */
+.rowWrap {
+  position: relative;
+  padding-right: 32px;  /* space for dots */
+  width: 100%;
+}
+
+/* Compact inner row like your original design */
+.row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  line-height: 1.2;
+}
+
+.label { user-select: none; }
+.muted { opacity: 0.7; font-size: 12px; }
+
+/* Start clean so no global styles leak in */
+.caret {
+  all: unset;                 /* clears background, border, radius, etc */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px; height: 18px;  /* nice click target */
+  cursor: pointer;
+}
+
+/* draw the triangle */
+.caret::before {
+  content: "";
+  display: block;
+  width: 0; height: 0;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 7px solid currentColor; /* ▶ */
+  transition: transform .18s ease;
+  transform-origin: 25% 50%;
+}
+
+/* rotate when open */
+.caret[aria-expanded="true"]::before {
+  transform: rotate(90deg);
+}
+
+/* optional: focus ring for a11y */
+.caret:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }

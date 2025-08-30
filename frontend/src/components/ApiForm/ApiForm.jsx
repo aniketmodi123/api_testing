@@ -120,7 +120,6 @@ const ApiForm = ({
         try {
           // For existing APIs, we need to use fileId which is actually the same as apiId in this context
           // The getApi function expects a fileId, not an apiId
-          console.log('Loading API with ID/fileId:', apiId);
           await getApi(apiId, true); // Include cases for comprehensive data
         } catch (err) {
           console.error('Failed to load API:', err);
@@ -134,8 +133,6 @@ const ApiForm = ({
   // Update form when activeApi changes
   useEffect(() => {
     if (activeApi && apiId) {
-      console.log('Active API data received:', activeApi);
-
       // Extract validation data if available
       const validationData = activeApi.validation || {
         requestSchema: {},
@@ -160,8 +157,6 @@ const ApiForm = ({
         },
         extra_meta: activeApi.extra_meta || {},
       });
-
-      console.log('Form data updated with API values');
     }
   }, [activeApi, apiId]);
 
@@ -259,8 +254,6 @@ const ApiForm = ({
         data: formData.method !== 'GET' ? formData.request_body : undefined,
       };
 
-      console.log('Executing API request:', requestData);
-
       // In a real implementation, you would make an actual API call here
       // For now, let's simulate a response
       setTimeout(() => {
@@ -334,7 +327,6 @@ const ApiForm = ({
         };
 
         await updateApi(apiId, configOnlyData);
-        console.log('Request configuration updated');
       } else {
         // If no API ID, we need to create a new API
         await saveApiDefinition();
@@ -865,7 +857,6 @@ const ApiForm = ({
                 )}
                 onChange={value => {
                   try {
-                    console.log('Updating request schema validation');
                     const schema = value ? JSON.parse(value) : {};
                     setFormData(prev => ({
                       ...prev,

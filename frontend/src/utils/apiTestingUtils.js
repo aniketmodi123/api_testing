@@ -11,7 +11,6 @@ export const apiTestingUtils = {
    */
   async securityScan(fileId) {
     try {
-      console.log(`Running security scan for API in file ${fileId}`);
       const apiResponse = await apiService.getApi(fileId);
 
       if (!apiResponse || !apiResponse.data) {
@@ -119,11 +118,6 @@ export const apiTestingUtils = {
    */
   async loadTest(fileId, options = {}) {
     try {
-      console.log(
-        `Running load test for API in file ${fileId} with options:`,
-        options
-      );
-
       const requestCount = options.requestCount || 10;
       const concurrency = options.concurrency || 5;
       const delayMs = options.delayMs || 0;
@@ -254,8 +248,6 @@ export const apiTestingUtils = {
    */
   compareResponses(response1, response2, options = {}) {
     try {
-      console.log('Comparing API responses with options:', options);
-
       const differences = [];
       let matchPercentage = 100;
 

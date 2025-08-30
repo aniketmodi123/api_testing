@@ -15,9 +15,7 @@ export const nodeService = {
         ...folderData,
         type: 'folder',
       };
-      console.log('Creating folder with data:', nodeData);
       const response = await api.post('/node/create', nodeData);
-      console.log('Folder created successfully:', response.data);
       return response.data;
     } catch (error) {
       console.error('Error creating folder:', error, error.response?.data);
@@ -75,10 +73,7 @@ export const nodeService = {
           Pragma: 'no-cache',
         },
       });
-      console.log(
-        'Workspace data fetched at:',
-        new Date().toLocaleTimeString()
-      );
+
       return response.data;
     } catch (error) {
       console.error('Error fetching workspace nodes:', error);
@@ -112,7 +107,6 @@ export const nodeService = {
       if (!nodeId || typeof nodeId !== 'number') {
         throw new Error(`Invalid node ID: ${nodeId}`);
       }
-      console.log(`Updating node ${nodeId} with data:`, nodeData);
       const response = await api.put(`/node/${nodeId}`, nodeData);
       return response.data;
     } catch (error) {

@@ -1,7 +1,9 @@
 import { api } from '../api.js';
 
 /**
- * Service for managing APIs and test cases
+ * Service for managing APIs and   async listApis(filters = {}) {
+    try {
+      const response = await api.get('/apis', { params: filters }); cases
  */
 export const apiService = {
   /**
@@ -59,7 +61,6 @@ export const apiService = {
    */
   async createApi(fileId, apiData) {
     try {
-      console.log(`Creating API in file ${fileId}:`, apiData);
       const response = await api.post(`/file/${fileId}/api`, apiData);
       return response.data;
     } catch (error) {
@@ -75,7 +76,6 @@ export const apiService = {
    */
   async listApis(filters = {}) {
     try {
-      console.log('Listing APIs with filters:', filters);
       const response = await api.get(`/api/list`, { params: filters });
       return response.data;
     } catch (error) {
@@ -92,7 +92,6 @@ export const apiService = {
    */
   async getApi(fileId, includeCases = false) {
     try {
-      console.log('Fetching API details for file:', fileId);
       const response = await api.get(`/file/${fileId}/api`, {
         params: { include_cases: includeCases },
       });
@@ -156,7 +155,6 @@ export const apiService = {
    */
   async saveApi(fileId, apiData) {
     try {
-      console.log(`Saving API in file ${fileId}:`, apiData);
       // Normalize payload to backend schema: headers/params/body under extra_meta
       const {
         headers,
@@ -192,7 +190,6 @@ export const apiService = {
    */
   async updateApi(apiId, apiData) {
     try {
-      console.log(`Updating API ${apiId}:`, apiData);
       const response = await api.put(`/api/${apiId}`, apiData);
       return response.data;
     } catch (error) {
@@ -208,7 +205,6 @@ export const apiService = {
    */
   async deleteApi(apiId) {
     try {
-      console.log(`Deleting API ${apiId}`);
       const response = await api.delete(`/api/${apiId}`);
       return response.data;
     } catch (error) {
@@ -225,7 +221,6 @@ export const apiService = {
    */
   async createTestCase(fileId, testCaseData) {
     try {
-      console.log(`Creating test case for file ${fileId}:`, testCaseData);
       const response = await api.post(
         `/file/${fileId}/api/cases`,
         testCaseData
@@ -245,14 +240,10 @@ export const apiService = {
    */
   async bulkCreateTestCases(fileId, testCasesData) {
     try {
-      console.log(
-        `Bulk creating ${testCasesData.length} test cases for file ${fileId}`
-      );
       const response = await api.post(
         `/file/${fileId}/api/cases/bulk`,
         testCasesData
       );
-      console.log('Bulk create response:', response.data);
       return response.data;
     } catch (error) {
       console.error('Error bulk creating test cases:', error);
@@ -273,7 +264,6 @@ export const apiService = {
    */
   async duplicateApi(fileId, newApiName = null, includeCases = true) {
     try {
-      console.log(`Duplicating API from file ${fileId}`);
       const response = await api.post(`/file/${fileId}/api/duplicate`, null, {
         params: {
           include_cases: includeCases,
@@ -296,11 +286,6 @@ export const apiService = {
    */
   async saveTestCase(fileId, testCaseData, caseId = null) {
     try {
-      console.log(
-        `Saving test case for file ${fileId}${caseId ? ` (updating case ${caseId})` : ''}:`,
-        testCaseData
-      );
-
       if (!fileId) {
         console.error('Missing fileId when saving test case');
         throw new Error('Missing file ID');
@@ -330,11 +315,8 @@ export const apiService = {
         expected: testCaseData.expected || null,
       };
 
-      console.log('Formatted data for API endpoint:', formattedData);
-
       // Log the API endpoint URL for debugging
       const endpoint = `/file/${fileId}/api/cases/save${caseId ? `?case_id=${caseId}` : ''}`;
-      console.log('Saving test case to endpoint:', endpoint);
 
       const response = await api.post(endpoint, formattedData, {
         headers: {
@@ -342,7 +324,6 @@ export const apiService = {
         },
       });
 
-      console.log('Save test case response:', response.data);
       return response.data;
     } catch (error) {
       console.error('Error saving test case:', error);
@@ -366,7 +347,6 @@ export const apiService = {
    */
   async getTestCase(caseId) {
     try {
-      console.log('Fetching test case details:', caseId);
       const response = await api.get(`/case/${caseId}`);
       return response.data;
     } catch (error) {
@@ -382,7 +362,6 @@ export const apiService = {
    */
   async getTestCaseDetails(caseId) {
     try {
-      console.log('Fetching detailed test case information:', caseId);
       const response = await api.get(`/case/${caseId}`);
       return response.data;
     } catch (error) {
@@ -401,7 +380,6 @@ export const apiService = {
    */
   async listTestCases(fileId) {
     try {
-      console.log(`Listing test cases for file ${fileId}`);
       // Get API with included test cases
       const response = await this.getApi(fileId, true);
 
@@ -436,7 +414,6 @@ export const apiService = {
    */
   async updateTestCase(caseId, testCaseData) {
     try {
-      console.log(`Updating test case ${caseId}:`, testCaseData);
       const response = await api.put(`/api/cases/${caseId}`, testCaseData);
       return response.data;
     } catch (error) {
@@ -452,7 +429,6 @@ export const apiService = {
    */
   async deleteTestCase(caseId) {
     try {
-      console.log(`Deleting test case ${caseId}`);
       const response = await api.delete(`/case/${caseId}`);
       return response.data;
     } catch (error) {
@@ -469,7 +445,7 @@ export const apiService = {
    */
   async runTest(fileId, caseId = null) {
     try {
-      console.log(`Running test for file ${fileId}, case IDs:`, caseId);
+      (`Running test for file ${fileId}, case IDs:`, caseId);
 
       // Validate fileId is provided
       if (!fileId) {
@@ -480,10 +456,7 @@ export const apiService = {
       if (caseId) {
         body.case_id = Array.isArray(caseId) ? caseId : [caseId];
       }
-      console.log(
-        'Request body being sent to /run endpoint:',
-        JSON.stringify(body, null, 2)
-      );
+
       const response = await api.post(`/run`, body);
 
       // Handle both shapes:
@@ -519,11 +492,6 @@ export const apiService = {
    */
   async generateTestCases(fileId, options = {}) {
     try {
-      console.log(
-        `Generating test cases for file ${fileId} with options:`,
-        options
-      );
-
       // Fetch API details first
       const apiResponse = await this.getApi(fileId);
 
@@ -620,13 +588,6 @@ export const apiService = {
    */
   async runBatchTests(fileIds, options = {}) {
     try {
-      console.log(
-        `Running batch tests for files:`,
-        fileIds,
-        'with options:',
-        options
-      );
-
       const batchResults = [];
       const failedTests = [];
       let totalTests = 0;
@@ -725,8 +686,6 @@ export const apiService = {
    */
   generateTestReport(batchResults, options = {}) {
     try {
-      console.log('Generating test report with options:', options);
-
       if (!batchResults || !batchResults.data || !batchResults.data.summary) {
         throw new Error('Invalid batch results data');
       }

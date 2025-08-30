@@ -36,9 +36,6 @@ export function NodeProvider({ children }) {
       if (retryCount < maxRetries) {
         // Exponential backoff - wait longer between each retry
         const delay = Math.pow(2, retryCount) * 1000;
-        console.log(
-          `Retrying node loading in ${delay}ms (attempt ${retryCount + 1}/${maxRetries})`
-        );
 
         clearTimeout(retryTimeout);
         retryTimeout = setTimeout(() => {
@@ -62,12 +59,8 @@ export function NodeProvider({ children }) {
       try {
         setLoading(true);
         setError(null);
-        console.log(`Fetching nodes for workspace: ${activeWorkspace.id}`);
         const result = await fetchNodesByWorkspaceId(activeWorkspace.id);
         if (result && result.data && result.data.file_tree) {
-          console.log(
-            `Successfully loaded ${result.data.file_tree.length} nodes for workspace`
-          );
           setNodes(result.data.file_tree);
           // Reset retry count on success
           retryCount = 0;
@@ -110,16 +103,10 @@ export function NodeProvider({ children }) {
         const cacheTime = parsed.timestamp;
         // Use cache if it's less than 5 seconds old (reduced from 30s to help with startup)
         if (Date.now() - cacheTime < 5000) {
-          console.log('Using cached workspace data for:', workspaceId);
           return parsed.data;
         }
       }
 
-      // Fetch fresh data
-      console.log(
-        'Fetching fresh workspace data for workspace ID:',
-        workspaceId
-      );
       const result = await nodeService.getNodesByWorkspaceId(workspaceId);
 
       if (!result || !result.data) {

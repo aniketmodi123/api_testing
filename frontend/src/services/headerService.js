@@ -13,7 +13,6 @@ export const headerService = {
    */
   async setHeaders(folderId, headers) {
     try {
-      console.log('Setting headers for folder:', folderId);
       const response = await api.post(`/${folderId}/headers`, {
         content: headers,
       });
@@ -32,7 +31,6 @@ export const headerService = {
    */
   async updateHeaders(folderId, headers) {
     try {
-      console.log('Updating headers for folder:', folderId);
       const response = await api.put(`/${folderId}/headers`, {
         content: headers,
       });
@@ -50,7 +48,6 @@ export const headerService = {
    */
   async getHeaders(folderId) {
     try {
-      console.log('Fetching headers for folder:', folderId);
       const response = await api.get(`/${folderId}/headers`);
       return response.data;
     } catch (error) {
@@ -70,7 +67,6 @@ export const headerService = {
    */
   async deleteHeaders(folderId) {
     try {
-      console.log('Deleting headers for folder:', folderId);
       const response = await api.delete(`/${folderId}/headers`);
       return response.data;
     } catch (error) {
@@ -87,7 +83,6 @@ export const headerService = {
    */
   async getCompleteHeaders(folderId, includeDetails = false) {
     try {
-      console.log('Fetching complete headers for folder:', folderId);
       const headers = includeDetails ? { 'include-details': 'true' } : {};
       const response = await api.get(`/${folderId}/headers/complete`, {
         headers,

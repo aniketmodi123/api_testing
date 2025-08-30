@@ -24,9 +24,6 @@ export function WorkspaceProvider({ children }) {
       if (retryCount < maxRetries) {
         // Exponential backoff - wait longer between each retry
         const delay = Math.pow(2, retryCount) * 1000;
-        console.log(
-          `Retrying workspace loading in ${delay}ms (attempt ${retryCount + 1}/${maxRetries})`
-        );
 
         clearTimeout(retryTimeout);
         retryTimeout = setTimeout(() => {
@@ -63,16 +60,10 @@ export function WorkspaceProvider({ children }) {
         const data = await workspaceService.getWorkspaces();
 
         if (data && Array.isArray(data.data)) {
-          console.log(
-            'Workspaces loaded successfully:',
-            data.data.length,
-            'workspaces'
-          );
           setWorkspaces(data.data);
 
           // Set first workspace as active if none is selected
           if (!activeWorkspace && data.data.length > 0) {
-            console.log('Setting active workspace:', data.data[0]);
             setActiveWorkspace(data.data[0]);
           }
           // Reset retry count on success
@@ -116,7 +107,6 @@ export function WorkspaceProvider({ children }) {
           activeWorkspace.id
         );
         setWorkspaceTree(data.data);
-        console.log('Workspace tree loaded:', data.data);
       } catch (err) {
         console.error(
           'Error fetching workspace tree:',

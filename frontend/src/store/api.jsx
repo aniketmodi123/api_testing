@@ -463,7 +463,6 @@ export const useApi = create((set, get) => ({
     try {
       set({ isLoading: true, error: null, testResults: null });
       const result = await apiService.runTest(fileId, caseId);
-      console.log('runTest raw result:', result);
 
       if (result && result.data) {
         // Normalize different backend shapes into { test_cases: [...] }

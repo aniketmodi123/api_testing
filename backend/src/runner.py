@@ -119,7 +119,9 @@ async def _run_case(
             url = case.get('endpoint', '')
 
             # Merge headers from global → service → case, then apply ${ts} into headers as well
-            headers = replace_ts(headers)
+            merged_headers = {**headers, **case['headers']}
+
+            headers = replace_ts(merged_headers)
 
             body = case.get("body")
             params = case.get("params")
@@ -178,7 +180,7 @@ async def _run_case(
                 "case": case["name"],
 
                 # validation result
-                "ok": ok,
+                "success": ok,
                 "failures": failures,
 
                 # status & timing
@@ -200,9 +202,10 @@ async def _run_case(
                 "request": {
                     "method": method,
                     "url": url,
-                    "headers": headers,
+                    "headers": case['headers'],
                     "params": params,
-                    "body": body
+                    "body": body,
+                    "expected": expect
                 },
                 "response": {
                     "status_code": resp.status_code,
@@ -237,7 +240,7 @@ async def run_from_list_api(
                 "expected": c.get("expected"),
                 "method": method,
                 "endpoint": endpoint,
-                "headers": api_hdrs,
+                "headers": c.get("headers"),
             })
 
         ts = int(time.time() * 1000)

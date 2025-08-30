@@ -42,7 +42,6 @@ export default function SignUp() {
       }
     } catch (e) {
       // error is handled by context, but won't show success message
-      console.log('Signup error in component:', e);
     }
   };
 

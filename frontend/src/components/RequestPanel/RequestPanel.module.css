@@ -2152,3 +2152,70 @@
 .detailSubsection::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
 }
+
+/* Test Results View Toggle Styles */
+.testResultsActions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.viewToggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--color-background-light);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 2px;
+}
+
+.viewToggle button {
+  border: none !important;
+  margin: 0 !important;
+  border-radius: 4px !important;
+  padding: 6px 12px !important;
+  font-size: 12px !important;
+  transition: all 0.2s ease;
+}
+
+.viewToggle button[data-variant="secondary"] {
+  background: transparent !important;
+  color: var(--color-text-muted) !important;
+}
+
+.viewToggle button[data-variant="primary"] {
+  background: var(--color-primary) !important;
+  color: white !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* Enhanced test results header */
+.testResultsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.testResultsHeader h4 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+/* Responsive design for toggle */
+@media (max-width: 768px) {
+  .testResultsActions {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .viewToggle {
+    order: 1;
+  }
+}

@@ -67,9 +67,6 @@ function SimpleUserProfile() {
     );
   }
 
-  // Log the user object to help debug what fields are available
-  console.log('User data in profile:', user);
-
   return (
     <div className={styles['user-profile']}>
       <h1>Your Profile</h1>

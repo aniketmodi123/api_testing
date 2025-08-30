@@ -202,8 +202,6 @@ export function AuthProvider({ children }) {
       localStorage.clear();
       sessionStorage.clear();
       dispatch({ type: LOGOUT });
-
-      console.log('Logout successful - all storage cleared');
     } catch (err) {
       console.error('Unexpected error during logout process:', err);
 

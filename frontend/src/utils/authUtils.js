@@ -8,10 +8,7 @@ let isLogoutInProgress = false;
 /**
  * Backwards compatibility function for components still using this
  */
-export const setLogoutFunction = () => {
-  // This is a no-op function for backward compatibility
-  console.log('setLogoutFunction is deprecated, use forceLogout instead');
-};
+export const setLogoutFunction = () => {};
 
 /**
  * Force logout and redirect - the most direct approach
@@ -21,7 +18,6 @@ export const forceLogout = () => {
   // Prevent multiple simultaneous logouts
   if (isLogoutInProgress) return;
 
-  console.log('Force logout initiated');
   isLogoutInProgress = true;
 
   try {
@@ -30,15 +26,12 @@ export const forceLogout = () => {
     sessionStorage.clear();
 
     // DEBUG: Log the current path
-    console.log('Current path before redirect:', window.location.pathname);
-    console.log('Current URL:', window.location.href);
 
     // Clear any auth tokens from storage to ensure clean slate
     localStorage.removeItem('token');
     localStorage.removeItem('user');
 
     // EVEN MORE AGGRESSIVE APPROACH: Force reload to sign-in page
-    console.log('Forcing navigation to sign-in page');
 
     // Try multiple approaches to increase chances of success
     try {
@@ -51,7 +44,6 @@ export const forceLogout = () => {
     // Reset flag after a timeout to allow future logout attempts if needed
     setTimeout(() => {
       isLogoutInProgress = false;
-      console.log('Reset isLogoutInProgress flag');
     }, 3000);
   } catch (error) {
     console.error('Error during force logout:', error);

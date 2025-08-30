@@ -8,7 +8,6 @@ const copyToClipboard = async text => {
     await navigator.clipboard.writeText(text);
     return true;
   } catch (err) {
-    console.error('Failed to copy text: ', err);
     return false;
   }
 };
@@ -102,7 +101,7 @@ const TestRunner = ({ fileId }) => {
       const casesToRun = selectedCases.length > 0 ? selectedCases : null;
       await runTest(fileId, casesToRun);
     } catch (err) {
-      console.error('Error running tests:', err);
+      // Error handling without console logging
     }
   };
 
