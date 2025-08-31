@@ -9,6 +9,7 @@ export default function TestResultsGrid({
   loading = false,
   error = null,
   onSaveTestCase = null,
+  onRunTest = null,
 }) {
   const [focusedResult, setFocusedResult] = useState(null);
 
@@ -54,9 +55,15 @@ export default function TestResultsGrid({
     );
   }
 
-  const passedCount = testResults.filter(
-    result => result.status === 'passed' || result.success
-  ).length;
+  const passedCount = testResults.filter(result => {
+    // Primary status detection: success: true means test passed
+    return Boolean(
+      result.success === true ||
+        result.status === 'passed' ||
+        result.ok === true ||
+        result.passed === true
+    );
+  }).length;
   const totalCount = testResults.length;
   const passRate =
     totalCount > 0 ? Math.round((passedCount / totalCount) * 100) : 0;
@@ -94,6 +101,7 @@ export default function TestResultsGrid({
             testResult={result}
             onFocus={setFocusedResult}
             onSave={onSaveTestCase}
+            onRunTest={onRunTest}
           />
         ))}
       </div>
@@ -102,6 +110,8 @@ export default function TestResultsGrid({
         testResult={focusedResult}
         isOpen={!!focusedResult}
         onClose={() => setFocusedResult(null)}
+        onRunTest={onRunTest}
+        onSave={onSaveTestCase}
       />
     </div>
   );

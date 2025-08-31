@@ -178,6 +178,7 @@ async def _run_case(
 
             return {
                 "case": case["name"],
+                "case_id": case["id"],
 
                 # validation result
                 "success": ok,
@@ -236,6 +237,7 @@ async def run_from_list_api(
             cases.append({
                 "name": c.get("name") or f"case-{c.get('id')}",
                 "body": c.get("body"),
+                "id": c.get("id"),
                 "params": c.get("params"),
                 "expected": c.get("expected"),
                 "method": method,

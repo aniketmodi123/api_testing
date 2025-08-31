@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { JsonEditor } from '../common';
 import styles from './TestResultCard.module.css';
 
 function pretty(obj) {
@@ -10,12 +9,21 @@ function pretty(obj) {
   }
 }
 
-export default function TestResultCard({ testResult, onFocus, onSave }) {
+export default function TestResultCard({
+  testResult,
+  onFocus,
+  onSave,
+  onRunTest,
+}) {
   const [editableData, setEditableData] = useState({
     request: pretty(testResult.request || testResult.requestData || {}),
     expected: pretty(testResult.expected || testResult.expectedData || {}),
   });
   const [hasChanges, setHasChanges] = useState(false);
+
+  const handleOpenDetailView = () => {
+    onFocus?.(testResult);
+  };
 
   const handleJsonChange = (field, value) => {
     setEditableData(prev => ({
@@ -47,26 +55,20 @@ export default function TestResultCard({ testResult, onFocus, onSave }) {
     }
   };
 
-  const isSuccess =
-    testResult.status === 'passed' || testResult.success || testResult.ok;
-
-  // Debug logging to help identify the issue
-  if (testResult.case === 'Test case - 2') {
-    console.log('Debug - TestResult:', {
-      status: testResult.status,
-      success: testResult.success,
-      ok: testResult.ok,
-      isSuccess: isSuccess,
-      fullTestResult: testResult,
-    });
-  }
+  // Primary status detection: success: true means test passed
+  const isSuccess = Boolean(
+    testResult.success === true ||
+      testResult.status === 'passed' ||
+      testResult.ok === true ||
+      testResult.passed === true
+  );
 
   const statusCode = testResult.status_code || testResult.statusCode;
   const duration = testResult.duration_ms || testResult.duration || 0;
 
   return (
-    <div className={`${styles.card} ${styles.expanded}`}>
-      <div className={styles.header}>
+    <div className={styles.card}>
+      <div className={styles.header} onClick={handleOpenDetailView}>
         <div className={styles.titleSection}>
           <h3 className={styles.title}>
             {testResult.name ||
@@ -87,105 +89,17 @@ export default function TestResultCard({ testResult, onFocus, onSave }) {
           </div>
         </div>
         <div className={styles.actions}>
-          {hasChanges && (
-            <button
-              type="button"
-              className={styles.saveBtn}
-              onClick={handleSave}
-            >
-              Save
-            </button>
-          )}
           <button
             type="button"
-            className={styles.focusBtn}
-            onClick={() => onFocus?.(testResult)}
+            className={styles.viewBtn}
+            onClick={e => {
+              e.stopPropagation();
+              handleOpenDetailView();
+            }}
+            title="View details"
           >
-            Focus
+            👁 View
           </button>
-        </div>
-      </div>
-
-      {/* Always show the 4-section grid view */}
-      <div className={styles.expandedView}>
-        <div className={styles.gridContainer}>
-          {/* Request Section (1,1) */}
-          <div className={styles.gridSection}>
-            <div className={styles.sectionHeader}>
-              <h4>Request Body</h4>
-            </div>
-            <div className={styles.editorContainer}>
-              <JsonEditor
-                value={editableData.request}
-                onChange={value => handleJsonChange('request', value)}
-                language="json"
-                showCopyButton={true}
-                resizable={true}
-                minHeight={200}
-                maxHeight={600}
-              />
-            </div>
-          </div>
-
-          {/* Failures Section (1,2) */}
-          <div className={styles.gridSection}>
-            <div className={styles.sectionHeader}>
-              <h4>Failures</h4>
-            </div>
-            <div className={styles.failuresContainer}>
-              {testResult.failures && testResult.failures.length > 0 ? (
-                <div className={styles.failuresList}>
-                  {testResult.failures.map((failure, index) => (
-                    <div key={index} className={styles.failureItem}>
-                      {failure}
-                    </div>
-                  ))}
-                </div>
-              ) : testResult.error ? (
-                <div className={styles.failureItem}>{testResult.error}</div>
-              ) : (
-                <div className={styles.noFailures}>No failures</div>
-              )}
-            </div>
-          </div>
-
-          {/* Expected Section (2,1) */}
-          <div className={styles.gridSection}>
-            <div className={styles.sectionHeader}>
-              <h4>Expected</h4>
-            </div>
-            <div className={styles.editorContainer}>
-              <JsonEditor
-                value={editableData.expected}
-                onChange={value => handleJsonChange('expected', value)}
-                language="json"
-                showCopyButton={true}
-                resizable={true}
-                minHeight={200}
-                maxHeight={600}
-              />
-            </div>
-          </div>
-
-          {/* Response Section (2,2) */}
-          <div className={styles.gridSection}>
-            <div className={styles.sectionHeader}>
-              <h4>Response</h4>
-            </div>
-            <div className={styles.editorContainer}>
-              <JsonEditor
-                value={pretty(
-                  testResult.response || testResult.responseData || {}
-                )}
-                language="json"
-                showCopyButton={true}
-                resizable={true}
-                minHeight={200}
-                maxHeight={600}
-                disabled={true}
-              />
-            </div>
-          </div>
         </div>
       </div>
     </div>

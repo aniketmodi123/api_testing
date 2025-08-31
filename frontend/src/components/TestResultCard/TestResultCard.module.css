@@ -19,6 +19,17 @@
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
 }
 
+.card.collapsed {
+  background: var(--color-surface-light);
+  border: 1px solid var(--color-border);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.card.collapsed:hover {
+  border-color: var(--color-primary-light);
+  cursor: pointer;
+}
+
 /* Header Section */
 .header {
   display: flex;
@@ -26,6 +37,7 @@
   justify-content: space-between;
   margin-bottom: 8px;
   gap: 8px;
+  cursor: pointer;
 }
 
 .titleSection {
@@ -94,9 +106,25 @@
   align-items: flex-start;
 }
 
+.expandIndicator {
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  padding: 6px 8px;
+  transition: color 0.2s ease;
+}
+
+.header:hover .expandIndicator {
+  color: var(--color-primary);
+}
+
 .focusBtn,
 .saveBtn,
-.expandBtn {
+.expandBtn,
+.runBtn,
+.viewBtn {
   padding: 6px 12px;
   font-size: 12px;
   border-radius: 6px;
@@ -106,6 +134,28 @@
   cursor: pointer;
   transition: all 0.2s ease;
   white-space: nowrap;
+}
+
+.runBtn {
+  background: var(--color-success-light);
+  border-color: var(--color-success);
+  color: var(--color-success);
+}
+
+.runBtn:hover {
+  background: var(--color-success);
+  color: white;
+}
+
+.viewBtn {
+  background: var(--color-primary-light);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.viewBtn:hover {
+  background: var(--color-primary);
+  color: white;
 }
 
 .focusBtn:hover {

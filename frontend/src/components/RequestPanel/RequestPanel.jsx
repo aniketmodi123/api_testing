@@ -190,9 +190,6 @@ export default function RequestPanel({ activeRequest }) {
   const [editingApiInModal, setEditingApiInModal] = useState(false);
   const [modalApiData, setModalApiData] = useState(null);
 
-  // State for test results view toggle
-  const [useGridView, setUseGridView] = useState(true); // Default to grid view
-
   // Handle resizing between request and response sections
   const startResize = useCallback(
     e => {
@@ -422,6 +419,31 @@ export default function RequestPanel({ activeRequest }) {
       setActiveTab('apiTests');
     } catch (error) {
       console.error('Error running selected tests:', error);
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  // Function to run a single test from the test result card
+  const handleRunSingleTest = async testResult => {
+    if (!selectedNode?.id) {
+      console.error('No selected node or node ID available for running test');
+      return;
+    }
+
+    setIsSending(true);
+    try {
+      // Extract test case ID from the test result
+      const testCaseId = testResult.id || testResult.case_id;
+      if (testCaseId) {
+        await runTest(selectedNode.id, [testCaseId]);
+      } else {
+        // If no specific test case ID, run all tests
+        await runTest(selectedNode.id);
+      }
+      setActiveTab('apiTests');
+    } catch (error) {
+      console.error('Error running single test:', error);
     } finally {
       setIsSending(false);
     }
@@ -722,15 +744,79 @@ export default function RequestPanel({ activeRequest }) {
     }
   };
 
-  const handleSaveTestCaseFromCard = async (caseId, updatedData) => {
-    if (!selectedNode?.id) return;
+  const handleSaveTestCaseFromCard = async (
+    caseIdOrFileId,
+    updatedDataOrPayload,
+    maybeCaseId
+  ) => {
+    // This handler is called from multiple places and historically had two
+    // possible call shapes:
+    // 1) (caseId, updatedData)            -- used by card/modal callers
+    // 2) (fileId, payload, caseId)        -- store-style callers
+    // Be defensive and detect which shape we received.
+
+    // Quick debug to help trace which signature gets used at runtime
+    try {
+      console.debug('handleSaveTestCaseFromCard called', {
+        args: [caseIdOrFileId, updatedDataOrPayload, maybeCaseId],
+        selectedNodeId: selectedNode?.id,
+      });
+    } catch (e) {
+      // ignore
+    }
+
+    // If the second argument has a `.request` property, treat as (caseId, updatedData)
+    let caseId = null;
+    let updatedData = null;
+    let fileId = selectedNode?.id;
+
+    if (updatedDataOrPayload && updatedDataOrPayload.request !== undefined) {
+      // signature: (caseId, updatedData)
+      caseId = caseIdOrFileId;
+      updatedData = updatedDataOrPayload;
+    } else {
+      // signature: (fileId, payload, caseId)
+      fileId = caseIdOrFileId || selectedNode?.id;
+      const payload = updatedDataOrPayload || {};
+      caseId = maybeCaseId || payload.case_id || payload.id || null;
+
+      // Transform payload into updatedData shape expected by card handlers
+      updatedData = {
+        request: {
+          headers: payload.headers || {},
+          params: payload.params || {},
+          body: payload.body ?? null,
+        },
+        expected: payload.expected ?? null,
+        name: payload.name,
+      };
+    }
+
+    if (!fileId) return;
 
     try {
-      // Use the saveTestCase function from the store
+      // Normalize fileId if it's accidentally an object (defensive)
+      let resolvedFileId = fileId;
+      if (typeof resolvedFileId === 'object' && resolvedFileId !== null) {
+        resolvedFileId =
+          resolvedFileId.id ??
+          resolvedFileId.file_id ??
+          resolvedFileId._id ??
+          null;
+      }
+      if (!resolvedFileId) {
+        console.error('Invalid fileId when saving test case', { fileId });
+        throw new Error('Invalid fileId for saving test case');
+      }
+
+      // Use the saveTestCase function from the store. If we have a fileId use it
+      // (store-style); otherwise fall back to selectedNode.id. Keep name sensible.
       const result = await saveTestCase(
-        selectedNode.id,
+        resolvedFileId,
         {
-          name: `Test case - ${caseId}`, // You might want to get the actual name
+          name:
+            updatedData.name ||
+            `Test case - ${caseId || new Date().toLocaleTimeString()}`,
           headers: updatedData.request?.headers || {},
           params: updatedData.request?.params || {},
           body: updatedData.request?.body || null,
@@ -1718,22 +1804,6 @@ export default function RequestPanel({ activeRequest }) {
                 <div className={styles.testResultsHeader}>
                   <h4>Test Results</h4>
                   <div className={styles.testResultsActions}>
-                    <div className={styles.viewToggle}>
-                      <Button
-                        variant={useGridView ? 'primary' : 'secondary'}
-                        size="small"
-                        onClick={() => setUseGridView(true)}
-                      >
-                        Grid View
-                      </Button>
-                      <Button
-                        variant={!useGridView ? 'primary' : 'secondary'}
-                        size="small"
-                        onClick={() => setUseGridView(false)}
-                      >
-                        List View
-                      </Button>
-                    </div>
                     <Button
                       variant="secondary"
                       size="small"
@@ -1745,226 +1815,35 @@ export default function RequestPanel({ activeRequest }) {
                   </div>
                 </div>
 
-                {useGridView ? (
-                  <TestResultsGrid
-                    testResults={(() => {
-                      // Handle different result formats based on your API response structure
-                      let resultsArray = [];
+                <TestResultsGrid
+                  testResults={(() => {
+                    // Handle different result formats based on your API response structure
+                    let resultsArray = [];
 
-                      if (Array.isArray(testResults)) {
-                        // If testResults is directly an array (like your sample data)
-                        resultsArray = testResults;
-                      } else if (testResults.test_cases) {
-                        // If wrapped in test_cases property
-                        resultsArray = testResults.test_cases;
-                      } else if (testResults.data) {
-                        // If wrapped in data property
-                        resultsArray = Array.isArray(testResults.data)
-                          ? testResults.data
-                          : [testResults.data];
-                      } else if (testResults) {
-                        // Single result object
-                        resultsArray = [testResults];
-                      }
+                    if (Array.isArray(testResults)) {
+                      // If testResults is directly an array (like your sample data)
+                      resultsArray = testResults;
+                    } else if (testResults.test_cases) {
+                      // If wrapped in test_cases property
+                      resultsArray = testResults.test_cases;
+                    } else if (testResults.data) {
+                      // If wrapped in data property
+                      resultsArray = Array.isArray(testResults.data)
+                        ? testResults.data
+                        : [testResults.data];
+                    } else if (testResults) {
+                      // Single result object
+                      resultsArray = [testResults];
+                    }
 
-                      return resultsArray;
-                    })()}
-                    title=""
-                    loading={isSending}
-                    error={testResults.error}
-                    onSaveTestCase={handleSaveTestCaseFromCard}
-                  />
-                ) : (
-                  <div className={styles.testResultsContent}>
-                    {(() => {
-                      // Handle different result formats based on your API response structure
-                      let resultsArray = [];
-
-                      if (Array.isArray(testResults)) {
-                        // If testResults is directly an array (like your sample data)
-                        resultsArray = testResults;
-                      } else if (testResults.test_cases) {
-                        // If wrapped in test_cases property
-                        resultsArray = testResults.test_cases;
-                      } else if (testResults.data) {
-                        // If wrapped in data property
-                        resultsArray = Array.isArray(testResults.data)
-                          ? testResults.data
-                          : [testResults.data];
-                      } else if (testResults) {
-                        // Single result object
-                        resultsArray = [testResults];
-                      }
-
-                      if (resultsArray.length > 0) {
-                        return (
-                          <>
-                            <div className={styles.testResultsStats}>
-                              <div className={styles.testStat}>
-                                <span>Total:</span> {resultsArray.length}
-                              </div>
-                              <div className={styles.testStat}>
-                                <span>Passed:</span>{' '}
-                                {
-                                  resultsArray.filter(
-                                    r => r.ok ?? r.passed ?? false
-                                  ).length
-                                }
-                              </div>
-                              <div className={styles.testStat}>
-                                <span>Failed:</span>{' '}
-                                {
-                                  resultsArray.filter(
-                                    r => !(r.ok ?? r.passed ?? false)
-                                  ).length
-                                }
-                              </div>
-                            </div>
-                            <div className={styles.testResultsList}>
-                              {resultsArray.map((result, index) => {
-                                // Handle different result formats to support your API response structure
-                                const testResult = result;
-                                const passed =
-                                  testResult.ok ?? testResult.passed ?? false;
-                                const testName =
-                                  testResult.case ||
-                                  testResult.name ||
-                                  `Test Case ${index + 1}`;
-                                const statusCode =
-                                  testResult.status_code ||
-                                  testResult.response?.status_code;
-                                const duration = testResult.duration_ms;
-                                const failures = testResult.failures || [];
-                                const request = testResult.request;
-                                const response = testResult.response;
-
-                                return (
-                                  <div
-                                    key={result.id ?? index}
-                                    className={`${styles.testResultItem} ${passed ? styles.testPassed : styles.testFailed}`}
-                                  >
-                                    <div className={styles.testResultHeader}>
-                                      <div
-                                        className={styles.testResultBasicInfo}
-                                      >
-                                        <span className={styles.testName}>
-                                          {testName}
-                                        </span>
-                                        <span className={styles.testStatus}>
-                                          {passed ? 'Passed' : 'Failed'}
-                                        </span>
-                                        {statusCode && (
-                                          <span
-                                            className={styles.testStatusCode}
-                                          >
-                                            Status: {statusCode}
-                                          </span>
-                                        )}
-                                        {duration && (
-                                          <span className={styles.testDuration}>
-                                            {duration.toFixed(2)}ms
-                                          </span>
-                                        )}
-                                      </div>
-                                      <div className={styles.testResultActions}>
-                                        <Button
-                                          variant="primary"
-                                          size="small"
-                                          onClick={() =>
-                                            handleOpenDetailedResult(testResult)
-                                          }
-                                        >
-                                          View Details
-                                        </Button>
-                                        <Button
-                                          variant="secondary"
-                                          size="small"
-                                          onClick={() => {
-                                            // Re-run this specific test
-                                            if (request && selectedNode?.id) {
-                                              runTest(selectedNode.id);
-                                            }
-                                          }}
-                                          disabled={isSending}
-                                        >
-                                          Re-run
-                                        </Button>
-                                        <Button
-                                          variant="secondary"
-                                          size="small"
-                                          onClick={() => {
-                                            // Edit test case (find matching test case)
-                                            const matchingTestCase =
-                                              testCases.find(
-                                                tc =>
-                                                  tc.name === testName ||
-                                                  tc.case === testName
-                                              );
-                                            if (matchingTestCase) {
-                                              setEditingTestCaseId(
-                                                matchingTestCase.id ||
-                                                  matchingTestCase.case_id
-                                              );
-                                              setShowTestCaseForm(true);
-                                            }
-                                          }}
-                                        >
-                                          Edit
-                                        </Button>
-                                      </div>
-                                    </div>
-
-                                    {/* Failures section */}
-                                    {!passed && failures.length > 0 && (
-                                      <div className={styles.testFailures}>
-                                        <h5>Failures:</h5>
-                                        <ul className={styles.failuresList}>
-                                          {failures.map((failure, idx) => (
-                                            <li
-                                              key={idx}
-                                              className={styles.failureItem}
-                                            >
-                                              {failure}
-                                            </li>
-                                          ))}
-                                        </ul>
-                                      </div>
-                                    )}
-
-                                    {/* API Info section */}
-                                    {testResult.api && (
-                                      <div className={styles.testApiInfo}>
-                                        <h5>API Details:</h5>
-                                        <div className={styles.testApiDetails}>
-                                          <span
-                                            className={styles.testApiMethod}
-                                          >
-                                            {testResult.api.method}
-                                          </span>
-                                          <span
-                                            className={styles.testApiEndpoint}
-                                          >
-                                            {testResult.api.endpoint}
-                                          </span>
-                                        </div>
-                                      </div>
-                                    )}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </>
-                        );
-                      }
-
-                      return (
-                        <div className={styles.testResultMessage}>
-                          {testResults.message || 'Test execution completed'}
-                        </div>
-                      );
-                    })()}
-                  </div>
-                )}
+                    return resultsArray;
+                  })()}
+                  title=""
+                  loading={isSending}
+                  error={testResults.error}
+                  onSaveTestCase={handleSaveTestCaseFromCard}
+                  onRunTest={handleRunSingleTest}
+                />
               </div>
             )}
           </div>

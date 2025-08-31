@@ -889,7 +889,7 @@
 }
 
 .testResultsSummary {
-  margin-bottom: 20px;
+  margin: 20px 0;
   padding: 15px;
   background-color: var(--background-lighter);
   border-radius: 6px;

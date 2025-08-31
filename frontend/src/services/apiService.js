@@ -286,8 +286,16 @@ export const apiService = {
    */
   async saveTestCase(fileId, testCaseData, caseId = null) {
     try {
+      // Defensive: if fileId is an object, attempt to extract a primitive id
+      if (typeof fileId === 'object' && fileId !== null) {
+        const possibleId = fileId.id ?? fileId.file_id ?? fileId._id ?? null;
+        if (possibleId) {
+          fileId = possibleId;
+        }
+      }
+
       if (!fileId) {
-        console.error('Missing fileId when saving test case');
+        console.error('Missing fileId when saving test case', { fileId });
         throw new Error('Missing file ID');
       }
 
@@ -315,8 +323,13 @@ export const apiService = {
         expected: testCaseData.expected || null,
       };
 
-      // Log the API endpoint URL for debugging
+      // Log the API endpoint URL and payload for debugging
       const endpoint = `/file/${fileId}/api/cases/save${caseId ? `?case_id=${caseId}` : ''}`;
+      try {
+        console.debug('saveTestCase POST', { endpoint, formattedData });
+      } catch (e) {
+        // ignore
+      }
 
       const response = await api.post(endpoint, formattedData, {
         headers: {
