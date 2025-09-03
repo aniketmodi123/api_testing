@@ -13,3 +13,4 @@ pytz
 pandas
 PyYAML
 python-dateutil
+email-validator>=2
