@@ -161,6 +161,10 @@ async def unified_exception_handler(request: Request, exc: Exception):
 @app.get("/")
 def welcome():
     return "welcome"
+    
+@app.get("/healthz")
+def healthz():
+    return {"status": "ok"}
 
 # sso
 app.include_router(create_user.router, prefix="", tags=["sso"])
