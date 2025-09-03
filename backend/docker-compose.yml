@@ -23,19 +23,19 @@ services:
         networks:
             - api_testing_network
 
-    postgres:
-        image: postgres:15
-        container_name: postgres_db
-        environment:
-            POSTGRES_DB: testdb
-            POSTGRES_USER: admin
-            POSTGRES_PASSWORD: admin
-        ports:
-            - "5432:5432"  # Exposing PostgreSQL on port 5433
-        volumes:
-            - postgres_data:/var/lib/postgresql/data  # Using named volume for data persistence
-        networks:
-            - api_testing_network
+    # postgres:
+    #     image: postgres:15
+    #     container_name: postgres_db
+    #     environment:
+    #         POSTGRES_DB: testdb
+    #         POSTGRES_USER: admin
+    #         POSTGRES_PASSWORD: admin
+    #     ports:
+    #         - "5432:5432"  # Exposing PostgreSQL on port 5433
+    #     volumes:
+    #         - postgres_data:/var/lib/postgresql/data  # Using named volume for data persistence
+    #     networks:
+    #         - api_testing_network
 
 
     # ngrok:
@@ -49,5 +49,5 @@ services:
     #         - api_testing_network
     #     restart: unless-stopped
 
-volumes:
-    postgres_data:  # Declare a named volume
+# volumes:
+#     postgres_data:  # Declare a named volume

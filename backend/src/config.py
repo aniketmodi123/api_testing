@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.engine.row import Row
 from sqlalchemy.inspection import inspect
-import os
+import os, ssl
 from sqlalchemy import select, text, and_
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
@@ -25,17 +25,25 @@ JWT_ALGORITHM = os.environ.get('JWT_ALGORITHM', '')
 
 
 try:
+    # Create SSL context with relaxed verification for development
+    ssl_context = ssl.create_default_context()
+    ssl_context.check_hostname = False
+    ssl_context.verify_mode = ssl.CERT_NONE
+
     engine = create_async_engine(
-        f'postgresql+asyncpg://{PROD_USER}:{PROD_PASSWORD}@{PROD_HOST}:{PROD_PORT}/{PROD_DB}',
+        f"postgresql+asyncpg://{PROD_USER}:{PROD_PASSWORD}@{PROD_HOST}:{PROD_PORT}/{PROD_DB}",
         echo=False,
         connect_args={
-        "server_settings": {
-            "application_name": "api_testing"
+            "ssl": ssl_context,
+            "server_settings": {
+                "application_name": "api_testing"
+            }
         }
-    })
+    )
     SessionLocal = async_sessionmaker(
         bind=engine,
-        expire_on_commit=False
+        expire_on_commit=False,
+        class_=AsyncSession
     )
     Base = declarative_base()
 except Exception as e:
