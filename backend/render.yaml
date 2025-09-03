@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: api-testing-backend
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: './build.sh'
+    startCommand: 'python start.py'
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10.8
+      - key: PRODUCTION_POSTGRES_HOST
+        sync: false
+      - key: PRODUCTION_POSTGRES_USER
+        sync: false
+      - key: PRODUCTION_POSTGRES_PASSWORD
+        sync: false
+      - key: PRODUCTION_POSTGRES_DB
+        sync: false
+      - key: PRODUCTION_POSTGRES_PORT
+        value: 5432
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: JWT_ALGORITHM
+        value: HS256

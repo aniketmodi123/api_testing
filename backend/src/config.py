@@ -16,12 +16,20 @@ PROD_HOST = os.environ.get('PRODUCTION_POSTGRES_HOST')
 PROD_USER = os.environ.get('PRODUCTION_POSTGRES_USER')
 PROD_PASSWORD = os.environ.get('PRODUCTION_POSTGRES_PASSWORD')
 PROD_DB = os.environ.get('PRODUCTION_POSTGRES_DB')
-PROD_PORT = os.environ.get('PRODUCTION_POSTGRES_PORT')
+PROD_PORT = os.environ.get('PRODUCTION_POSTGRES_PORT', '5432')
 
 # Get the base directory
 base_dir = Path.cwd()
-JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', '')
-JWT_ALGORITHM = os.environ.get('JWT_ALGORITHM', '')
+JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'your-secret-key-here')
+JWT_ALGORITHM = os.environ.get('JWT_ALGORITHM', 'HS256')
+
+# Check if all required environment variables are set
+if not all([PROD_HOST, PROD_USER, PROD_PASSWORD, PROD_DB]):
+    raise RuntimeError(
+        "Missing required environment variables: "
+        "PRODUCTION_POSTGRES_HOST, PRODUCTION_POSTGRES_USER, "
+        "PRODUCTION_POSTGRES_PASSWORD, PRODUCTION_POSTGRES_DB"
+    )
 
 
 try:

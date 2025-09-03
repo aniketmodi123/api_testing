@@ -52,6 +52,43 @@ async def startup_event():
     await check_db_connection()
 
 
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for monitoring."""
+    try:
+        # Quick database connectivity check
+        await check_db_connection()
+        return {
+            "status": "healthy",
+            "timestamp": datetime.now(pytz.timezone('Asia/Kolkata')).isoformat(),
+            "service": "api-testing-backend",
+            "database": "connected"
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "status": "unhealthy",
+                "timestamp": datetime.now(pytz.timezone('Asia/Kolkata')).isoformat(),
+                "service": "api-testing-backend",
+                "database": "disconnected",
+                "error": str(e)
+            }
+        )
+
+
+@app.get("/")
+async def root():
+    """Root endpoint with basic API information."""
+    return {
+        "message": "API Testing Backend",
+        "version": "1.0",
+        "docs": "/swagger",
+        "health": "/health",
+        "timestamp": datetime.now(pytz.timezone('Asia/Kolkata')).isoformat()
+    }
+
+
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next):
     start_time = time.time()
