@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { handleApiError } from './utils/errorHandler';
 
-export const API_BASE = 'http://localhost:8000';
+export const API_BASE = 'https://api-testing-2vjt.onrender.com';
 export const api = axios.create({ baseURL: API_BASE });
 
 // Add request interceptor to automatically add auth headers
