@@ -1,0 +1,426 @@
+.variableList {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Empty State */
+.emptyState {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  text-align: center;
+}
+
+.emptyIcon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.emptyState h3 {
+  margin: 0 0 8px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.emptyState p {
+  margin: 0;
+  color: #6b7280;
+  line-height: 1.5;
+  max-width: 300px;
+}
+
+/* Table */
+.tableWrapper {
+  flex: 1;
+  overflow: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+/* Table Header */
+.table th {
+  background: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
+  padding: 12px 16px;
+  text-align: left;
+  font-weight: 600;
+  color: #374151;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.checkboxCol {
+  width: 40px;
+}
+
+.keyCol {
+  width: 200px;
+  min-width: 150px;
+}
+
+.valueCol {
+  width: 250px;
+  min-width: 200px;
+}
+
+.descriptionCol {
+  flex: 1;
+  min-width: 150px;
+}
+
+.typeCol {
+  width: 80px;
+}
+
+.actionsCol {
+  width: 80px;
+}
+
+/* Table Rows */
+.row {
+  border-bottom: 1px solid #f3f4f6;
+  transition: background-color 0.2s ease;
+}
+
+.row:hover {
+  background: #f9fafb;
+}
+
+.row.disabled {
+  opacity: 0.6;
+}
+
+.row.disabled:hover {
+  background: #f3f4f6;
+}
+
+/* Table Cells */
+.table td {
+  padding: 12px 16px;
+  vertical-align: top;
+}
+
+.checkboxCell {
+  text-align: center;
+}
+
+.checkboxCell input[type="checkbox"] {
+  cursor: pointer;
+}
+
+/* Key Cell */
+.keyCell {
+  font-weight: 500;
+}
+
+.keyDisplay {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.keyText {
+  font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
+  color: #111827;
+}
+
+.disabledIndicator {
+  font-size: 11px;
+  color: #9ca3af;
+  font-style: italic;
+}
+
+/* Value Cell */
+.valueDisplay {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.valueText {
+  font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
+  color: #374151;
+  word-break: break-all;
+}
+
+.secretValue {
+  font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
+  color: #9ca3af;
+  font-style: italic;
+}
+
+.emptyValue {
+  color: #9ca3af;
+  font-style: italic;
+}
+
+.secretIcon {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.valueInput {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.secretToggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: rgba(107, 114, 128, 0.1);
+  color: #6b7280;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.secretToggle:hover {
+  background: rgba(107, 114, 128, 0.2);
+  color: #374151;
+}
+
+/* Description Cell */
+.descriptionText {
+  color: #6b7280;
+  line-height: 1.4;
+}
+
+.emptyDescription {
+  font-style: italic;
+  opacity: 0.7;
+}
+
+/* Type Cell */
+.secretBadge {
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.publicBadge {
+  background: #e0f2fe;
+  color: #0369a1;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+/* Actions */
+.actionsCell {
+  text-align: right;
+}
+
+.editActions,
+.viewActions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.actionButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 4px;
+  background: rgba(107, 114, 128, 0.1);
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.actionButton:hover {
+  background: rgba(107, 114, 128, 0.2);
+  color: #374151;
+}
+
+.actionButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.deleteButton:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: #dc2626;
+}
+
+/* Form Inputs */
+.input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 13px;
+  background: #ffffff;
+  color: #374151;
+}
+
+.input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+/* Modal */
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modalContent {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+  max-width: 400px;
+  width: 90%;
+  max-height: 90vh;
+  overflow: hidden;
+}
+
+.modalHeader {
+  padding: 20px 20px 16px 20px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.modalHeader h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.modalBody {
+  padding: 16px 20px;
+}
+
+.modalBody p {
+  margin: 0 0 12px 0;
+  color: #374151;
+  line-height: 1.5;
+}
+
+.warning {
+  color: #dc2626 !important;
+  font-size: 13px;
+}
+
+.modalFooter {
+  padding: 16px 20px 20px 20px;
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.cancelButton {
+  padding: 8px 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #374151;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.cancelButton:hover {
+  background: #f9fafb;
+  border-color: #9ca3af;
+}
+
+.deleteButton {
+  padding: 8px 16px;
+  border: 1px solid #dc2626;
+  border-radius: 6px;
+  background: #dc2626;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.deleteButton:hover {
+  background: #b91c1c;
+  border-color: #b91c1c;
+}
+
+.deleteButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .tableWrapper {
+    overflow-x: auto;
+  }
+
+  .table {
+    min-width: 600px;
+  }
+
+  .modalContent {
+    margin: 20px;
+    width: auto;
+  }
+
+  .modalFooter {
+    flex-direction: column;
+  }
+}
+
+/* Scrollbar Styling */
+.tableWrapper::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.tableWrapper::-webkit-scrollbar-track {
+  background: #f3f4f6;
+}
+
+.tableWrapper::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+
+.tableWrapper::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}

@@ -1,4 +1,5 @@
 import { useAuth } from '../../../store/session.jsx';
+import EnvironmentSwitcher from '../../EnvironmentSwitcher';
 import WorkspaceSelector from '../../WorkspaceSelector/WorkspaceSelector.jsx';
 import Logo from './components/Logo.jsx';
 import LogoutButton from './components/LogoutButton.jsx';
@@ -38,6 +39,7 @@ export default function Header() {
       <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
         <Logo />
         <WorkspaceSelector />
+        <EnvironmentSwitcher />
       </div>
       <div style={styles.actionsContainer}>
         <ThemeToggle />

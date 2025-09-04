@@ -17,6 +17,7 @@ from routers.node import create_node, update_node, list_node, delete_node
 from routers.headers import complete_headers, set_headers,list_headers,delete_headers, update_headers
 from routers.api import list_apis, create_dup, save_api
 from routers.api_cases import delete_case, get_case, list_search_api_case, create_dup_case, save_api_case
+from routers.environment import create_environment, list_environments, manage_variables, resolve_variables
 from security import AuthMiddleware
 
 FASTAPI_CONFIG = {
@@ -107,25 +108,6 @@ async def add_process_time_header(request: Request, call_next):
     return response
 
 
-@app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    errors = [{"field": ".".join(map(str, error['loc'])), "message": error['msg']} for error in exc.errors()]
-    return JSONResponse(
-        content= {
-            "response_code": status.HTTP_422_UNPROCESSABLE_ENTITY,
-            "error_message": "validation error",
-            "errors": errors},
-            status_code= 422)
-
-@app.exception_handler(HTTPException)
-async def http_exception_handler(request: Request, exc: HTTPException):
-    return JSONResponse(
-        content= {
-            "response_code": exc.status_code,
-            "error_message": exc.detail},
-            status_code= exc.status_code)
-
-
 @app.exception_handler(Exception)
 async def unified_exception_handler(request: Request, exc: Exception):
     if isinstance(exc, ValidationError):
@@ -147,6 +129,23 @@ async def unified_exception_handler(request: Request, exc: Exception):
             },
             status_code=400
         )
+    elif isinstance(exc, HTTPException):  # Replace with other DB errors as needed
+        return JSONResponse(
+            content= {
+                "response_code": exc.status_code,
+                "error_message": exc.detail},
+                status_code= exc.status_code
+        )
+
+    elif isinstance(exc, RequestValidationError):  # Replace with other DB errors as needed
+        errors = [{"field": ".".join(map(str, error['loc'])), "message": error['msg']} for error in exc.errors()]
+        return JSONResponse(
+            content= {
+                "response_code": status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "error_message": "validation error",
+                "errors": errors},
+                status_code= 422)
+
 
     else:
         return JSONResponse(
@@ -207,6 +206,11 @@ app.include_router(create_dup_case.router, tags=["API Cases"])
 app.include_router(delete_case.router, tags=["API Cases"])
 app.include_router(save_api_case.router, tags=["API Cases"])
 
+# environment management
+app.include_router(create_environment.router, prefix="/environment", tags=["Environment Management"])
+app.include_router(list_environments.router, prefix="/environment", tags=["Environment Management"])
+app.include_router(manage_variables.router, prefix="/environment", tags=["Environment Variables"])
+app.include_router(resolve_variables.router, prefix="/environment", tags=["Variable Resolution"])
 
 #runner
 

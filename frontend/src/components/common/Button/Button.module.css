@@ -1,5 +1,5 @@
 .button {
-  border-radius: 4px;
+  border-radius: 6px;
   font-size: 0.9rem;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -8,6 +8,7 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
+  border: none;
 }
 
 /* Variants */
@@ -22,40 +23,40 @@
 }
 
 .secondary {
-  background-color: transparent;
+  background-color: var(--background-lighter);
   color: var(--text);
   border: 1px solid var(--border);
 }
 
 .secondary:hover:not(:disabled) {
   background-color: var(--hover-background);
+  border-color: var(--primary);
 }
 
 .danger {
-  background-color: #cc3434;
+  background-color: #dc2626;
   color: #ffffff;
   border: none;
-  border-radius: 3px;
 }
 
 .danger:hover:not(:disabled) {
-  background-color: #9b2121;
+  background-color: #b91c1c;
 }
 
 /* Sizes */
 .small {
-  padding: 4px 8px;
-  font-size: 12px;
+  padding: 6px 12px;
+  font-size: 13px;
 }
 
 .medium {
   padding: 8px 16px;
-  font-size: 0.9rem;
+  font-size: 14px;
 }
 
 .large {
   padding: 10px 20px;
-  font-size: 1rem;
+  font-size: 15px;
 }
 
 /* Full width */

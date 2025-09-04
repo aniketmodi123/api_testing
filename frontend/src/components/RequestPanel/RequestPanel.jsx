@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api';
 import { headerService } from '../../services/headerService';
 import { useApi } from '../../store/api';
+import { useEnvironment } from '../../store/environment';
 import { useNode } from '../../store/node';
 import { TestCaseForm } from '../TestCaseForm';
 import TestResultsGrid from '../TestResultsGrid';
@@ -176,6 +177,7 @@ function normalizeBody(bodyContent, bodyType) {
 
 export default function RequestPanel({ activeRequest }) {
   const { selectedNode, getNodeById } = useNode();
+  const { resolveApiRequest } = useEnvironment();
   const {
     getApi,
     getTestCases,
@@ -477,14 +479,39 @@ export default function RequestPanel({ activeRequest }) {
     setIsSending(true);
 
     try {
-      // Check if this is an ngrok URL
-      const isNgrokUrl =
-        url && (url.includes('.ngrok.') || url.includes('ngrok-free.app'));
-
-      console.log('🚀 Making API call:', {
+      // Prepare request data for variable resolution
+      const requestData = {
         url: url,
         method: method,
+        headers: extractValue(activeApi, 'headers', {}),
+        params: extractValue(activeApi, 'params', {}),
+        body:
+          method !== 'GET'
+            ? extractValue(activeApi, 'request_body', {})
+            : undefined,
+      };
+
+      // Resolve environment variables
+      const resolvedRequest = await resolveApiRequest(requestData);
+
+      // Use resolved values
+      const resolvedUrl = resolvedRequest.url;
+      const resolvedHeaders = resolvedRequest.headers;
+      const resolvedParams = resolvedRequest.params;
+      const resolvedBody = resolvedRequest.body;
+
+      // Check if this is an ngrok URL
+      const isNgrokUrl =
+        resolvedUrl &&
+        (resolvedUrl.includes('.ngrok.') ||
+          resolvedUrl.includes('ngrok-free.app'));
+
+      console.log('🚀 Making API call:', {
+        url: resolvedUrl,
+        method: method,
         isNgrokUrl,
+        originalUrl: url,
+        resolved: resolvedRequest,
       });
 
       if (isNgrokUrl) {
@@ -544,21 +571,21 @@ export default function RequestPanel({ activeRequest }) {
           );
         }
 
-        // Get current headers from the form
-        const formHeaders = extractValue(activeApi, 'headers', {});
-
-        // Merge backend headers with form headers and ngrok headers
+        // Merge backend headers with resolved form headers and ngrok headers
         console.log('🔧 Merging headers with priority order:');
         console.log('  1️⃣ Backend headers (lowest priority):', backendHeaders);
-        console.log('  2️⃣ Form headers (medium priority):', formHeaders);
+        console.log(
+          '  2️⃣ Resolved form headers (medium priority):',
+          resolvedHeaders
+        );
 
-        const ngrokHeaders = addNgrokHeadersIfNeeded(url, {});
+        const ngrokHeaders = addNgrokHeadersIfNeeded(resolvedUrl, {});
         console.log('  3️⃣ Ngrok headers (highest priority):', ngrokHeaders);
 
         const mergedHeaders = {
           'Content-Type': 'application/json',
           ...backendHeaders, // Backend API-level headers (lowest priority)
-          ...formHeaders, // Form headers (medium priority)
+          ...resolvedHeaders, // Resolved form headers (medium priority)
           ...ngrokHeaders, // Ngrok headers (highest priority)
         };
 
@@ -573,14 +600,13 @@ export default function RequestPanel({ activeRequest }) {
           headers: mergedHeaders,
         };
 
-        // Add query parameters
-        let finalUrl = url;
+        // Add query parameters using resolved params
+        let finalUrl = resolvedUrl;
         const searchParams = new URLSearchParams();
 
-        // Add user's query parameters
-        const formParams = extractValue(activeApi, 'params', {});
-        if (formParams && Object.keys(formParams).length > 0) {
-          Object.entries(formParams).forEach(([key, value]) => {
+        // Add resolved query parameters
+        if (resolvedParams && Object.keys(resolvedParams).length > 0) {
+          Object.entries(resolvedParams).forEach(([key, value]) => {
             if (value !== null && value !== undefined && value !== '') {
               searchParams.append(key, value);
             }
@@ -593,18 +619,15 @@ export default function RequestPanel({ activeRequest }) {
           finalUrl += (finalUrl.includes('?') ? '&' : '?') + queryString;
         }
 
-        // Add body for non-GET requests
-        if (method !== 'GET') {
-          const bodyData = extractValue(activeApi, 'request_body', {});
-          if (bodyData) {
-            try {
-              requestConfig.body =
-                typeof bodyData === 'string'
-                  ? bodyData
-                  : JSON.stringify(bodyData);
-            } catch (e) {
-              requestConfig.body = bodyData;
-            }
+        // Add body for non-GET requests using resolved body
+        if (method !== 'GET' && resolvedBody) {
+          try {
+            requestConfig.body =
+              typeof resolvedBody === 'string'
+                ? resolvedBody
+                : JSON.stringify(resolvedBody);
+          } catch (e) {
+            requestConfig.body = resolvedBody;
           }
         }
 
@@ -664,14 +687,14 @@ export default function RequestPanel({ activeRequest }) {
         // Use backend for non-ngrok URLs (existing axios logic)
         const requestConfig = {
           method: method.toLowerCase(),
-          url: url,
-          headers: extractValue(activeApi, 'headers', {}),
-          params: extractValue(activeApi, 'params', {}),
+          url: resolvedUrl,
+          headers: resolvedHeaders,
+          params: resolvedParams,
         };
 
-        // Add body for non-GET requests
-        if (method !== 'GET') {
-          requestConfig.data = extractValue(activeApi, 'request_body', {});
+        // Add body for non-GET requests using resolved body
+        if (method !== 'GET' && resolvedBody) {
+          requestConfig.data = resolvedBody;
         }
 
         // Make the API call using the Axios instance
@@ -695,7 +718,9 @@ export default function RequestPanel({ activeRequest }) {
 
       // Check if this was a direct API call vs backend call
       const isNgrokUrl =
-        url && (url.includes('.ngrok.') || url.includes('ngrok-free.app'));
+        resolvedUrl &&
+        (resolvedUrl.includes('.ngrok.') ||
+          resolvedUrl.includes('ngrok-free.app'));
 
       // For direct API calls (ngrok), don't trigger auth redirects
       if (isNgrokUrl) {
@@ -753,15 +778,27 @@ export default function RequestPanel({ activeRequest }) {
         extractValue(activeApi, 'validationSchema.response') ||
         defaultValidationSchema;
 
-      // Create a test case with the current parameters
+      // Prepare request data for variable resolution
+      const requestData = {
+        url: url,
+        method: method,
+        headers: extractValue(activeApi, 'headers', {}),
+        params: extractValue(activeApi, 'params', {}),
+        body: normalizeBody(bodyContent, bodyType),
+      };
+
+      // Resolve environment variables
+      const resolvedRequest = await resolveApiRequest(requestData);
+
+      // Create a test case with the resolved parameters
       const testCaseData = {
         name: `Validation test - ${new Date().toISOString()}`,
         description: 'Auto-generated test case with validation schema',
         method: method,
-        endpoint: url,
-        headers: extractValue(activeApi, 'headers', {}),
-        params: extractValue(activeApi, 'params', {}),
-        body: normalizeBody(bodyContent, bodyType),
+        endpoint: resolvedRequest.url,
+        headers: resolvedRequest.headers,
+        params: resolvedRequest.params,
+        body: resolvedRequest.body,
         expected: validationSchema, // Store the validation schema directly in the expected field
       };
 

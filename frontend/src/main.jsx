@@ -6,6 +6,7 @@ import AuthGuard from './components/AuthGuard.jsx';
 import { ThemeProvider } from './components/ThemeProvider.jsx';
 import SignIn from './pages/SignIn.jsx';
 import SignUp from './pages/SignUp.jsx';
+import { EnvironmentProvider } from './store/environment.jsx';
 import { NodeProvider } from './store/node.jsx';
 import { AuthProvider } from './store/session.jsx';
 import { WorkspaceProvider } from './store/workspace.jsx';
@@ -25,89 +26,90 @@ createRoot(document.getElementById('root')).render(
     <ThemeProvider>
       <AuthProvider>
         <WorkspaceProvider>
-          <NodeProvider>
-            <ApiProvider>
-              <BrowserRouter
-                future={{
-                  v7_startTransition: true,
-                  v7_relativeSplatPath: true,
-                }}
-              >
-                <Routes>
-                  <Route
-                    path="/sign-in"
-                    element={
-                      <App>
-                        <SignIn />
-                      </App>
-                    }
-                  />
-                  <Route
-                    path="/sign-up"
-                    element={
-                      <App>
-                        <SignUp />
-                      </App>
-                    }
-                  />
-                  <Route
-                    path="/forgot-password"
-                    element={
-                      <App>
-                        <ForgotPassword />
-                      </App>
-                    }
-                  />
-                  <Route element={<AuthGuard />}>
+          <EnvironmentProvider>
+            <NodeProvider>
+              <ApiProvider>
+                <BrowserRouter
+                  future={{
+                    v7_startTransition: true,
+                    v7_relativeSplatPath: true,
+                  }}
+                >
+                  <Routes>
                     <Route
-                      path="/"
+                      path="/sign-in"
                       element={
                         <App>
-                          <Home />
+                          <SignIn />
                         </App>
                       }
                     />
                     <Route
-                      path="/profile"
+                      path="/sign-up"
                       element={
                         <App>
-                          <SimpleUserProfile />
+                          <SignUp />
                         </App>
                       }
                     />
                     <Route
-                      path="/change-password"
+                      path="/forgot-password"
                       element={
                         <App>
-                          <ChangePassword />
+                          <ForgotPassword />
                         </App>
                       }
                     />
-                    <Route
-                      path="/delete-account"
-                      element={
-                        <App>
-                          <DeleteAccount />
-                        </App>
-                      }
-                    />
-                    <Route
-                      path="/update-profile"
-                      element={
-                        <App>
-                          <UpdateProfile />
-                        </App>
-                      }
-                    />
-                    <Route path="*" element={<Navigate to="/" replace />} />
-                  </Route>
-                </Routes>
-              </BrowserRouter>
-            </ApiProvider>
-          </NodeProvider>
+                    <Route element={<AuthGuard />}>
+                      <Route
+                        path="/"
+                        element={
+                          <App>
+                            <Home />
+                          </App>
+                        }
+                      />
+                      <Route
+                        path="/profile"
+                        element={
+                          <App>
+                            <SimpleUserProfile />
+                          </App>
+                        }
+                      />
+                      <Route
+                        path="/change-password"
+                        element={
+                          <App>
+                            <ChangePassword />
+                          </App>
+                        }
+                      />
+                      <Route
+                        path="/delete-account"
+                        element={
+                          <App>
+                            <DeleteAccount />
+                          </App>
+                        }
+                      />
+                      <Route
+                        path="/update-profile"
+                        element={
+                          <App>
+                            <UpdateProfile />
+                          </App>
+                        }
+                      />
+                      <Route path="*" element={<Navigate to="/" replace />} />
+                    </Route>
+                  </Routes>
+                </BrowserRouter>
+              </ApiProvider>
+            </NodeProvider>
+          </EnvironmentProvider>
         </WorkspaceProvider>
       </AuthProvider>
     </ThemeProvider>
   </React.StrictMode>
 );
-<SignIn />;

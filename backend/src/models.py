@@ -60,6 +60,22 @@ class Workspace(Base):
 
     user: Mapped["User"] = relationship("User", back_populates="workspaces")
     nodes: Mapped[list["Node"]] = relationship("Node", back_populates="workspace")
+    environments: Mapped[list["Environment"]] = relationship("Environment", back_populates="workspace")
+
+
+class Environment(Base):
+    __tablename__ = "environments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    variables: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # JSON storage for variables
+    created_at: Mapped[str] = mapped_column(TIMESTAMP, default=datetime.now, server_default=func.now())
+    updated_at: Mapped[str] = mapped_column(TIMESTAMP, default=datetime.now, server_default=func.now(), onupdate=func.now())
+
+    workspace: Mapped["Workspace"] = relationship("Workspace", back_populates="environments")
 
 
 # ---------------------------

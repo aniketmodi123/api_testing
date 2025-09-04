@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import CollectionTree from '../../components/CollectionTree/CollectionTree';
+import { EnvironmentManager } from '../../components/EnvironmentManager';
 import RequestPanel from '../../components/RequestPanel/RequestPanel';
 import Sidebar from '../../components/Sidebar/Sidebar';
 import { useNode } from '../../store/node';
@@ -47,18 +48,7 @@ export default function Home() {
           {activeTab === 'collections' ? (
             <CollectionTree onSelectRequest={handleSelectRequest} />
           ) : (
-            <div className={styles.environmentPanel}>
-              <div className={styles.panelHeader}>
-                <h3>Environments</h3>
-                <button className={styles.addButton}>+</button>
-              </div>
-              <div className={styles.emptyState}>
-                <p>No environments created yet</p>
-                <button className={styles.createButton}>
-                  Create Environment
-                </button>
-              </div>
-            </div>
+            <EnvironmentManager />
           )}
         </div>
 

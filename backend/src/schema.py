@@ -628,3 +628,163 @@ class ForgotPassword(BaseModel):
         if len(value) < 6:
             raise ValueError("Password must be at least 6 characters long.")
         return value.strip()
+
+
+# ===========================================
+# ENVIRONMENT MANAGEMENT SCHEMAS
+# ===========================================
+
+class EnvironmentVariableData(BaseModel):
+    """Individual variable data structure for JSON storage"""
+    value: Optional[str] = Field(None, description="Variable value")
+    description: Optional[str] = Field(None, max_length=500, description="Variable description")
+    is_enabled: bool = Field(True, description="Whether variable is enabled")
+    is_secret: bool = Field(False, description="Whether variable value should be hidden")
+
+    class Config:
+        from_attributes = True
+
+
+class EnvironmentVariableCreate(BaseModel):
+    """Schema for creating individual environment variables"""
+    key: str = Field(..., min_length=1, max_length=255, description="Variable key/name")
+    value: Optional[str] = Field(None, description="Variable value")
+    description: Optional[str] = Field(None, max_length=500, description="Variable description")
+    is_enabled: bool = Field(True, description="Whether variable is enabled")
+    is_secret: bool = Field(False, description="Whether variable value should be hidden")
+
+    class Config:
+        from_attributes = True
+
+
+class EnvironmentVariableUpdate(BaseModel):
+    """Schema for updating individual environment variables"""
+    key: Optional[str] = Field(None, min_length=1, max_length=255, description="Variable key/name")
+    value: Optional[str] = Field(None, description="Variable value")
+    description: Optional[str] = Field(None, max_length=500, description="Variable description")
+    is_enabled: Optional[bool] = Field(None, description="Whether variable is enabled")
+    is_secret: Optional[bool] = Field(None, description="Whether variable value should be hidden")
+
+    class Config:
+        from_attributes = True
+
+
+class EnvironmentCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255, description="Environment name")
+    description: Optional[str] = Field(None, max_length=1000, description="Environment description")
+    is_active: bool = Field(False, description="Whether this is the active environment")
+    variables: Optional[Dict[str, EnvironmentVariableData]] = Field({}, description="Environment variables as key-value pairs")
+
+    @validator('name')
+    def validate_name(cls, v):
+        if not v or not v.strip():
+            raise ValueError('Environment name cannot be empty')
+        return v.strip()
+
+    @validator('variables', pre=True, always=True)
+    def validate_variables(cls, v):
+        if v is None:
+            return {}
+        if isinstance(v, list):
+            # Convert old format (list of objects) to new format (dict)
+            result = {}
+            for item in v:
+                if hasattr(item, 'key'):
+                    key = item.key
+                    result[key] = EnvironmentVariableData(
+                        value=getattr(item, 'value', None),
+                        description=getattr(item, 'description', None),
+                        is_enabled=getattr(item, 'is_enabled', True),
+                        is_secret=getattr(item, 'is_secret', False)
+                    )
+            return result
+        return v
+
+
+class EnvironmentUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=255, description="Environment name")
+    description: Optional[str] = Field(None, max_length=1000, description="Environment description")
+    is_active: Optional[bool] = Field(None, description="Whether this is the active environment")
+    variables: Optional[Dict[str, EnvironmentVariableData]] = Field(None, description="Environment variables as key-value pairs")
+
+    @validator('name', pre=True, always=True)
+    def validate_name(cls, v):
+        if v is not None:
+            if not v or not v.strip():
+                raise ValueError('Environment name cannot be empty')
+            return v.strip()
+        return v
+
+
+class EnvironmentResponse(BaseModel):
+    id: int
+    workspace_id: int
+    name: str
+    description: Optional[str] = None
+    is_active: bool
+    variables: Optional[Dict[str, Any]] = {}
+    created_at: Any
+    updated_at: Any
+
+    class Config:
+        from_attributes = True
+
+    @validator('variables', pre=True, always=True)
+    def mask_secret_variables(cls, v):
+        """Mask secret values in response"""
+        if not v:
+            return {}
+
+        masked_vars = {}
+        for key, var_data in v.items():
+            if isinstance(var_data, dict):
+                masked_data = var_data.copy()
+                if var_data.get('is_secret', False) and var_data.get('value'):
+                    masked_data['value'] = "***"
+                masked_vars[key] = masked_data
+            else:
+                masked_vars[key] = var_data
+        return masked_vars
+
+
+class EnvironmentListResponse(BaseModel):
+    environments: List[EnvironmentResponse]
+    total_count: int = 0
+    active_environment: Optional[EnvironmentResponse] = None
+
+    class Config:
+        from_attributes = True
+
+
+# Environment Variable Resolution for API Testing
+class ResolvedVariables(BaseModel):
+    """Variables resolved from active environment for API testing"""
+    variables: Dict[str, str] = Field({}, description="Resolved key-value pairs")
+    environment_name: Optional[str] = Field(None, description="Source environment name")
+    environment_id: Optional[int] = Field(None, description="Source environment ID")
+    resolved_count: int = Field(0, description="Number of variables resolved")
+
+    class Config:
+        from_attributes = True
+
+
+class VariableResolutionRequest(BaseModel):
+    """Request schema for resolving variables in text"""
+    text: str = Field(..., description="Text containing variables to resolve (e.g., '{{API_KEY}}')")
+    environment_id: Optional[int] = Field(None, description="Specific environment ID (uses active if not provided)")
+
+    class Config:
+        from_attributes = True
+
+
+class VariableResolutionResponse(BaseModel):
+    """Response schema for variable resolution"""
+    original_text: str = Field(..., description="Original text with variables")
+    resolved_text: str = Field(..., description="Text with variables resolved")
+    variables_found: List[str] = Field([], description="List of variable keys found in text")
+    variables_resolved: List[str] = Field([], description="List of variable keys successfully resolved")
+    variables_missing: List[str] = Field([], description="List of variable keys not found in environment")
+    environment_used: Optional[str] = Field(None, description="Environment name used for resolution")
+
+    class Config:
+        from_attributes = True

@@ -1,6 +1,8 @@
 from typing import Optional
 from fastapi import APIRouter, Depends, Header
 from pydantic import BaseModel
+import re
+import json
 
 from runner import run_from_list_api
 from utils import (
@@ -17,10 +19,85 @@ from config import (
     get_user_by_username,
     verify_node_ownership
 )
-from models import Api
+from models import Api, Environment
 
 
 router = APIRouter()
+
+
+def resolve_variables_in_text(text: str, variables: dict) -> str:
+    """Replace {{variable_name}} patterns with actual values"""
+    if not text or not variables:
+        return text
+
+    def replace_variable(match):
+        var_name = match.group(1)
+        return str(variables.get(var_name, match.group(0)))  # Keep original if not found
+
+    pattern = r'\{\{([a-zA-Z_][a-zA-Z0-9_\-]*)\}\}'
+    return re.sub(pattern, replace_variable, str(text))
+
+
+def resolve_variables_in_dict(data: dict, variables: dict) -> dict:
+    """Recursively resolve variables in dictionary values"""
+    if not data or not variables:
+        return data
+
+    resolved_data = {}
+    for key, value in data.items():
+        if isinstance(value, str):
+            resolved_data[key] = resolve_variables_in_text(value, variables)
+        elif isinstance(value, dict):
+            resolved_data[key] = resolve_variables_in_dict(value, variables)
+        elif isinstance(value, list):
+            resolved_data[key] = resolve_variables_in_list(value, variables)
+        else:
+            resolved_data[key] = value
+    return resolved_data
+
+
+def resolve_variables_in_list(data: list, variables: dict) -> list:
+    """Recursively resolve variables in list items"""
+    if not data or not variables:
+        return data
+
+    resolved_data = []
+    for item in data:
+        if isinstance(item, str):
+            resolved_data.append(resolve_variables_in_text(item, variables))
+        elif isinstance(item, dict):
+            resolved_data.append(resolve_variables_in_dict(item, variables))
+        elif isinstance(item, list):
+            resolved_data.append(resolve_variables_in_list(item, variables))
+        else:
+            resolved_data.append(item)
+    return resolved_data
+
+
+async def get_workspace_variables(db: AsyncSession, workspace_id: int) -> dict:
+    """Get all enabled variables from the active environment in a workspace"""
+    try:
+        # Get active environment
+        active_env_query = select(Environment).where(
+            Environment.workspace_id == workspace_id,
+            Environment.is_active == True
+        )
+        active_env_result = await db.execute(active_env_query)
+        active_environment = active_env_result.scalar_one_or_none()
+
+        if not active_environment or not active_environment.variables:
+            return {}
+
+        # Get all enabled variables with actual values (including secrets for execution)
+        variables_dict = {}
+        for key, var_data in active_environment.variables.items():
+            if var_data.get('is_enabled', True) and var_data.get('value') is not None:
+                variables_dict[key] = var_data['value']
+
+        return variables_dict
+    except Exception:
+        return {}
+
 
 class RunnerReq(BaseModel):
     file_id: int
@@ -60,13 +137,20 @@ async def get_file_api(
         if not folder_path:
             return create_response(206, error_message="Folder not found")
 
+        # Get workspace variables for variable resolution
+        workspace_variables = await get_workspace_variables(db, file_node.workspace_id)
+
+        # Resolve variables in API data
+        resolved_endpoint = resolve_variables_in_text(api.endpoint, workspace_variables)
+        resolved_headers = resolve_variables_in_dict(merge_result.get("merged_headers", {}), workspace_variables)
+
         data = {
             "id": api.id,
             "file_id": api.file_id,
             "name": api.name,
             "method": api.method,
-            "endpoint": api.endpoint,
-            "headers":merge_result.get("merged_headers", {}),
+            "endpoint": resolved_endpoint,
+            "headers": resolved_headers,
             "description": api.description,
             "is_active": api.is_active,
             "extra_meta": api.extra_meta,
@@ -84,14 +168,34 @@ async def get_file_api(
                 # Handle the case where headers column doesn't exist yet
                 case_headers = {}
 
-            merged_headers = {**merge_result.get("merged_headers", {}), **case_headers}
+            merged_headers = {**resolved_headers, **case_headers}
+            
+            # Resolve variables in case data
+            resolved_case_headers = resolve_variables_in_dict(merged_headers, workspace_variables)
+            resolved_params = resolve_variables_in_dict(getattr(case, 'params', {}) or {}, workspace_variables)
+            
+            # Handle body - it could be string or dict
+            case_body = case.body
+            if isinstance(case_body, str):
+                try:
+                    # Try to parse as JSON first
+                    parsed_body = json.loads(case_body)
+                    resolved_body = resolve_variables_in_dict(parsed_body, workspace_variables)
+                    resolved_body = json.dumps(resolved_body)
+                except (json.JSONDecodeError, TypeError):
+                    # If not JSON, treat as plain text
+                    resolved_body = resolve_variables_in_text(case_body, workspace_variables)
+            elif isinstance(case_body, dict):
+                resolved_body = resolve_variables_in_dict(case_body, workspace_variables)
+            else:
+                resolved_body = case_body
 
             cases_data.append({
                 "id": case.id,
                 "name": case.name,
-                "headers": merged_headers,  # Use combined headers
-                "params": getattr(case, 'params', {}) or {},
-                "body": case.body,
+                "headers": resolved_case_headers,
+                "params": resolved_params,
+                "body": resolved_body,
                 "expected": case.expected,
                 "created_at": case.created_at
             })

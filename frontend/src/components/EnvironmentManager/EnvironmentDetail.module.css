@@ -1,0 +1,267 @@
+.environmentDetail {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--background);
+}
+
+/* Header */
+.header {
+  padding: 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--background-lighter);
+}
+
+.environmentInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* View Info */
+.viewInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.environmentName {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #111827;
+  flex: 1;
+}
+
+.activeBadge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.activeDot {
+  width: 6px;
+  height: 6px;
+  background: #22c55e;
+  border-radius: 50%;
+}
+
+.environmentDescription {
+  margin: 0;
+  color: #6b7280;
+  line-height: 1.5;
+  font-size: 14px;
+}
+
+.metaInfo {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.metaItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.metaLabel {
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.metaValue {
+  color: #374151;
+}
+
+/* Header Actions */
+.headerActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+/* Edit Form */
+.editForm {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.nameInput {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 16px;
+  font-weight: 600;
+  background: #ffffff;
+  color: #111827;
+}
+
+.nameInput:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.descriptionInput {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  background: #ffffff;
+  color: #374151;
+  resize: vertical;
+  min-height: 60px;
+  font-family: inherit;
+}
+
+.descriptionInput:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.editActions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* Tabs */
+.tabs {
+  display: flex;
+  border-bottom: 1px solid #e5e7eb;
+  background: #ffffff;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border: none;
+  background: none;
+  color: #6b7280;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.tab:hover {
+  color: #374151;
+  background: #f9fafb;
+}
+
+.tab.activeTab {
+  color: #3b82f6;
+  border-bottom-color: #3b82f6;
+  background: #ffffff;
+}
+
+.tab svg {
+  opacity: 0.7;
+}
+
+.tab.activeTab svg {
+  opacity: 1;
+}
+
+/* Content */
+.content {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Variables Tab */
+.variablesTab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.variablesHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #f9fafb;
+}
+
+.variablesHeader h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #111827;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .header {
+    padding: 16px;
+  }
+
+  .titleRow {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .environmentName {
+    font-size: 18px;
+  }
+
+  .metaInfo {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .headerActions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .editActions {
+    flex-direction: column;
+  }
+
+  .tabs {
+    overflow-x: auto;
+  }
+
+  .tab {
+    white-space: nowrap;
+    min-width: fit-content;
+  }
+
+  .variablesHeader {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    padding: 16px;
+  }
+}

@@ -1,0 +1,356 @@
+.resolutionPanel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+}
+
+.header {
+  padding: 20px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #f9fafb;
+}
+
+.header h3 {
+  margin: 0 0 8px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.description {
+  margin: 0;
+  color: #6b7280;
+  line-height: 1.5;
+  font-size: 14px;
+}
+
+.description code {
+  background: #f3f4f6;
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
+  font-size: 13px;
+  color: #374151;
+}
+
+.content {
+  flex: 1;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  overflow-y: auto;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.section h4 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.section h5 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.sectionHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.sectionActions {
+  display: flex;
+  gap: 8px;
+}
+
+/* Templates */
+.templateButtons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Input */
+.inputTextarea {
+  width: 100%;
+  padding: 12px;
+  border: 1.5px solid #d1d5db;
+  border-radius: 8px;
+  font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  background: #ffffff;
+  color: #374151;
+  resize: vertical;
+  min-height: 120px;
+  transition: all 0.2s ease;
+}
+
+.inputTextarea:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.inputTextarea::placeholder {
+  color: #9ca3af;
+  font-style: italic;
+}
+
+/* Variable Status */
+.variableStatus {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.foundVariables,
+.missingVariables {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.foundVariables h5 {
+  color: #22c55e;
+}
+
+.missingVariables h5 {
+  color: #dc2626;
+}
+
+.variableList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.variableItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: #f9fafb;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.variableName {
+  font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
+  font-weight: 600;
+  color: #374151;
+}
+
+.variableValue {
+  font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
+  color: #6b7280;
+  font-style: italic;
+  text-align: right;
+  flex: 1;
+  margin-left: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.missingText {
+  color: #dc2626;
+  font-style: italic;
+  font-size: 12px;
+}
+
+/* Output */
+.outputContainer {
+  border: 1.5px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f9fafb;
+  overflow: hidden;
+}
+
+.outputText {
+  margin: 0;
+  padding: 12px;
+  font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #374151;
+  background: #ffffff;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.emptyOutput {
+  padding: 40px 20px;
+  text-align: center;
+  color: #9ca3af;
+  font-style: italic;
+  border: 1.5px dashed #e5e7eb;
+  border-radius: 8px;
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #e5e7eb;
+  border-top: 2px solid #3b82f6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* Stats */
+.stats {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  padding: 16px;
+  background: #f9fafb;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.statLabel {
+  font-size: 12px;
+  color: #6b7280;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.statValue {
+  font-size: 14px;
+  color: #111827;
+  font-weight: 600;
+}
+
+.statValue.warning {
+  color: #dc2626;
+}
+
+/* Variable highlighting in preview (if needed for future feature) */
+:global(.variableFound) {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+  padding: 1px 3px;
+  border-radius: 3px;
+  font-weight: 500;
+}
+
+:global(.variableMissing) {
+  background: #fecaca;
+  color: #dc2626;
+  padding: 1px 3px;
+  border-radius: 3px;
+  font-weight: 500;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .header {
+    padding: 16px;
+  }
+
+  .content {
+    padding: 16px;
+    gap: 20px;
+  }
+
+  .sectionHeader {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .templateButtons {
+    flex-direction: column;
+  }
+
+  .stats {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .variableItem {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .variableValue {
+    margin-left: 0;
+    text-align: left;
+  }
+}
+
+/* Scrollbar Styling */
+.content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.content::-webkit-scrollbar-track {
+  background: #f3f4f6;
+}
+
+.content::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+
+.content::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+.outputText::-webkit-scrollbar {
+  height: 6px;
+}
+
+.outputText::-webkit-scrollbar-track {
+  background: #f3f4f6;
+}
+
+.outputText::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+
+.outputText::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
