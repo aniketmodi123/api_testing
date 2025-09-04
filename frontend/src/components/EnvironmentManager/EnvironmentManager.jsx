@@ -19,11 +19,13 @@ export default function EnvironmentManager() {
     deleteEnvironment,
     createEnvironment,
     createEnvironmentFromTemplate,
+    updateEnvironment,
   } = useEnvironment();
 
   // Modal states
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [environmentToDelete, setEnvironmentToDelete] = useState(null);
+  const [environmentToEdit, setEnvironmentToEdit] = useState(null);
 
   // Handle environment selection
   const handleSelectEnvironment = environment => {
@@ -38,6 +40,27 @@ export default function EnvironmentManager() {
   // Handle environment deletion
   const handleDeleteEnvironment = async environment => {
     setEnvironmentToDelete(environment);
+  };
+
+  // Handle environment editing
+  const handleEditEnvironment = environment => {
+    setEnvironmentToEdit(environment);
+  };
+
+  // Handle update environment
+  const handleUpdateEnvironment = async environmentData => {
+    try {
+      const success = await updateEnvironment(
+        environmentToEdit.id,
+        environmentData
+      );
+      if (success) {
+        setEnvironmentToEdit(null);
+      }
+    } catch (error) {
+      console.error('Error updating environment:', error);
+      // Keep modal open if there's an error
+    }
   };
 
   const confirmDeleteEnvironment = async () => {
@@ -141,6 +164,7 @@ export default function EnvironmentManager() {
                 onSelectEnvironment={handleSelectEnvironment}
                 onActivateEnvironment={handleActivateEnvironment}
                 onDeleteEnvironment={handleDeleteEnvironment}
+                onEditEnvironment={handleEditEnvironment}
                 isLoading={isLoading}
               />
             </div>
@@ -172,6 +196,16 @@ export default function EnvironmentManager() {
         <CreateEnvironmentModal
           onClose={() => setShowCreateModal(false)}
           onSave={handleCreateEnvironment}
+        />
+      )}
+
+      {/* Edit Environment Modal */}
+      {environmentToEdit && (
+        <CreateEnvironmentModal
+          onClose={() => setEnvironmentToEdit(null)}
+          onSave={handleUpdateEnvironment}
+          initialData={environmentToEdit}
+          isEdit={true}
         />
       )}
 

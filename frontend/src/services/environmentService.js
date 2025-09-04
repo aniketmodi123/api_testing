@@ -71,7 +71,8 @@ export class EnvironmentService {
         `/environment/workspace/${workspaceId}/environments/${environmentId}`,
         updateData
       );
-      return response.data;
+      // Handle backend response wrapper format: { response_code: 200, data: ... }
+      return response.data?.data || response.data;
     } catch (error) {
       console.error('Error updating environment:', error);
       throw error;

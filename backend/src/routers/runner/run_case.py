@@ -169,11 +169,11 @@ async def get_file_api(
                 case_headers = {}
 
             merged_headers = {**resolved_headers, **case_headers}
-            
+
             # Resolve variables in case data
             resolved_case_headers = resolve_variables_in_dict(merged_headers, workspace_variables)
             resolved_params = resolve_variables_in_dict(getattr(case, 'params', {}) or {}, workspace_variables)
-            
+
             # Handle body - it could be string or dict
             case_body = case.body
             if isinstance(case_body, str):

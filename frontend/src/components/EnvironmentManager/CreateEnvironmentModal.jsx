@@ -2,12 +2,17 @@ import { useState } from 'react';
 import { Button } from '../common';
 import styles from './CreateEnvironmentModal.module.css';
 
-export default function CreateEnvironmentModal({ onClose, onSave }) {
+export default function CreateEnvironmentModal({
+  onClose,
+  onSave,
+  initialData = null,
+  isEdit = false,
+}) {
   const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    is_active: false,
-    includeDefaults: true, // New option to include default variables
+    name: initialData?.name || '',
+    description: initialData?.description || '',
+    is_active: initialData?.is_active || false,
+    includeDefaults: !isEdit, // Only show include defaults for new environments
   });
   const [errors, setErrors] = useState({});
 
@@ -37,8 +42,8 @@ export default function CreateEnvironmentModal({ onClose, onSave }) {
         is_active: formData.is_active,
       };
 
-      // Add default variables if requested
-      if (formData.includeDefaults) {
+      // Add default variables if requested (only for new environments)
+      if (!isEdit && formData.includeDefaults) {
         environmentData.defaultVariables = [
           {
             key: 'BASE_URL',
@@ -88,7 +93,7 @@ export default function CreateEnvironmentModal({ onClose, onSave }) {
     <div className={styles.modal} onClick={onClose}>
       <div className={styles.modalContent} onClick={e => e.stopPropagation()}>
         <div className={styles.modalHeader}>
-          <h2>Create New Environment</h2>
+          <h2>{isEdit ? 'Edit Environment' : 'Create New Environment'}</h2>
           <button
             className={styles.closeButton}
             onClick={onClose}
@@ -172,25 +177,27 @@ export default function CreateEnvironmentModal({ onClose, onSave }) {
             </div>
           </div>
 
-          <div className={styles.field}>
-            <label className={styles.checkboxLabel}>
-              <input
-                type="checkbox"
-                checked={formData.includeDefaults}
-                onChange={e =>
-                  handleInputChange('includeDefaults', e.target.checked)
-                }
-                className={styles.checkbox}
-              />
-              <span className={styles.checkboxText}>
-                Include common variables
-              </span>
-            </label>
-            <div className={styles.fieldHelp}>
-              Automatically add common variables like BASE_URL, API_KEY,
-              AUTH_TOKEN, and TIMEOUT to get started quickly.
+          {!isEdit && (
+            <div className={styles.field}>
+              <label className={styles.checkboxLabel}>
+                <input
+                  type="checkbox"
+                  checked={formData.includeDefaults}
+                  onChange={e =>
+                    handleInputChange('includeDefaults', e.target.checked)
+                  }
+                  className={styles.checkbox}
+                />
+                <span className={styles.checkboxText}>
+                  Include common variables
+                </span>
+              </label>
+              <div className={styles.fieldHelp}>
+                Automatically add common variables like BASE_URL, API_KEY,
+                AUTH_TOKEN, and TIMEOUT to get started quickly.
+              </div>
             </div>
-          </div>
+          )}
 
           <div className={styles.actions}>
             <Button type="button" variant="secondary" onClick={onClose}>
@@ -201,7 +208,7 @@ export default function CreateEnvironmentModal({ onClose, onSave }) {
               variant="primary"
               disabled={!formData.name.trim()}
             >
-              Create Environment
+              {isEdit ? 'Update Environment' : 'Create Environment'}
             </Button>
           </div>
         </form>
