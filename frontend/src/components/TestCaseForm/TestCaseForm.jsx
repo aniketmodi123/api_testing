@@ -3,6 +3,28 @@ import { useApi } from '../../store/api';
 import { Button, JsonEditor } from '../common';
 import styles from './TestCaseForm.module.css';
 
+// Utility function to add ngrok headers if needed
+const addNgrokHeadersIfNeeded = (apiData, existingHeaders = {}) => {
+  const endpoint = apiData?.endpoint || apiData?.url;
+  const isNgrokUrl =
+    endpoint &&
+    (endpoint.includes('.ngrok.') || endpoint.includes('ngrok-free.app'));
+
+  if (isNgrokUrl) {
+    console.log(
+      '🔗 TestCaseForm: Adding ngrok headers for endpoint:',
+      endpoint
+    );
+    return {
+      'ngrok-skip-browser-warning': 'true',
+      'User-Agent': 'API-Testing-Tool/1.0',
+      ...existingHeaders, // Keep user's headers last to allow overrides
+    };
+  }
+
+  return existingHeaders;
+};
+
 /**
  * Component for creating or editing a test case
  */
@@ -44,7 +66,46 @@ const TestCaseForm = ({
     saveTestCase,
     testCaseDetails,
     bulkCreateTestCases,
+    getApi,
+    activeApi,
   } = useApi();
+
+  // Load API data for new test cases to auto-add ngrok headers
+  useEffect(() => {
+    const loadApiData = async () => {
+      if (fileId && !caseId) {
+        // Only for new test cases
+        try {
+          await getApi(fileId);
+        } catch (err) {
+          console.error('Failed to load API data for test case:', err);
+        }
+      }
+    };
+
+    loadApiData();
+  }, [fileId, caseId, getApi]);
+
+  // Auto-add ngrok headers for new test cases
+  useEffect(() => {
+    if (activeApi && !caseId) {
+      // Only for new test cases
+      const enhancedHeaders = addNgrokHeadersIfNeeded(activeApi, {});
+      if (Object.keys(enhancedHeaders).length > 0) {
+        console.log(
+          '🔗 TestCaseForm: Auto-adding ngrok headers for new test case'
+        );
+        setFormData(prev => ({
+          ...prev,
+          headers: enhancedHeaders,
+        }));
+        setJsonStrings(prev => ({
+          ...prev,
+          headers: JSON.stringify(enhancedHeaders, null, 2),
+        }));
+      }
+    }
+  }, [activeApi, caseId]);
 
   // Load test case data if editing an existing case
   useEffect(() => {

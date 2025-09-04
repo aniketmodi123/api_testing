@@ -79,12 +79,12 @@ async def change_password(
         _user = res.scalar_one_or_none()
 
         if not _user:
-            return create_response(status.HTTP_401_UNAUTHORIZED, "User not found")
+            return create_response(206, "User not found")
 
         if not _user.is_active:
             # if your log_failed_attempt is sync, remove await
             await log_failed_attempt(db, username)
-            return create_response(status.HTTP_401_UNAUTHORIZED, error_message="User account is not active")
+            return create_response(206, error_message="User account is not active")
 
         if not verify_password(request.old_password, _user.password):
             await log_failed_attempt(db, username)
@@ -120,11 +120,11 @@ async def forgot_password(
         _user = result.scalars().first()
 
         if not _user:
-            return create_response(status.HTTP_401_UNAUTHORIZED, "User not found")
+            return create_response(206, "User not found")
 
         if not _user.is_active:
             await log_failed_attempt(db, user_name)
-            return create_response(status.HTTP_401_UNAUTHORIZED, "User account is not active")
+            return create_response(206, "User account is not active")
 
         _user.password = get_password_hash(request.new_password)
 

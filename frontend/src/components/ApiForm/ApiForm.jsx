@@ -1,7 +1,31 @@
 import { useEffect, useState } from 'react';
+import { headerService } from '../../services/headerService';
 import { useApi } from '../../store/api';
 import { Button, JsonEditor } from '../common';
 import styles from './ApiForm.module.css';
+
+// Utility function to check if URL is an ngrok URL and add required headers
+const addNgrokHeadersIfNeeded = (url, existingHeaders = {}) => {
+  const isNgrokUrl =
+    url && (url.includes('.ngrok.') || url.includes('ngrok-free.app'));
+
+  if (isNgrokUrl) {
+    const enhancedHeaders = {
+      ...existingHeaders,
+      'ngrok-skip-browser-warning': 'true',
+      'User-Agent': 'API-Testing-Tool/1.0',
+      ...existingHeaders, // Keep user's headers last to allow overrides
+    };
+
+    // Debug logging
+    console.log('🔗 Enhanced headers for ngrok URL:', url);
+    console.log('📝 Headers being saved:', enhancedHeaders);
+
+    return enhancedHeaders;
+  }
+
+  return existingHeaders;
+};
 
 // Copy to clipboard utility function
 const copyToClipboard = async text => {
@@ -160,6 +184,31 @@ const ApiForm = ({
     }
   }, [activeApi, apiId]);
 
+  // Auto-detect ngrok URLs and suggest adding headers
+  useEffect(() => {
+    const isNgrokUrl =
+      formData.endpoint &&
+      (formData.endpoint.includes('.ngrok.') ||
+        formData.endpoint.includes('ngrok-free.app'));
+
+    if (isNgrokUrl && !formData.headers['ngrok-skip-browser-warning']) {
+      // Suggest adding ngrok headers
+      console.log(
+        '🔗 Ngrok URL detected! Auto-adding bypass headers for:',
+        formData.endpoint
+      );
+
+      setFormData(prev => ({
+        ...prev,
+        headers: {
+          ...prev.headers,
+          'ngrok-skip-browser-warning': 'true',
+          'User-Agent': prev.headers['User-Agent'] || 'API-Testing-Tool/1.0',
+        },
+      }));
+    }
+  }, [formData.endpoint]);
+
   // Handle form input changes
   const handleChange = e => {
     const { name, value, type, checked } = e.target;
@@ -245,49 +294,239 @@ const ApiForm = ({
     setIsTestRunning(true);
 
     try {
-      // Prepare the request
-      const requestData = {
-        method: formData.method,
-        url: formData.endpoint,
-        headers: formData.headers,
-        params: formData.params,
-        data: formData.method !== 'GET' ? formData.request_body : undefined,
-      };
+      // Check if this is an ngrok URL
+      const isNgrokUrl =
+        formData.endpoint &&
+        (formData.endpoint.includes('.ngrok.') ||
+          formData.endpoint.includes('ngrok-free.app'));
 
-      // In a real implementation, you would make an actual API call here
-      // For now, let's simulate a response
-      setTimeout(() => {
-        const mockResponse = {
-          status: 200,
-          statusText: 'OK',
-          data: {
-            success: true,
-            message: 'Operation completed successfully',
-            timestamp: new Date().toISOString(),
-          },
-          headers: {
-            'content-type': 'application/json',
-            'x-request-id': Math.random().toString(36).substring(2),
-          },
-          config: requestData,
-          duration: Math.floor(Math.random() * 500) + 100, // ms
+      // Automatically add ngrok headers if needed
+      const enhancedHeaders = addNgrokHeadersIfNeeded(
+        formData.endpoint,
+        formData.headers
+      );
+
+      console.log('🚀 Making API call:', {
+        url: formData.endpoint,
+        method: formData.method,
+        headers: enhancedHeaders,
+        isNgrokUrl,
+      });
+
+      if (isNgrokUrl) {
+        // Make direct API call from frontend for ngrok URLs
+        console.log('🔗 Making direct frontend call to ngrok URL');
+
+        // First, fetch headers from backend for this API's folder
+        let backendHeaders = {};
+        if (fileId) {
+          try {
+            console.log('📡 Fetching headers from backend for fileId:', fileId);
+            const headersResponse = await headerService.getHeaders(fileId);
+            backendHeaders = headersResponse?.data?.content || {};
+            console.log(
+              '📋 Backend headers fetched successfully:',
+              backendHeaders
+            );
+
+            if (Object.keys(backendHeaders).length === 0) {
+              console.log('ℹ️ No backend headers found for this API');
+            }
+          } catch (headerError) {
+            console.warn('⚠️ Could not fetch backend headers:', headerError);
+            console.log(
+              'Will proceed with form headers and ngrok headers only'
+            );
+          }
+        } else {
+          console.log('⚠️ No fileId available, skipping backend header fetch');
+        }
+
+        // Merge backend headers with form headers and ngrok headers
+        // Priority: ngrok headers > form headers > backend headers
+        console.log('🔧 Merging headers with priority order:');
+        console.log('  1️⃣ Backend headers (lowest priority):', backendHeaders);
+        console.log('  2️⃣ Form headers (medium priority):', formData.headers);
+
+        const ngrokHeaders = addNgrokHeadersIfNeeded(formData.endpoint, {});
+        console.log('  3️⃣ Ngrok headers (highest priority):', ngrokHeaders);
+
+        const mergedHeaders = {
+          'Content-Type': 'application/json',
+          ...backendHeaders, // Backend API-level headers (lowest priority)
+          ...formData.headers, // Form headers (medium priority)
+          ...ngrokHeaders, // Ngrok headers (highest priority)
         };
 
-        setResponseData(mockResponse);
+        console.log('🎯 Final merged headers for direct call:', mergedHeaders);
+        console.log(
+          '📊 Total header count:',
+          Object.keys(mergedHeaders).length
+        );
+
+        const requestConfig = {
+          method: formData.method,
+          headers: mergedHeaders,
+        };
+
+        // Add query parameters
+        let url = formData.endpoint;
+        const searchParams = new URLSearchParams();
+
+        // Always add ngrok bypass as query param for ngrok URLs (avoids CORS preflight)
+        if (isNgrokUrl) {
+          searchParams.append('ngrok-skip-browser-warning', 'true');
+        }
+
+        // Add user's query parameters
+        if (formData.params && Object.keys(formData.params).length > 0) {
+          Object.entries(formData.params).forEach(([key, value]) => {
+            if (value !== null && value !== undefined && value !== '') {
+              searchParams.append(key, value);
+            }
+          });
+        }
+
+        // Append query parameters to URL
+        const queryString = searchParams.toString();
+        if (queryString) {
+          url += (url.includes('?') ? '&' : '?') + queryString;
+        }
+
+        // Add body for non-GET requests
+        if (formData.method !== 'GET' && formData.request_body) {
+          try {
+            requestConfig.body =
+              typeof formData.request_body === 'string'
+                ? formData.request_body
+                : JSON.stringify(formData.request_body);
+          } catch (e) {
+            requestConfig.body = formData.request_body;
+          }
+        }
+
+        const startTime = Date.now();
+
+        // Log the actual request being sent
+        console.log('🚀 About to send fetch request:');
+        console.log('  📍 URL:', url);
+        console.log('  🔧 Method:', requestConfig.method);
+        console.log('  📋 Headers being sent:', requestConfig.headers);
+        console.log('  📦 Body:', requestConfig.body || 'No body');
+
+        const response = await fetch(url, requestConfig);
+        const duration = Date.now() - startTime;
+
+        const responseText = await response.text();
+        let responseData;
+        try {
+          responseData = JSON.parse(responseText);
+        } catch (e) {
+          responseData = responseText;
+        }
+
+        const apiResponse = {
+          status: response.status,
+          statusText: response.statusText,
+          data: responseData,
+          headers: Object.fromEntries(response.headers.entries()),
+          config: requestConfig,
+          duration: duration,
+        };
+
+        // For direct API calls, don't redirect on 401 - just show the response
+        if (response.status === 401) {
+          console.log(
+            '🔒 Direct API call returned 401 (External API authorization required):',
+            apiResponse
+          );
+        } else {
+          console.log('✅ Direct API call successful:', apiResponse);
+        }
+
+        setResponseData(apiResponse);
         setIsTestRunning(false);
 
-        // Save the API definition if needed
-        saveApiDefinition();
-      }, 800);
+        // For direct API calls, save definition in background without affecting the test result
+        // Wrap in try-catch to prevent backend auth issues from affecting the direct API call
+        setTimeout(async () => {
+          try {
+            await saveApiDefinition();
+            console.log('📝 API definition saved successfully');
+          } catch (err) {
+            console.log(
+              '⚠️ Could not save API definition (backend auth issue):',
+              err.message
+            );
+            // Don't throw error or trigger redirects for direct API calls
+          }
+        }, 100);
+      } else {
+        // Use backend for non-ngrok URLs (existing logic)
+        const requestData = {
+          method: formData.method,
+          url: formData.endpoint,
+          headers: enhancedHeaders,
+          params: formData.params,
+          data: formData.method !== 'GET' ? formData.request_body : undefined,
+        };
+
+        // Simulate a response (replace with actual backend call if needed)
+        setTimeout(() => {
+          const mockResponse = {
+            status: 200,
+            statusText: 'OK',
+            data: {
+              success: true,
+              message: 'Operation completed successfully',
+              timestamp: new Date().toISOString(),
+            },
+            headers: {
+              'content-type': 'application/json',
+              'x-request-id': Math.random().toString(36).substring(2),
+            },
+            config: requestData,
+            duration: Math.floor(Math.random() * 500) + 100,
+          };
+
+          setResponseData(mockResponse);
+          setIsTestRunning(false);
+          saveApiDefinition();
+        }, 800);
+      }
     } catch (err) {
-      console.error('Error executing API:', err);
+      console.error('❌ Error executing API:', err);
       setIsTestRunning(false);
 
-      // Set error response
+      // Check if this was a direct API call vs backend call
+      const isNgrokUrl =
+        formData.endpoint &&
+        (formData.endpoint.includes('.ngrok.') ||
+          formData.endpoint.includes('ngrok-free.app'));
+
+      // For direct API calls (ngrok), don't trigger auth redirects
+      if (isNgrokUrl) {
+        console.log(
+          '🔗 Direct API call error (no auth redirect triggered):',
+          err
+        );
+
+        // For direct API call errors, don't try to save to backend
+        setResponseData({
+          status: err.status || 500,
+          statusText: err.statusText || 'Error',
+          error: err.message || 'Network error occurred',
+          data: err.response?.data || null,
+        });
+        return; // Early return to prevent any backend calls
+      }
+
+      // Set error response for backend calls
       setResponseData({
-        status: 500,
-        statusText: 'Error',
-        error: err.message || 'Unknown error occurred',
+        status: err.status || 500,
+        statusText: err.statusText || 'Error',
+        error: err.message || 'Network error occurred',
+        data: err.response?.data || null,
       });
     }
   };
@@ -297,12 +536,23 @@ const ApiForm = ({
     try {
       let result;
 
+      // Automatically add ngrok headers if endpoint is an ngrok URL
+      const enhancedFormData = {
+        ...formData,
+        headers: addNgrokHeadersIfNeeded(formData.endpoint, formData.headers),
+      };
+
+      console.log('💾 Saving API definition:');
+      console.log('📍 Endpoint:', enhancedFormData.endpoint);
+      console.log('📋 Headers being saved:', enhancedFormData.headers);
+      console.log('🔧 Full API data:', enhancedFormData);
+
       if (apiId) {
         // Update existing API
-        result = await updateApi(apiId, formData);
+        result = await updateApi(apiId, enhancedFormData);
       } else {
         // Create new API
-        result = await createApi(fileId, formData);
+        result = await createApi(fileId, enhancedFormData);
       }
 
       onSave(result?.data);
@@ -320,7 +570,7 @@ const ApiForm = ({
           ...activeApi,
           method: formData.method,
           endpoint: formData.endpoint,
-          headers: formData.headers,
+          headers: addNgrokHeadersIfNeeded(formData.endpoint, formData.headers),
           params: formData.params,
           request_body: formData.request_body,
           authorization: formData.authorization,
@@ -344,13 +594,19 @@ const ApiForm = ({
     }
 
     try {
+      // Automatically add ngrok headers if needed
+      const enhancedHeaders = addNgrokHeadersIfNeeded(
+        formData.endpoint,
+        formData.headers
+      );
+
       const testCase = {
         api_id: apiId,
         name: `Test case - ${new Date().toLocaleTimeString()}`,
         request: {
           method: formData.method,
           endpoint: formData.endpoint,
-          headers: formData.headers,
+          headers: enhancedHeaders,
           params: formData.params,
           body: formData.request_body,
         },
@@ -396,6 +652,26 @@ const ApiForm = ({
           placeholder="/api/resource"
           className={styles.endpointInput}
         />
+
+        {/* Ngrok detection indicator */}
+        {formData.endpoint &&
+          (formData.endpoint.includes('.ngrok.') ||
+            formData.endpoint.includes('ngrok-free.app')) && (
+            <div
+              style={{
+                padding: '4px 8px',
+                backgroundColor: '#e3f2fd',
+                border: '1px solid #2196f3',
+                borderRadius: '4px',
+                fontSize: '12px',
+                color: '#1976d2',
+                marginLeft: '8px',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              🔗 Ngrok detected - bypass headers added
+            </div>
+          )}
 
         <Button variant="primary" onClick={handleSubmit} disabled={isLoading}>
           {isLoading ? 'Sending...' : 'Send'}

@@ -109,7 +109,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             username = await authenticate_token(request)
 
             if not username:
-                return create_response(401, error_message= "Authentication required")
+                return create_response(401, error_message= "Authentication required again since your session has expired.")
 
             # Add user info to request state for use in endpoints
             request.state.current_user = username
@@ -125,5 +125,5 @@ class AuthMiddleware(BaseHTTPMiddleware):
         except Exception as e:
             return JSONResponse(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                content={"detail": "Invalid authentication"}
+                content={"detail": "Authentication required again since your session has expired"}
             )

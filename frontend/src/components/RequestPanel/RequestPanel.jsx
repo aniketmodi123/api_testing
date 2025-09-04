@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api';
+import { headerService } from '../../services/headerService';
 import { useApi } from '../../store/api';
 import { useNode } from '../../store/node';
 import { TestCaseForm } from '../TestCaseForm';
@@ -8,6 +9,28 @@ import { Button, JsonEditor } from '../common';
 import styles from './RequestPanel.module.css';
 import './buttonStyles.css';
 import './dropdown.css';
+
+// Utility function to check if URL is an ngrok URL and add required headers
+const addNgrokHeadersIfNeeded = (url, existingHeaders = {}) => {
+  const isNgrokUrl =
+    url && (url.includes('.ngrok.') || url.includes('ngrok-free.app'));
+
+  if (isNgrokUrl) {
+    const enhancedHeaders = {
+      ...existingHeaders,
+      'ngrok-skip-browser-warning': 'true',
+      'User-Agent': 'API-Testing-Tool/1.0', // Keep original logic even if browser blocks it
+      ...existingHeaders, // Keep user's headers last to allow overrides
+    };
+
+    console.log('🔗 Enhanced headers for ngrok URL:', url);
+    console.log('📝 Headers being used:', enhancedHeaders);
+
+    return enhancedHeaders;
+  }
+
+  return existingHeaders;
+};
 
 // Copy to clipboard utility function
 const copyToClipboard = async text => {
@@ -454,51 +477,257 @@ export default function RequestPanel({ activeRequest }) {
     setIsSending(true);
 
     try {
-      // Prepare request configuration
-      const requestConfig = {
-        method: method.toLowerCase(),
+      // Check if this is an ngrok URL
+      const isNgrokUrl =
+        url && (url.includes('.ngrok.') || url.includes('ngrok-free.app'));
+
+      console.log('🚀 Making API call:', {
         url: url,
-        headers: extractValue(activeApi, 'headers', {}),
-        params: extractValue(activeApi, 'params', {}),
-      };
-
-      // Add body for non-GET requests
-      if (method !== 'GET') {
-        requestConfig.data = extractValue(activeApi, 'request_body', {});
-      }
-
-      // Make the API call using the Axios instance
-      const directResponse = await api(requestConfig);
-
-      // Set the response for display
-      setResponse({
-        statusCode: directResponse.status,
-        statusText: directResponse.statusText,
-        body: directResponse.data,
-        headers: directResponse.headers,
-        responseTime: new Date().toISOString(),
+        method: method,
+        isNgrokUrl,
       });
+
+      if (isNgrokUrl) {
+        // Make direct API call from frontend for ngrok URLs
+        console.log('🔗 Making direct frontend call to ngrok URL');
+
+        // First, fetch headers from backend for this API's parent folder
+        let backendHeaders = {};
+        if (selectedNode?.id) {
+          try {
+            // Determine which ID to use for header fetching
+            // If it's a file, use its parent_id (folder), if it's a folder, use its own id
+            let headerNodeId = selectedNode.id;
+            if (selectedNode.type === 'file' && selectedNode.parent_id) {
+              headerNodeId = selectedNode.parent_id;
+              console.log(
+                '📁 File detected, using parent folder ID for headers:',
+                headerNodeId,
+                '(file ID:',
+                selectedNode.id,
+                ')'
+              );
+            } else {
+              console.log(
+                '📂 Using node ID for headers:',
+                headerNodeId,
+                '(type:',
+                selectedNode.type,
+                ')'
+              );
+            }
+
+            console.log(
+              '📡 Fetching headers from backend for headerNodeId:',
+              headerNodeId
+            );
+            const headersResponse =
+              await headerService.getHeaders(headerNodeId);
+            backendHeaders = headersResponse?.data?.content || {};
+            console.log(
+              '📋 Backend headers fetched successfully:',
+              backendHeaders
+            );
+
+            if (Object.keys(backendHeaders).length === 0) {
+              console.log('ℹ️ No backend headers found for this API');
+            }
+          } catch (headerError) {
+            console.warn('⚠️ Could not fetch backend headers:', headerError);
+            console.log(
+              'Will proceed with form headers and ngrok headers only'
+            );
+          }
+        } else {
+          console.log(
+            '⚠️ No selectedNode.id available, skipping backend header fetch'
+          );
+        }
+
+        // Get current headers from the form
+        const formHeaders = extractValue(activeApi, 'headers', {});
+
+        // Merge backend headers with form headers and ngrok headers
+        console.log('🔧 Merging headers with priority order:');
+        console.log('  1️⃣ Backend headers (lowest priority):', backendHeaders);
+        console.log('  2️⃣ Form headers (medium priority):', formHeaders);
+
+        const ngrokHeaders = addNgrokHeadersIfNeeded(url, {});
+        console.log('  3️⃣ Ngrok headers (highest priority):', ngrokHeaders);
+
+        const mergedHeaders = {
+          'Content-Type': 'application/json',
+          ...backendHeaders, // Backend API-level headers (lowest priority)
+          ...formHeaders, // Form headers (medium priority)
+          ...ngrokHeaders, // Ngrok headers (highest priority)
+        };
+
+        console.log('🎯 Final merged headers for direct call:', mergedHeaders);
+        console.log(
+          '📊 Total header count:',
+          Object.keys(mergedHeaders).length
+        );
+
+        const requestConfig = {
+          method: method,
+          headers: mergedHeaders,
+        };
+
+        // Add query parameters
+        let finalUrl = url;
+        const searchParams = new URLSearchParams();
+
+        // Add user's query parameters
+        const formParams = extractValue(activeApi, 'params', {});
+        if (formParams && Object.keys(formParams).length > 0) {
+          Object.entries(formParams).forEach(([key, value]) => {
+            if (value !== null && value !== undefined && value !== '') {
+              searchParams.append(key, value);
+            }
+          });
+        }
+
+        // Append query parameters to URL
+        const queryString = searchParams.toString();
+        if (queryString) {
+          finalUrl += (finalUrl.includes('?') ? '&' : '?') + queryString;
+        }
+
+        // Add body for non-GET requests
+        if (method !== 'GET') {
+          const bodyData = extractValue(activeApi, 'request_body', {});
+          if (bodyData) {
+            try {
+              requestConfig.body =
+                typeof bodyData === 'string'
+                  ? bodyData
+                  : JSON.stringify(bodyData);
+            } catch (e) {
+              requestConfig.body = bodyData;
+            }
+          }
+        }
+
+        const startTime = Date.now();
+
+        // Log the actual request being sent
+        console.log('🚀 About to send fetch request:');
+        console.log('  📍 URL:', finalUrl);
+        console.log('  🔧 Method:', requestConfig.method);
+        console.log('  📋 Headers being sent:', requestConfig.headers);
+        console.log('  📦 Body:', requestConfig.body || 'No body');
+
+        const response = await fetch(finalUrl, requestConfig);
+        const duration = Date.now() - startTime;
+
+        const responseText = await response.text();
+        let responseData;
+        try {
+          responseData = JSON.parse(responseText);
+        } catch (e) {
+          responseData = responseText;
+        }
+
+        // Enhanced logging for debugging
+        console.log('📥 Response received:');
+        console.log('  🔢 Status:', response.status);
+        console.log('  📝 Status Text:', response.statusText);
+        console.log('  📄 Raw Text:', responseText);
+        console.log('  🔧 Parsed Data:', responseData);
+        console.log('  ⏱️ Duration:', `${duration}ms`);
+
+        // For direct API calls, don't redirect on 401 - just show the response
+        if (response.status === 401) {
+          console.log(
+            '🔒 Direct API call returned 401 (External API authorization required)'
+          );
+        } else if (response.status === 206) {
+          console.log(
+            'ℹ️ Direct API call returned 206 (Partial Content/No New Data)'
+          );
+        } else {
+          console.log('✅ Direct API call successful');
+        }
+
+        // Set the response for display
+        const responseObject = {
+          statusCode: response.status,
+          statusText: response.statusText,
+          body: responseData,
+          headers: Object.fromEntries(response.headers.entries()),
+          responseTime: `${duration}ms`,
+        };
+
+        console.log('🎯 Setting response object:', responseObject);
+        setResponse(responseObject);
+      } else {
+        // Use backend for non-ngrok URLs (existing axios logic)
+        const requestConfig = {
+          method: method.toLowerCase(),
+          url: url,
+          headers: extractValue(activeApi, 'headers', {}),
+          params: extractValue(activeApi, 'params', {}),
+        };
+
+        // Add body for non-GET requests
+        if (method !== 'GET') {
+          requestConfig.data = extractValue(activeApi, 'request_body', {});
+        }
+
+        // Make the API call using the Axios instance
+        const directResponse = await api(requestConfig);
+
+        // Set the response for display
+        setResponse({
+          statusCode: directResponse.status,
+          statusText: directResponse.statusText,
+          body: directResponse.data,
+          headers: directResponse.headers,
+          responseTime: new Date().toISOString(),
+        });
+      }
 
       // Switch to the response tab
       setActiveTab('response');
       setResponseTab('body');
     } catch (error) {
-      console.error('Error making direct API call:', error);
+      console.error('❌ Error executing API:', error);
 
-      // Format error response
-      setResponse({
-        statusCode: error.response?.status || 500,
-        statusText: error.response?.statusText || 'Error',
-        body: {
-          message: error.message,
-          details: error.response?.data || 'No response details available',
-        },
-        headers: error.response?.headers || {},
-        responseTime: new Date().toISOString(),
-        isError: true,
-      });
+      // Check if this was a direct API call vs backend call
+      const isNgrokUrl =
+        url && (url.includes('.ngrok.') || url.includes('ngrok-free.app'));
 
-      // Switch to the response tab
+      // For direct API calls (ngrok), don't trigger auth redirects
+      if (isNgrokUrl) {
+        console.log(
+          '🔗 Direct API call error (no auth redirect triggered):',
+          error
+        );
+
+        // For direct API call errors, show the error response
+        setResponse({
+          statusCode: error.status || 500,
+          statusText: error.statusText || 'Error',
+          body: { error: error.message || 'Network error occurred' },
+          headers: {},
+          responseTime: 'Error',
+        });
+      } else {
+        // Format error response for backend calls
+        setResponse({
+          statusCode: error.response?.status || 500,
+          statusText: error.response?.statusText || 'Error',
+          body: {
+            message: error.message,
+            details: error.response?.data || 'No response details available',
+          },
+          headers: error.response?.headers || {},
+          responseTime: new Date().toISOString(),
+          isError: true,
+        });
+      }
+
+      // Switch to the response tab to show error
       setActiveTab('response');
       setResponseTab('body');
     } finally {
@@ -1900,20 +2129,18 @@ export default function RequestPanel({ activeRequest }) {
                   <div className={`${styles.responseBody} scrollable`}>
                     {response.body &&
                     response.body.response_code !== undefined ? (
-                      // Format for standard API response with response_code and data
+                      // Format for standard API response with response_code and data/error_message
                       <div className={styles.structuredResponse}>
-                        {response.body.data && (
-                          <JsonEditor
-                            value={JSON.stringify(response.body, null, 2)}
-                            language="json"
-                            showCopyButton={true}
-                            resizable={true}
-                            minHeight={150}
-                            maxHeight={400}
-                            disabled={true}
-                            className={styles.responseJsonEditor}
-                          />
-                        )}
+                        <JsonEditor
+                          value={JSON.stringify(response.body, null, 2)}
+                          language="json"
+                          showCopyButton={true}
+                          resizable={true}
+                          minHeight={150}
+                          maxHeight={400}
+                          disabled={true}
+                          className={styles.responseJsonEditor}
+                        />
                       </div>
                     ) : (
                       // For other response formats
