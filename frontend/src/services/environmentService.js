@@ -183,6 +183,26 @@ export class EnvironmentService {
     }
   }
 
+  // Save variables (unified create/update endpoint)
+  static async saveVariables(workspaceId, environmentId, variablesData) {
+    try {
+      // Convert from array format to simple key-value format expected by backend
+      const variables = {};
+      variablesData.forEach(variable => {
+        variables[variable.key] = variable.value;
+      });
+
+      const response = await api.post(
+        `/environment/workspace/${workspaceId}/environments/${environmentId}/variables`,
+        { variables }
+      );
+      return response.data?.data || response.data;
+    } catch (error) {
+      console.error('Error saving variables:', error);
+      throw error;
+    }
+  }
+
   /**
    * Variable Resolution APIs
    */
@@ -382,19 +402,16 @@ export class EnvironmentService {
             key: 'BASE_URL',
             value: 'https://api.example.com',
             description: 'Base API URL',
-            is_secret: false,
           },
           {
             key: 'API_KEY',
             value: '',
             description: 'API authentication key',
-            is_secret: true,
           },
           {
             key: 'TIMEOUT',
             value: '30000',
             description: 'Request timeout in milliseconds',
-            is_secret: false,
           },
         ],
       },
@@ -407,19 +424,16 @@ export class EnvironmentService {
             key: 'API_URL',
             value: 'http://localhost:8000',
             description: 'Local development API URL',
-            is_secret: false,
           },
           {
             key: 'DEBUG',
             value: 'true',
             description: 'Enable debug mode',
-            is_secret: false,
           },
           {
             key: 'DB_HOST',
             value: 'localhost',
             description: 'Database host',
-            is_secret: false,
           },
         ],
       },
@@ -432,19 +446,16 @@ export class EnvironmentService {
             key: 'API_URL',
             value: 'https://api.yourdomain.com',
             description: 'Production API URL',
-            is_secret: false,
           },
           {
             key: 'API_SECRET',
             value: '',
             description: 'Production API secret',
-            is_secret: true,
           },
           {
             key: 'DEBUG',
             value: 'false',
             description: 'Disable debug in production',
-            is_secret: false,
           },
         ],
       },

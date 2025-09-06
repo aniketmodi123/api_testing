@@ -38,8 +38,12 @@ export default function Header() {
     <header style={styles.header}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
         <Logo />
-        <WorkspaceSelector />
-        <EnvironmentSwitcher />
+        {user && (
+          <>
+            <WorkspaceSelector />
+            <EnvironmentSwitcher />
+          </>
+        )}
       </div>
       <div style={styles.actionsContainer}>
         <ThemeToggle />

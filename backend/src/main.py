@@ -17,7 +17,7 @@ from routers.node import create_node, update_node, list_node, delete_node
 from routers.headers import complete_headers, set_headers,list_headers,delete_headers, update_headers
 from routers.api import list_apis, create_dup, save_api
 from routers.api_cases import delete_case, get_case, list_search_api_case, create_dup_case, save_api_case
-from routers.environment import create_environment, list_environments, manage_variables, resolve_variables
+from routers.environment import create_environment, list_environments, resolve_variables, save_variables,delete_variables, list_variables
 from security import AuthMiddleware
 
 FASTAPI_CONFIG = {
@@ -209,8 +209,10 @@ app.include_router(save_api_case.router, tags=["API Cases"])
 # environment management
 app.include_router(create_environment.router, prefix="/environment", tags=["Environment Management"])
 app.include_router(list_environments.router, prefix="/environment", tags=["Environment Management"])
-app.include_router(manage_variables.router, prefix="/environment", tags=["Environment Variables"])
+app.include_router(save_variables.router, prefix="/environment", tags=["Environment Variables"])
 app.include_router(resolve_variables.router, prefix="/environment", tags=["Variable Resolution"])
+app.include_router(list_variables.router, prefix="/environment", tags=["Variable Resolution"])
+app.include_router(delete_variables.router, prefix="/environment", tags=["Variable Resolution"])
 
 #runner
 

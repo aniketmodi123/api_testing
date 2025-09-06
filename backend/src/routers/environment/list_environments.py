@@ -121,8 +121,6 @@ async def get_environment(
         if environment.variables:
             for key, var_data in environment.variables.items():
                 masked_var = var_data.copy()
-                if var_data.get('is_secret', False) and var_data.get('value'):
-                    masked_var['value'] = "***"
                 masked_variables[key] = masked_var
 
         data = {

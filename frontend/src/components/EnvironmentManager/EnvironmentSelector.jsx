@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { formatDate } from '../../utils';
 import styles from './EnvironmentSelector.module.css';
 
 export default function EnvironmentSelector({
@@ -12,14 +13,6 @@ export default function EnvironmentSelector({
   isLoading,
 }) {
   const [hoveredEnvironment, setHoveredEnvironment] = useState(null);
-
-  const formatDate = dateString => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  };
 
   const handleEnvironmentClick = environment => {
     onSelectEnvironment(environment);

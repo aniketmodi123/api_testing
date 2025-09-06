@@ -176,9 +176,7 @@ export default function VariableResolutionPanel({ environment, variables }) {
                           <span className={styles.variableName}>{varName}</span>
                           {variable && (
                             <span className={styles.variableValue}>
-                              {variable.is_secret
-                                ? '***HIDDEN***'
-                                : variable.value || '(empty)'}
+                              {variable.value || '(empty)'}
                             </span>
                           )}
                         </div>

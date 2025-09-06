@@ -75,12 +75,8 @@ async def get_active_environment_variables(
         # Get all enabled variables from active environment
         variables_dict = {}
         if active_environment.variables:
-            for key, var_data in active_environment.variables.items():
-                if var_data.get('is_enabled', True) and var_data.get('value') is not None:
-                    if not var_data.get('is_secret', False):
-                        variables_dict[key] = var_data['value']
-                    else:
-                        variables_dict[key] = "***SECRET***"  # Mask secret values
+            # Simple key-value format
+            variables_dict = active_environment.variables.copy()
 
         data = {
             "variables": variables_dict,
@@ -134,9 +130,8 @@ async def get_environment_variables_resolved(
         # Get all enabled variables from environment
         variables_dict = {}
         if environment.variables:
-            for key, var_data in environment.variables.items():
-                if var_data.get('is_enabled', True) and var_data.get('value') is not None:
-                    variables_dict[key] = var_data['value']
+            # Simple key-value format
+            variables_dict = environment.variables.copy()
 
         data = {
             "variables": variables_dict,
@@ -216,9 +211,8 @@ async def resolve_variables_in_request(
         # Get environment variables
         variables_dict = {}
         if environment.variables:
-            for key, var_data in environment.variables.items():
-                if var_data.get('is_enabled', True) and var_data.get('value') is not None:
-                    variables_dict[key] = var_data['value']
+            # Simple key-value format
+            variables_dict = environment.variables.copy()
 
         # Determine which variables were resolved and which are missing
         variables_resolved = []

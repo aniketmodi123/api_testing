@@ -285,6 +285,21 @@ export const EnvironmentProvider = ({ children }) => {
    */
 
   // Load variables for selected environment
+  // Helper function to convert variables dict to array format
+  const convertVariablesToArray = variablesDict => {
+    if (!variablesDict || typeof variablesDict !== 'object') {
+      return [];
+    }
+
+    return Object.entries(variablesDict).map(([key, value], index) => ({
+      id: index + 1, // Simple ID for React keys
+      key,
+      value,
+      description: '', // No description in simple format
+      is_enabled: true, // Always enabled in simple format
+    }));
+  };
+
   const loadVariables = async (environmentId = selectedEnvironment?.id) => {
     if (!activeWorkspace?.id || !environmentId) return;
 
@@ -297,10 +312,16 @@ export const EnvironmentProvider = ({ children }) => {
         environmentId
       );
 
-      // Ensure variables is always an array, handle different response formats
+      // Handle different response formats
       let variablesArray = [];
       if (Array.isArray(variablesResponse)) {
         variablesArray = variablesResponse;
+      } else if (
+        variablesResponse &&
+        typeof variablesResponse.variables === 'object'
+      ) {
+        // Convert Dict[str, str] to array format
+        variablesArray = convertVariablesToArray(variablesResponse.variables);
       } else if (
         variablesResponse &&
         Array.isArray(variablesResponse.variables)
@@ -427,6 +448,36 @@ export const EnvironmentProvider = ({ children }) => {
     }
   };
 
+  // Save variables (unified create/update)
+  const saveVariables = async (environmentId, variablesData) => {
+    if (!activeWorkspace?.id || !environmentId) return false;
+
+    try {
+      setIsLoading(true);
+
+      const result = await environmentService.saveVariables(
+        activeWorkspace.id,
+        environmentId,
+        variablesData
+      );
+
+      // Use the response data directly instead of calling loadVariables again
+      if (result && environmentId === selectedEnvironment?.id) {
+        // Convert the response variables dict to array format
+        const variablesArray = convertVariablesToArray(result.variables);
+        setVariables(variablesArray);
+      }
+
+      showSuccess('Variables saved successfully');
+      return true;
+    } catch (error) {
+      handleError(error, 'Failed to save variables');
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   /**
    * Variable Resolution Functions
    */
@@ -525,6 +576,7 @@ export const EnvironmentProvider = ({ children }) => {
     createVariable,
     updateVariable,
     deleteVariable,
+    saveVariables,
 
     // Variable resolution
     getActiveEnvironmentVariables,

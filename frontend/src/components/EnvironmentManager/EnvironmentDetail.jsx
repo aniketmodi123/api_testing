@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useEnvironment } from '../../store/environment';
+import { formatDateTime } from '../../utils';
 import { Button } from '../common';
 import styles from './EnvironmentDetail.module.css';
-import VariableList from './VariableList';
 import VariableResolutionPanel from './VariableResolutionPanel';
 
 export default function EnvironmentDetail({
@@ -13,8 +13,15 @@ export default function EnvironmentDetail({
   onEditVariable,
   onEditEnvironment,
 }) {
-  const { updateEnvironment, activateEnvironment, isLoading } =
-    useEnvironment();
+  const {
+    updateEnvironment,
+    activateEnvironment,
+    createVariable,
+    updateVariable,
+    deleteVariable,
+    saveVariables,
+    isLoading,
+  } = useEnvironment();
 
   // Local state
   const [activeTab, setActiveTab] = useState('variables'); // 'variables' or 'preview'
@@ -23,6 +30,20 @@ export default function EnvironmentDetail({
     name: environment.name,
     description: environment.description || '',
   });
+
+  // Variables editing state
+  const [variablesData, setVariablesData] = useState(
+    variables.map(v => ({ ...v })) || []
+  );
+  const [newVariable, setNewVariable] = useState({ key: '', value: '' });
+  const [hasVariableChanges, setHasVariableChanges] = useState(false);
+
+  // Update variables data when environment or variables change
+  useEffect(() => {
+    setVariablesData(variables.map(v => ({ ...v })) || []);
+    setNewVariable({ key: '', value: '' });
+    setHasVariableChanges(false);
+  }, [environment.id, variables]);
 
   // Handle inline editing
   const handleEditToggle = () => {
@@ -47,18 +68,64 @@ export default function EnvironmentDetail({
     }
   };
 
-  const handleActivate = async () => {
-    await activateEnvironment(environment.id);
+  // Variable management handlers
+  const handleVariableChange = (index, field, value) => {
+    const updatedVariables = [...variablesData];
+    updatedVariables[index][field] = value;
+    setVariablesData(updatedVariables);
+    setHasVariableChanges(true);
   };
 
-  const formatDate = dateString => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+  const handleRemoveVariable = index => {
+    const updatedVariables = variablesData.filter((_, i) => i !== index);
+    setVariablesData(updatedVariables);
+    setHasVariableChanges(true);
+  };
+
+  const handleAddVariable = () => {
+    if (newVariable.key.trim() && newVariable.value.trim()) {
+      setVariablesData([
+        ...variablesData,
+        {
+          key: newVariable.key.trim(),
+          value: newVariable.value.trim(),
+          id: Date.now(), // Temporary ID for new variables
+        },
+      ]);
+      setNewVariable({ key: '', value: '' });
+      setHasVariableChanges(true);
+    }
+  };
+
+  const handleSaveVariables = async () => {
+    try {
+      // Prepare variables data for API (convert to proper format)
+      const variablesToSave = variablesData.map(variable => ({
+        key: variable.key,
+        value: variable.value,
+        description: variable.description || '',
+        is_enabled: variable.is_enabled !== false,
+      }));
+
+      // Use unified save endpoint (handles both create and update)
+      const success = await saveVariables(environment.id, variablesToSave);
+
+      if (success) {
+        setHasVariableChanges(false);
+      }
+    } catch (error) {
+      console.error('Error saving variables:', error);
+    }
+  };
+
+  const handleCancelVariableChanges = () => {
+    setVariablesData(variables.map(v => ({ ...v })) || []);
+    setNewVariable({ key: '', value: '' });
+    setHasVariableChanges(false);
+  };
+
+  const handleActivate = async () => {
+    await activateEnvironment(environment.id);
   };
 
   return (
@@ -111,7 +178,7 @@ export default function EnvironmentDetail({
                 <div className={styles.metaItem}>
                   <span className={styles.metaLabel}>Created:</span>
                   <span className={styles.metaValue}>
-                    {formatDate(environment.created_at)}
+                    {formatDateTime(environment.created_at)}
                   </span>
                 </div>
                 <div className={styles.metaItem}>
@@ -257,21 +324,116 @@ export default function EnvironmentDetail({
           <div className={styles.variablesTab}>
             <div className={styles.variablesHeader}>
               <h3>Environment Variables</h3>
-              <Button
-                variant="primary"
-                size="small"
-                onClick={onCreateVariable}
-                disabled={isLoading}
-              >
-                + Add Variable
-              </Button>
+              {hasVariableChanges && (
+                <div className={styles.buttonGroup}>
+                  <Button
+                    variant="secondary"
+                    size="small"
+                    onClick={handleCancelVariableChanges}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="small"
+                    onClick={handleSaveVariables}
+                  >
+                    Save Changes
+                  </Button>
+                </div>
+              )}
             </div>
 
-            <VariableList
-              variables={variables}
-              environmentId={environment.id}
-              onEditVariable={onEditVariable}
-            />
+            {/* Variables Table */}
+            <div className={styles.variablesTable}>
+              {variablesData.length > 0 && (
+                <div className={styles.tableHeader}>
+                  <div className={styles.tableCell}>Key</div>
+                  <div className={styles.tableCell}>Value</div>
+                  <div className={styles.tableActions}>Actions</div>
+                </div>
+              )}
+
+              {variablesData.map((variable, index) => (
+                <div key={variable.id || index} className={styles.tableRow}>
+                  <div className={styles.tableCell}>
+                    <input
+                      type="text"
+                      value={variable.key}
+                      onChange={e =>
+                        handleVariableChange(index, 'key', e.target.value)
+                      }
+                      className={styles.tableInput}
+                      placeholder="Variable key"
+                    />
+                  </div>
+                  <div className={styles.tableCell}>
+                    <input
+                      type="text"
+                      value={variable.value}
+                      onChange={e =>
+                        handleVariableChange(index, 'value', e.target.value)
+                      }
+                      className={styles.tableInput}
+                      placeholder="Variable value"
+                    />
+                  </div>
+                  <div className={styles.tableActions}>
+                    <button
+                      onClick={() => handleRemoveVariable(index)}
+                      className={styles.removeButton}
+                      title="Remove variable"
+                    >
+                      ×
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              {/* Add new variable row */}
+              <div className={styles.tableRow}>
+                <div className={styles.tableCell}>
+                  <input
+                    type="text"
+                    value={newVariable.key}
+                    onChange={e =>
+                      setNewVariable({ ...newVariable, key: e.target.value })
+                    }
+                    className={styles.tableInput}
+                    placeholder="New variable key"
+                  />
+                </div>
+                <div className={styles.tableCell}>
+                  <input
+                    type="text"
+                    value={newVariable.value}
+                    onChange={e =>
+                      setNewVariable({ ...newVariable, value: e.target.value })
+                    }
+                    className={styles.tableInput}
+                    placeholder="New variable value"
+                  />
+                </div>
+                <div className={styles.tableActions}>
+                  <button
+                    onClick={handleAddVariable}
+                    className={styles.addButton}
+                    disabled={
+                      !newVariable.key.trim() || !newVariable.value.trim()
+                    }
+                    title="Add variable"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+
+              {variablesData.length === 0 && (
+                <div className={styles.emptyState}>
+                  No variables configured. Add one using the form above.
+                </div>
+              )}
+            </div>
           </div>
         ) : (
           <VariableResolutionPanel

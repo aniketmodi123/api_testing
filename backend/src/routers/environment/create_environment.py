@@ -65,8 +65,7 @@ async def create_environment(
                 variables_json[key] = {
                     "value": var_data.value,
                     "description": var_data.description,
-                    "is_enabled": var_data.is_enabled,
-                    "is_secret": var_data.is_secret
+                    "is_enabled": var_data.is_enabled
                 }
 
         # Create the environment
@@ -87,8 +86,6 @@ async def create_environment(
         if new_environment.variables:
             for key, var_data in new_environment.variables.items():
                 masked_var = var_data.copy()
-                if var_data.get('is_secret', False) and var_data.get('value'):
-                    masked_var['value'] = "***"
                 masked_variables[key] = masked_var
 
         data = {

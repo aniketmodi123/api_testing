@@ -24,7 +24,6 @@ export default function VariableModal({
     value: '',
     description: '',
     is_enabled: true,
-    is_secret: false,
   });
 
   const [errors, setErrors] = useState({});
@@ -38,7 +37,6 @@ export default function VariableModal({
         value: editingVariable.value || '',
         description: editingVariable.description || '',
         is_enabled: editingVariable.is_enabled,
-        is_secret: editingVariable.is_secret,
       });
     } else {
       setFormData({
@@ -46,7 +44,6 @@ export default function VariableModal({
         value: '',
         description: '',
         is_enabled: true,
-        is_secret: false,
       });
     }
     setErrors({});
@@ -221,24 +218,6 @@ export default function VariableModal({
                     <strong>Enabled</strong>
                     <span className={styles.checkboxDescription}>
                       When enabled, this variable can be used in API requests
-                    </span>
-                  </span>
-                </label>
-
-                <label className={styles.checkboxLabel}>
-                  <input
-                    type="checkbox"
-                    checked={formData.is_secret}
-                    onChange={e =>
-                      handleInputChange('is_secret', e.target.checked)
-                    }
-                    className={styles.checkbox}
-                  />
-                  <span className={styles.checkboxText}>
-                    <strong>Secret</strong>
-                    <span className={styles.checkboxDescription}>
-                      Hide the value in the interface (recommended for
-                      passwords, tokens, etc.)
                     </span>
                   </span>
                 </label>

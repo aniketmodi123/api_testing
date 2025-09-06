@@ -7,22 +7,27 @@ from config import (
     get_user_by_username
 )
 from models import Environment, Workspace
+from schema import (
+    VariablesSetRequest
+)
 from utils import (
     ExceptionHandler,
-    create_response
+    create_response,
+    value_correction
 )
 
 router = APIRouter()
 
 
-@router.delete("/workspace/{workspace_id}/environments/{environment_id}/variables")
-async def delete_environment_variables(
+@router.post("/workspace/{workspace_id}/environments/{environment_id}/variables")
+async def save_environment_variables(
     workspace_id: int,
     environment_id: int,
+    variables_data: VariablesSetRequest,
     username: str = FastAPIHeader(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Delete environment variables (similar to headers)"""
+    """Save environment variables (creates if not exists, updates if exists - similar to headers)"""
     try:
         # Get user
         user = await get_user_by_username(db, username)
@@ -40,7 +45,7 @@ async def delete_environment_variables(
         if not workspace:
             return create_response(206, error_message="Workspace not found or access denied")
 
-        # Get environment
+        # Verify environment exists in this workspace
         environment_result = await db.execute(
             select(Environment).where(
                 Environment.id == environment_id,
@@ -51,15 +56,30 @@ async def delete_environment_variables(
         if not environment:
             return create_response(206, error_message="Environment not found")
 
-        if not environment.variables:
-            return create_response(206, error_message="No variables found for this environment")
+        # Convert VariablesSetRequest to simple dict format for JSON storage
+        variables_dict = variables_data.variables  # Direct assignment since it's already Dict[str, str]
 
-        # Delete variables by setting to None/empty
-        environment.variables = None
+        # Determine if this is create or update
+        is_create = environment.variables is None or len(environment.variables) == 0
+
+        # Save variables (create or update)
+        environment.variables = variables_dict
 
         await db.commit()
+        await db.refresh(environment)
 
-        return create_response(200, {"message": "Variables deleted successfully"})
+        # Prepare response data (same format as list_variables.py)
+        data = {
+            "environment_id": environment.id,
+            "environment_name": environment.name,
+            "variables": variables_dict,
+            "created_at": environment.created_at,
+            "updated_at": environment.updated_at
+        }
+
+        # Return appropriate status code
+        status_code = 201 if is_create else 200
+        return create_response(status_code, value_correction(data))
 
     except Exception as e:
         await db.rollback()
