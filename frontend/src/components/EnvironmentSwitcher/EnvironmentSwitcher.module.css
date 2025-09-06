@@ -8,10 +8,10 @@
   align-items: center;
   gap: 8px;
   padding: 6px 12px;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--border);
   border-radius: 6px;
-  background: #ffffff;
-  color: #374151;
+  background: var(--background);
+  color: var(--text);
   font-size: 14px;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -20,8 +20,8 @@
 }
 
 .trigger:hover {
-  border-color: #9ca3af;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  border-color: var(--text-muted);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 .trigger:disabled {
@@ -30,7 +30,7 @@
 }
 
 .trigger.open {
-  border-color: #3b82f6;
+  border-color: var(--primary);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
@@ -52,32 +52,32 @@
 
 .environmentName {
   font-weight: 500;
-  color: #111827;
+  color: var(--text);
   text-overflow: ellipsis;
   overflow: hidden;
   white-space: nowrap;
 }
 
 .noActive {
-  color: #9ca3af;
+  color: var(--text-muted);
   font-style: italic;
 }
 
 .noEnvironments {
   padding: 6px 12px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border);
   border-radius: 6px;
-  background: #f9fafb;
+  background: var(--background-lighter);
 }
 
 .label {
-  color: #9ca3af;
+  color: var(--text-muted);
   font-size: 14px;
   font-style: italic;
 }
 
 .chevron {
-  color: #6b7280;
+  color: var(--text-muted);
   transition: transform 0.2s ease;
   flex-shrink: 0;
 }
@@ -92,12 +92,12 @@
   left: 0;
   right: 0;
   margin-top: 4px;
-  background: #ffffff;
-  border: 1px solid #d1d5db;
+  background: var(--background);
+  border: 1px solid var(--border);
   border-radius: 8px;
   box-shadow:
-    0 10px 15px -3px rgba(0, 0, 0, 0.1),
-    0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    0 10px 15px -3px rgba(0, 0, 0, 0.3),
+    0 4px 6px -2px rgba(0, 0, 0, 0.2);
   z-index: 1000;
   max-height: 300px;
   overflow: hidden;
@@ -117,14 +117,14 @@
 
 .dropdownHeader {
   padding: 12px 16px;
-  border-bottom: 1px solid #e5e7eb;
-  background: #f9fafb;
+  border-bottom: 1px solid var(--border);
+  background: var(--background-lighter);
 }
 
 .dropdownTitle {
   font-size: 12px;
   font-weight: 600;
-  color: #374151;
+  color: var(--text);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -135,7 +135,9 @@
 }
 
 .environmentOption {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   width: 100%;
   padding: 12px 16px;
   border: none;
@@ -143,11 +145,11 @@
   text-align: left;
   cursor: pointer;
   transition: background-color 0.2s ease;
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid var(--border);
 }
 
 .environmentOption:hover {
-  background: #f9fafb;
+  background: var(--hover-background);
 }
 
 .environmentOption:disabled {
@@ -156,11 +158,11 @@
 }
 
 .environmentOption.active {
-  background: #eff6ff;
+  background: var(--selected-item-background);
 }
 
 .environmentOption.active:hover {
-  background: #dbeafe;
+  background: var(--hover-background);
 }
 
 .environmentOption:last-child {
@@ -182,7 +184,7 @@
 
 .optionName {
   font-weight: 500;
-  color: #111827;
+  color: var(--text);
   font-size: 14px;
 }
 
@@ -257,14 +259,14 @@
 }
 
 .environmentList::-webkit-scrollbar-track {
-  background: #f3f4f6;
+  background: var(--scrollbar-track-color);
 }
 
 .environmentList::-webkit-scrollbar-thumb {
-  background: #d1d5db;
+  background: var(--scrollbar-thumb-color);
   border-radius: 3px;
 }
 
 .environmentList::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
+  background: var(--scrollbar-thumb-hover-color);
 }

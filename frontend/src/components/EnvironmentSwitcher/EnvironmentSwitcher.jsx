@@ -81,9 +81,9 @@ export default function EnvironmentSwitcher() {
 
       {isOpen && (
         <div className={styles.dropdown}>
-          <div className={styles.dropdownHeader}>
+          {/* <div className={styles.dropdownHeader}>
             <span className={styles.dropdownTitle}>Switch Environment</span>
-          </div>
+          </div> */}
 
           <div className={styles.environmentList}>
             {environments.map(environment => (
@@ -95,42 +95,15 @@ export default function EnvironmentSwitcher() {
                 onClick={() => handleEnvironmentSelect(environment.id)}
                 disabled={isLoading}
               >
-                <div className={styles.environmentInfo}>
-                  <div className={styles.environmentHeader}>
-                    <span className={styles.optionName}>
-                      {environment.name}
-                    </span>
-                    {environment.id === activeEnvironment?.id && (
-                      <span className={styles.activeIndicator}>
-                        <span className={styles.activeText}>Active</span>
-                      </span>
-                    )}
-                  </div>
-
-                  {environment.description && (
-                    <span className={styles.optionDescription}>
-                      {environment.description}
-                    </span>
-                  )}
-
-                  <div className={styles.environmentMeta}>
-                    <span className={styles.variableCount}>
-                      {environment.variables?.length || 0} variable
-                      {(environment.variables?.length || 0) !== 1 ? 's' : ''}
-                    </span>
-                  </div>
-                </div>
+                <span className={styles.optionName}>{environment.name}</span>
+                {environment.id === activeEnvironment?.id && (
+                  <span className={styles.activeIndicator}>
+                    <span className={styles.activeText}>Active</span>
+                  </span>
+                )}
               </button>
             ))}
           </div>
-
-          {environments.some(env => !env.is_active) && (
-            <div className={styles.dropdownFooter}>
-              <div className={styles.footerText}>
-                Click to activate a different environment
-              </div>
-            </div>
-          )}
         </div>
       )}
     </div>

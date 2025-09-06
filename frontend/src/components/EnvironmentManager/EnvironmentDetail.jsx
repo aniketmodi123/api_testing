@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useEnvironment } from '../../store/environment';
 import { Button } from '../common';
-import CreateVariableModal from './CreateVariableModal';
 import styles from './EnvironmentDetail.module.css';
 import VariableList from './VariableList';
 import VariableResolutionPanel from './VariableResolutionPanel';
@@ -10,20 +9,22 @@ export default function EnvironmentDetail({
   environment,
   variables,
   isActive,
+  onCreateVariable,
+  onEditVariable,
+  onEditEnvironment,
 }) {
   const { updateEnvironment, activateEnvironment, isLoading } =
     useEnvironment();
 
   // Local state
+  const [activeTab, setActiveTab] = useState('variables'); // 'variables' or 'preview'
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({
     name: environment.name,
     description: environment.description || '',
   });
-  const [showCreateVariableModal, setShowCreateVariableModal] = useState(false);
-  const [activeTab, setActiveTab] = useState('variables'); // 'variables' or 'preview'
 
-  // Handle environment info editing
+  // Handle inline editing
   const handleEditToggle = () => {
     if (isEditing) {
       // Reset form when canceling
@@ -87,24 +88,6 @@ export default function EnvironmentDetail({
                 rows={2}
                 maxLength={500}
               />
-              <div className={styles.editActions}>
-                <Button
-                  variant="secondary"
-                  size="small"
-                  onClick={handleEditToggle}
-                  disabled={isLoading}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  variant="primary"
-                  size="small"
-                  onClick={handleSaveEnvironment}
-                  disabled={isLoading || !editForm.name.trim()}
-                >
-                  Save
-                </Button>
-              </div>
             </div>
           ) : (
             <div className={styles.viewInfo}>
@@ -143,37 +126,32 @@ export default function EnvironmentDetail({
           )}
         </div>
 
-        {!isEditing && (
-          <div className={styles.headerActions}>
-            <Button
-              variant="secondary"
-              size="small"
-              onClick={handleEditToggle}
-              disabled={isLoading}
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
+        <div className={styles.headerActions}>
+          {isEditing ? (
+            <>
+              <Button
+                variant="secondary"
+                size="small"
+                onClick={handleEditToggle}
+                disabled={isLoading}
               >
-                <path
-                  d="M11 4H4C3.46957 4 2.96086 4.21071 2.58579 4.58579C2.21071 4.96086 2 5.46957 2 6V20C2 20.5304 2.21071 21.0391 2.58579 21.4142C2.96086 21.7893 3.46957 22 4 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V13M18.5 2.5C18.8978 2.10217 19.4374 1.87868 20 1.87868C20.5626 1.87868 21.1022 2.10217 21.5 2.5C21.8978 2.89783 22.1213 3.43739 22.1213 4C22.1213 4.56261 21.8978 5.10217 21.5 5.5L12 15L8 16L9 12L18.5 2.5Z"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-              Edit
-            </Button>
-
-            {!isActive && (
+                Cancel
+              </Button>
               <Button
                 variant="primary"
                 size="small"
-                onClick={handleActivate}
+                onClick={handleSaveEnvironment}
+                disabled={isLoading || !editForm.name.trim()}
+              >
+                Save
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                variant="secondary"
+                size="small"
+                onClick={handleEditToggle}
                 disabled={isLoading}
               >
                 <svg
@@ -184,15 +162,41 @@ export default function EnvironmentDetail({
                   xmlns="http://www.w3.org/2000/svg"
                 >
                   <path
-                    d="M12 2L15.09 8.26L22 9L17 14L18.18 21L12 17.77L5.82 21L7 14L2 9L8.91 8.26L12 2Z"
-                    fill="currentColor"
+                    d="M11 4H4C3.46957 4 2.96086 4.21071 2.58579 4.58579C2.21071 4.96086 2 5.46957 2 6V20C2 20.5304 2.21071 21.0391 2.58579 21.4142C2.96086 21.7893 3.46957 22 4 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V13M18.5 2.5C18.8978 2.10217 19.4374 1.87868 20 1.87868C20.5626 1.87868 21.1022 2.10217 21.5 2.5C21.8978 2.89783 22.1213 3.43739 22.1213 4C22.1213 4.56261 21.8978 5.10217 21.5 5.5L12 15L8 16L9 12L18.5 2.5Z"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
                   />
                 </svg>
-                Activate
+                Edit
               </Button>
-            )}
-          </div>
-        )}
+
+              {!isActive && (
+                <Button
+                  variant="primary"
+                  size="small"
+                  onClick={handleActivate}
+                  disabled={isLoading}
+                >
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      d="M12 2L15.09 8.26L22 9L17 14L18.18 21L12 17.77L5.82 21L7 14L2 9L8.91 8.26L12 2Z"
+                      fill="currentColor"
+                    />
+                  </svg>
+                  Activate
+                </Button>
+              )}
+            </>
+          )}
+        </div>
       </div>
 
       {/* Tabs */}
@@ -256,7 +260,7 @@ export default function EnvironmentDetail({
               <Button
                 variant="primary"
                 size="small"
-                onClick={() => setShowCreateVariableModal(true)}
+                onClick={onCreateVariable}
                 disabled={isLoading}
               >
                 + Add Variable
@@ -266,6 +270,7 @@ export default function EnvironmentDetail({
             <VariableList
               variables={variables}
               environmentId={environment.id}
+              onEditVariable={onEditVariable}
             />
           </div>
         ) : (
@@ -275,15 +280,6 @@ export default function EnvironmentDetail({
           />
         )}
       </div>
-
-      {/* Modals */}
-      {showCreateVariableModal && (
-        <CreateVariableModal
-          environmentId={environment.id}
-          existingKeys={variables.map(v => v.key)}
-          onClose={() => setShowCreateVariableModal(false)}
-        />
-      )}
     </div>
   );
 }

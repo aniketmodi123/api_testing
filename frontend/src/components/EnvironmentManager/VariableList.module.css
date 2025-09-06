@@ -25,12 +25,12 @@
   margin: 0 0 8px 0;
   font-size: 18px;
   font-weight: 600;
-  color: #111827;
+  color: var(--text);
 }
 
 .emptyState p {
   margin: 0;
-  color: #6b7280;
+  color: var(--text-muted);
   line-height: 1.5;
   max-width: 300px;
 }
@@ -49,12 +49,12 @@
 
 /* Table Header */
 .table th {
-  background: #f9fafb;
-  border-bottom: 1px solid #e5e7eb;
+  background: var(--background-lighter);
+  border-bottom: 1px solid var(--border);
   padding: 12px 16px;
   text-align: left;
   font-weight: 600;
-  color: #374151;
+  color: var(--text);
   position: sticky;
   top: 0;
   z-index: 1;
@@ -89,12 +89,12 @@
 
 /* Table Rows */
 .row {
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid var(--border);
   transition: background-color 0.2s ease;
 }
 
 .row:hover {
-  background: #f9fafb;
+  background: var(--hover-background);
 }
 
 .row.disabled {
@@ -102,7 +102,7 @@
 }
 
 .row.disabled:hover {
-  background: #f3f4f6;
+  background: var(--hover-background);
 }
 
 /* Table Cells */
@@ -132,12 +132,12 @@
 
 .keyText {
   font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
-  color: #111827;
+  color: var(--text);
 }
 
 .disabledIndicator {
   font-size: 11px;
-  color: #9ca3af;
+  color: var(--text-muted);
   font-style: italic;
 }
 
@@ -150,13 +150,13 @@
 
 .valueText {
   font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
-  color: #374151;
+  color: var(--text);
   word-break: break-all;
 }
 
 .secretValue {
   font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
-  color: #9ca3af;
+  color: var(--text-muted);
   font-style: italic;
 }
 

@@ -1,35 +1,36 @@
 import { useState } from 'react';
 import { useEnvironment } from '../../store/environment';
 import { Button } from '../common';
-import CreateEnvironmentModal from './CreateEnvironmentModal';
-import EnvironmentDetail from './EnvironmentDetail';
 import styles from './EnvironmentManager.module.css';
 import EnvironmentSelector from './EnvironmentSelector';
 
-export default function EnvironmentManager() {
+export default function EnvironmentManager({
+  onEnvironmentSelect,
+  onCreateEnvironment,
+  onEditEnvironment,
+}) {
   const {
     environments,
     activeEnvironment,
     selectedEnvironment,
-    variables,
     isLoading,
     error,
     selectEnvironment,
     activateEnvironment,
     deleteEnvironment,
-    createEnvironment,
-    createEnvironmentFromTemplate,
-    updateEnvironment,
   } = useEnvironment();
 
   // Modal states
-  const [showCreateModal, setShowCreateModal] = useState(false);
   const [environmentToDelete, setEnvironmentToDelete] = useState(null);
-  const [environmentToEdit, setEnvironmentToEdit] = useState(null);
 
   // Handle environment selection
   const handleSelectEnvironment = environment => {
     selectEnvironment(environment);
+
+    // Notify parent component about environment selection
+    if (onEnvironmentSelect) {
+      onEnvironmentSelect(environment);
+    }
   };
 
   // Handle environment activation
@@ -42,24 +43,17 @@ export default function EnvironmentManager() {
     setEnvironmentToDelete(environment);
   };
 
-  // Handle environment editing
-  const handleEditEnvironment = environment => {
-    setEnvironmentToEdit(environment);
+  // Handle environment creation
+  const handleCreateEnvironment = () => {
+    if (onCreateEnvironment) {
+      onCreateEnvironment();
+    }
   };
 
-  // Handle update environment
-  const handleUpdateEnvironment = async environmentData => {
-    try {
-      const success = await updateEnvironment(
-        environmentToEdit.id,
-        environmentData
-      );
-      if (success) {
-        setEnvironmentToEdit(null);
-      }
-    } catch (error) {
-      console.error('Error updating environment:', error);
-      // Keep modal open if there's an error
+  // Handle environment editing
+  const handleEditEnvironment = environment => {
+    if (onEditEnvironment) {
+      onEditEnvironment(environment);
     }
   };
 
@@ -67,29 +61,6 @@ export default function EnvironmentManager() {
     if (environmentToDelete) {
       await deleteEnvironment(environmentToDelete.id);
       setEnvironmentToDelete(null);
-    }
-  };
-
-  // Handle create custom environment
-  const handleCreateEnvironment = async environmentData => {
-    try {
-      // Extract default variables and format for backend
-      const { defaultVariables, ...envData } = environmentData;
-
-      // Format the environment data for the backend API
-      const backendEnvData = {
-        ...envData,
-        variables: defaultVariables || [], // Include variables in the format backend expects
-      };
-
-      const newEnvironment = await createEnvironment(backendEnvData);
-
-      if (newEnvironment) {
-        setShowCreateModal(false);
-      }
-    } catch (error) {
-      console.error('Error creating environment:', error);
-      // Keep modal open if there's an error
     }
   };
 
@@ -116,7 +87,7 @@ export default function EnvironmentManager() {
           <Button
             variant="primary"
             size="small"
-            onClick={() => setShowCreateModal(true)}
+            onClick={handleCreateEnvironment}
             disabled={isLoading}
           >
             +
@@ -143,71 +114,23 @@ export default function EnvironmentManager() {
               Create your first environment to manage variables for different
               stages of your API testing workflow.
             </p>
-            <div className={styles.emptyActions}>
-              <Button
-                variant="primary"
-                onClick={() => setShowCreateModal(true)}
-                disabled={isLoading}
-              >
-                Create Environment
-              </Button>
-            </div>
           </div>
         ) : (
-          /* Environment List and Details */
+          /* Environment List Only */
           <div className={styles.environmentContent}>
-            <div className={styles.leftPanel}>
-              <EnvironmentSelector
-                environments={environments}
-                activeEnvironment={activeEnvironment}
-                selectedEnvironment={selectedEnvironment}
-                onSelectEnvironment={handleSelectEnvironment}
-                onActivateEnvironment={handleActivateEnvironment}
-                onDeleteEnvironment={handleDeleteEnvironment}
-                onEditEnvironment={handleEditEnvironment}
-                isLoading={isLoading}
-              />
-            </div>
-
-            <div className={styles.rightPanel}>
-              {selectedEnvironment ? (
-                <EnvironmentDetail
-                  environment={selectedEnvironment}
-                  variables={variables}
-                  isActive={activeEnvironment?.id === selectedEnvironment.id}
-                />
-              ) : (
-                <div className={styles.noSelection}>
-                  <div className={styles.noSelectionIcon}>📝</div>
-                  <h3>Select an environment</h3>
-                  <p>
-                    Choose an environment from the list to view and manage its
-                    variables.
-                  </p>
-                </div>
-              )}
-            </div>
+            <EnvironmentSelector
+              environments={environments}
+              activeEnvironment={activeEnvironment}
+              selectedEnvironment={selectedEnvironment}
+              onSelectEnvironment={handleSelectEnvironment}
+              onActivateEnvironment={handleActivateEnvironment}
+              onDeleteEnvironment={handleDeleteEnvironment}
+              onEditEnvironment={handleEditEnvironment}
+              isLoading={isLoading}
+            />
           </div>
         )}
       </div>
-
-      {/* Modals */}
-      {showCreateModal && (
-        <CreateEnvironmentModal
-          onClose={() => setShowCreateModal(false)}
-          onSave={handleCreateEnvironment}
-        />
-      )}
-
-      {/* Edit Environment Modal */}
-      {environmentToEdit && (
-        <CreateEnvironmentModal
-          onClose={() => setEnvironmentToEdit(null)}
-          onSave={handleUpdateEnvironment}
-          initialData={environmentToEdit}
-          isEdit={true}
-        />
-      )}
 
       {/* Delete Confirmation */}
       {environmentToDelete && (

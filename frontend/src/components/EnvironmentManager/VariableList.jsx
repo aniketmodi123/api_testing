@@ -2,7 +2,11 @@ import { useState } from 'react';
 import { useEnvironment } from '../../store/environment';
 import styles from './VariableList.module.css';
 
-export default function VariableList({ variables, environmentId }) {
+export default function VariableList({
+  variables,
+  environmentId,
+  onEditVariable,
+}) {
   const { updateVariable, deleteVariable, validateVariableKey, isLoading } =
     useEnvironment();
 
@@ -46,17 +50,28 @@ export default function VariableList({ variables, environmentId }) {
       return;
     }
 
-    const success = await updateVariable(variableId, {
-      key: editForm.key.trim(),
-      value: editForm.value,
-      description: editForm.description.trim() || null,
-      is_enabled: editForm.is_enabled,
-      is_secret: editForm.is_secret,
-    });
+    try {
+      const success = await updateVariable(variableId, {
+        key: editForm.key.trim(),
+        value: editForm.value,
+        description: editForm.description.trim() || null,
+        is_enabled: editForm.is_enabled,
+        is_secret: editForm.is_secret,
+      });
 
-    if (success) {
-      setEditingVariable(null);
-      setEditForm({});
+      if (success) {
+        setEditingVariable(null);
+        setEditForm({});
+      }
+    } catch (error) {
+      console.error('Error updating variable:', error);
+      const errorMessage =
+        error.response?.data?.error_message ||
+        error.response?.data?.detail ||
+        error.response?.data?.message ||
+        error.message ||
+        'Failed to update variable';
+      alert(errorMessage);
     }
   };
 
@@ -68,15 +83,37 @@ export default function VariableList({ variables, environmentId }) {
   };
 
   const toggleEnabled = async variable => {
-    await updateVariable(variable.id, {
-      is_enabled: !variable.is_enabled,
-    });
+    try {
+      await updateVariable(variable.id, {
+        is_enabled: !variable.is_enabled,
+      });
+    } catch (error) {
+      console.error('Error toggling variable enabled state:', error);
+      const errorMessage =
+        error.response?.data?.error_message ||
+        error.response?.data?.detail ||
+        error.response?.data?.message ||
+        error.message ||
+        'Failed to update variable';
+      alert(errorMessage);
+    }
   };
 
   const toggleSecret = async variable => {
-    await updateVariable(variable.id, {
-      is_secret: !variable.is_secret,
-    });
+    try {
+      await updateVariable(variable.id, {
+        is_secret: !variable.is_secret,
+      });
+    } catch (error) {
+      console.error('Error toggling variable secret state:', error);
+      const errorMessage =
+        error.response?.data?.error_message ||
+        error.response?.data?.detail ||
+        error.response?.data?.message ||
+        error.message ||
+        'Failed to update variable';
+      alert(errorMessage);
+    }
   };
 
   // Safety check to ensure variables is always an array
@@ -335,7 +372,9 @@ export default function VariableList({ variables, environmentId }) {
                     <div className={styles.viewActions}>
                       <button
                         className={styles.actionButton}
-                        onClick={() => startEditing(variable)}
+                        onClick={() =>
+                          onEditVariable && onEditVariable(variable)
+                        }
                         disabled={isLoading}
                         title="Edit variable"
                       >

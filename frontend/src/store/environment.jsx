@@ -117,8 +117,9 @@ export const EnvironmentProvider = ({ children }) => {
       showSuccess(`Environment "${newEnvironment.name}" created successfully`);
       return newEnvironment;
     } catch (error) {
-      handleError(error, 'Failed to create environment');
-      return false;
+      // Don't set global error for create/update operations - let EnvironmentManager handle it
+      console.error('Failed to create environment', error);
+      throw error;
     } finally {
       setIsLoading(false);
     }
@@ -195,8 +196,9 @@ export const EnvironmentProvider = ({ children }) => {
       );
       return updatedEnvironment;
     } catch (error) {
-      handleError(error, 'Failed to update environment');
-      return false;
+      // Don't set global error for create/update operations - let EnvironmentManager handle it
+      console.error('Failed to update environment', error);
+      throw error;
     } finally {
       setIsLoading(false);
     }
@@ -342,8 +344,9 @@ export const EnvironmentProvider = ({ children }) => {
       showSuccess(`Variable "${newVariable.key}" created successfully`);
       return newVariable;
     } catch (error) {
-      handleError(error, 'Failed to create variable');
-      return false;
+      // Don't set global error for create/update operations - let components handle it
+      console.error('Failed to create variable', error);
+      throw error;
     } finally {
       setIsLoading(false);
     }
@@ -380,8 +383,9 @@ export const EnvironmentProvider = ({ children }) => {
       showSuccess(`Variable "${updatedVariable.key}" updated successfully`);
       return updatedVariable;
     } catch (error) {
-      handleError(error, 'Failed to update variable');
-      return false;
+      // Don't set global error for create/update operations - let components handle it
+      console.error('Failed to update variable', error);
+      throw error;
     } finally {
       setIsLoading(false);
     }
