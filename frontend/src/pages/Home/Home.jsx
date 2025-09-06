@@ -25,6 +25,10 @@ export default function Home() {
   const [showEnvironmentForm, setShowEnvironmentForm] = useState(false);
   const [editingEnvironment, setEditingEnvironment] = useState(null);
 
+  // Resize functionality
+  const [sidePanelWidth, setSidePanelWidth] = useState(250);
+  const [isResizing, setIsResizing] = useState(false);
+
   // Use the workspace context instead of local state
   const { activeWorkspace, workspaceTree, setShouldLoadWorkspaces } =
     useWorkspace(); // Use node context for managing nodes/folders
@@ -136,6 +140,42 @@ export default function Home() {
     setEditingVariable(null);
   };
 
+  // Resize handlers
+  const handleMouseDown = e => {
+    setIsResizing(true);
+    e.preventDefault();
+  };
+
+  const handleMouseMove = e => {
+    if (!isResizing) return;
+
+    const newWidth = e.clientX;
+    if (newWidth >= 200 && newWidth <= 500) {
+      setSidePanelWidth(newWidth);
+    }
+  };
+
+  const handleMouseUp = () => {
+    setIsResizing(false);
+  };
+
+  // Add mouse event listeners for resize
+  useEffect(() => {
+    if (isResizing) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isResizing]);
+
   return (
     <div className={styles.homeContainer}>
       <div className={styles.mainContent}>
@@ -143,7 +183,10 @@ export default function Home() {
         <Sidebar onTabChange={handleTabChange} />
 
         {/* Collection or Environment Panel based on active tab */}
-        <div className={styles.sidePanel}>
+        <div
+          className={styles.sidePanel}
+          style={{ width: `${sidePanelWidth}px` }}
+        >
           {activeTab === 'collections' ? (
             <CollectionTree onSelectRequest={handleSelectRequest} />
           ) : (
@@ -154,6 +197,12 @@ export default function Home() {
             />
           )}
         </div>
+
+        {/* Resize Handle */}
+        <div
+          className={styles.resizeHandle}
+          onMouseDown={handleMouseDown}
+        ></div>
 
         {/* Main Content Area */}
         <div className={styles.contentPanel}>

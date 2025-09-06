@@ -19,11 +19,29 @@
 
 /* Side Panel (for Collection Tree or Environments) */
 .sidePanel {
-  width: 250px;
+  min-width: 200px;
+  max-width: 500px;
   background-color: var(--background-lighter);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
+}
+
+/* Resize Handle */
+.resizeHandle {
+  width: 4px;
+  background-color: transparent;
+  cursor: col-resize;
+  position: relative;
+  transition: background-color 0.2s ease;
+}
+
+.resizeHandle:hover {
+  background-color: var(--primary);
+}
+
+.resizeHandle:active {
+  background-color: var(--primary-dark);
 }
 
 /* Environment Panel */
