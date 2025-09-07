@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api } from '../../api';
-import { headerService } from '../../services/headerService';
+import { BackendApiCallService } from '../../services/backendApiCallService';
 import { useApi } from '../../store/api';
 import { useEnvironment } from '../../store/environment';
 import { useNode } from '../../store/node';
 import { TestCaseForm } from '../TestCaseForm';
 import TestResultsGrid from '../TestResultsGrid';
-import { Button, JsonEditor } from '../common';
+import { Button, JsonEditor, VariableInput } from '../common';
 import styles from './RequestPanel.module.css';
 import './buttonStyles.css';
 import './dropdown.css';
@@ -177,7 +176,7 @@ function normalizeBody(bodyContent, bodyType) {
 
 export default function RequestPanel({ activeRequest }) {
   const { selectedNode, getNodeById } = useNode();
-  const { resolveApiRequest } = useEnvironment();
+  const { variables, activeEnvironment } = useEnvironment();
   const {
     getApi,
     getTestCases,
@@ -208,6 +207,37 @@ export default function RequestPanel({ activeRequest }) {
   const [bodyType, setBodyType] = useState('JSON');
   const [validationSchema, setValidationSchema] = useState('');
   const [requestHeight, setRequestHeight] = useState(200); // Default height for request section
+
+  // Local cache for folder headers to avoid repeated backend calls
+  const [folderHeadersCache, setFolderHeadersCache] = useState(new Map());
+
+  // Function to get folder headers with caching
+  const getFolderHeaders = async headerNodeId => {
+    if (!headerNodeId) return {};
+
+    // Check cache first
+    if (folderHeadersCache.has(headerNodeId)) {
+      console.log('📦 Using cached headers for node:', headerNodeId);
+      return folderHeadersCache.get(headerNodeId);
+    }
+
+    try {
+      console.log('📡 Fetching headers from backend for node:', headerNodeId);
+      const headersResponse = await headerService.getHeaders(headerNodeId);
+      const headers = headersResponse?.data?.content || {};
+
+      // Cache the result
+      setFolderHeadersCache(prev => new Map(prev.set(headerNodeId, headers)));
+
+      console.log('📋 Headers fetched and cached:', headers);
+      return headers;
+    } catch (error) {
+      console.warn('⚠️ Could not fetch headers for node:', headerNodeId, error);
+      // Cache empty result to avoid repeated failed requests
+      setFolderHeadersCache(prev => new Map(prev.set(headerNodeId, {})));
+      return {};
+    }
+  };
 
   // State for detailed test result modal
   const [showDetailedResult, setShowDetailedResult] = useState(false);
@@ -479,278 +509,60 @@ export default function RequestPanel({ activeRequest }) {
     setIsSending(true);
 
     try {
-      // Prepare request data for variable resolution
-      const requestData = {
+      console.log('🚀 Making API call via backend service:', {
+        fileId: selectedNode?.id,
+        environmentId: activeEnvironment?.id,
+        method: method,
         url: url,
-        method: method,
-        headers: extractValue(activeApi, 'headers', {}),
-        params: extractValue(activeApi, 'params', {}),
-        body:
-          method !== 'GET'
-            ? extractValue(activeApi, 'request_body', {})
-            : undefined,
-      };
-
-      // Resolve environment variables
-      const resolvedRequest = await resolveApiRequest(requestData);
-
-      // Use resolved values
-      const resolvedUrl = resolvedRequest.url;
-      const resolvedHeaders = resolvedRequest.headers;
-      const resolvedParams = resolvedRequest.params;
-      const resolvedBody = resolvedRequest.body;
-
-      // Check if this is an ngrok URL
-      const isNgrokUrl =
-        resolvedUrl &&
-        (resolvedUrl.includes('.ngrok.') ||
-          resolvedUrl.includes('ngrok-free.app'));
-
-      console.log('🚀 Making API call:', {
-        url: resolvedUrl,
-        method: method,
-        isNgrokUrl,
-        originalUrl: url,
-        resolved: resolvedRequest,
       });
 
-      if (isNgrokUrl) {
-        // Make direct API call from frontend for ngrok URLs
-        console.log('🔗 Making direct frontend call to ngrok URL');
+      const response = await BackendApiCallService.executeApiCall({
+        fileId: selectedNode?.id,
+        environmentId: activeEnvironment?.id,
+        method: method,
+        url: url,
+        headers: extractValue(activeApi, 'headers', {}),
+        params: extractValue(activeApi, 'params', {}),
+        body: method !== 'GET' ? normalizeBody(bodyContent, bodyType) : null,
+      });
 
-        // First, fetch headers from backend for this API's parent folder
-        let backendHeaders = {};
-        if (selectedNode?.id) {
-          try {
-            // Determine which ID to use for header fetching
-            // If it's a file, use its parent_id (folder), if it's a folder, use its own id
-            let headerNodeId = selectedNode.id;
-            if (selectedNode.type === 'file' && selectedNode.parent_id) {
-              headerNodeId = selectedNode.parent_id;
-              console.log(
-                '📁 File detected, using parent folder ID for headers:',
-                headerNodeId,
-                '(file ID:',
-                selectedNode.id,
-                ')'
-              );
-            } else {
-              console.log(
-                '📂 Using node ID for headers:',
-                headerNodeId,
-                '(type:',
-                selectedNode.type,
-                ')'
-              );
-            }
+      console.log('✅ Backend API call successful:', response);
 
-            console.log(
-              '📡 Fetching headers from backend for headerNodeId:',
-              headerNodeId
-            );
-            const headersResponse =
-              await headerService.getHeaders(headerNodeId);
-            backendHeaders = headersResponse?.data?.content || {};
-            console.log(
-              '📋 Backend headers fetched successfully:',
-              backendHeaders
-            );
+      // Format response for display to match UI expectations
+      const formattedResponse = {
+        status: response.data?.status_code || 200,
+        statusText: response.data?.status_code < 300 ? 'OK' : 'Error',
+        time: `${response.data?.execution_time || 0}ms`,
+        size: response.data?.text
+          ? `${new Blob([response.data.text]).size} bytes`
+          : '0 bytes',
+        headers: response.data?.headers || {},
+        body: response.data?.json || response.data?.text || '',
+        // Keep additional data for reference
+        raw_response: response.data,
+        resolved_url: response.data?.resolved_url || url,
+        variables_used: response.data?.variables_used || {},
+        folder_headers: response.data?.folder_headers || {},
+      };
 
-            if (Object.keys(backendHeaders).length === 0) {
-              console.log('ℹ️ No backend headers found for this API');
-            }
-          } catch (headerError) {
-            console.warn('⚠️ Could not fetch backend headers:', headerError);
-            console.log(
-              'Will proceed with form headers and ngrok headers only'
-            );
-          }
-        } else {
-          console.log(
-            '⚠️ No selectedNode.id available, skipping backend header fetch'
-          );
-        }
-
-        // Merge backend headers with resolved form headers and ngrok headers
-        console.log('🔧 Merging headers with priority order:');
-        console.log('  1️⃣ Backend headers (lowest priority):', backendHeaders);
-        console.log(
-          '  2️⃣ Resolved form headers (medium priority):',
-          resolvedHeaders
-        );
-
-        const ngrokHeaders = addNgrokHeadersIfNeeded(resolvedUrl, {});
-        console.log('  3️⃣ Ngrok headers (highest priority):', ngrokHeaders);
-
-        const mergedHeaders = {
-          'Content-Type': 'application/json',
-          ...backendHeaders, // Backend API-level headers (lowest priority)
-          ...resolvedHeaders, // Resolved form headers (medium priority)
-          ...ngrokHeaders, // Ngrok headers (highest priority)
-        };
-
-        console.log('🎯 Final merged headers for direct call:', mergedHeaders);
-        console.log(
-          '📊 Total header count:',
-          Object.keys(mergedHeaders).length
-        );
-
-        const requestConfig = {
-          method: method,
-          headers: mergedHeaders,
-        };
-
-        // Add query parameters using resolved params
-        let finalUrl = resolvedUrl;
-        const searchParams = new URLSearchParams();
-
-        // Add resolved query parameters
-        if (resolvedParams && Object.keys(resolvedParams).length > 0) {
-          Object.entries(resolvedParams).forEach(([key, value]) => {
-            if (value !== null && value !== undefined && value !== '') {
-              searchParams.append(key, value);
-            }
-          });
-        }
-
-        // Append query parameters to URL
-        const queryString = searchParams.toString();
-        if (queryString) {
-          finalUrl += (finalUrl.includes('?') ? '&' : '?') + queryString;
-        }
-
-        // Add body for non-GET requests using resolved body
-        if (method !== 'GET' && resolvedBody) {
-          try {
-            requestConfig.body =
-              typeof resolvedBody === 'string'
-                ? resolvedBody
-                : JSON.stringify(resolvedBody);
-          } catch (e) {
-            requestConfig.body = resolvedBody;
-          }
-        }
-
-        const startTime = Date.now();
-
-        // Log the actual request being sent
-        console.log('🚀 About to send fetch request:');
-        console.log('  📍 URL:', finalUrl);
-        console.log('  🔧 Method:', requestConfig.method);
-        console.log('  📋 Headers being sent:', requestConfig.headers);
-        console.log('  📦 Body:', requestConfig.body || 'No body');
-
-        const response = await fetch(finalUrl, requestConfig);
-        const duration = Date.now() - startTime;
-
-        const responseText = await response.text();
-        let responseData;
-        try {
-          responseData = JSON.parse(responseText);
-        } catch (e) {
-          responseData = responseText;
-        }
-
-        // Enhanced logging for debugging
-        console.log('📥 Response received:');
-        console.log('  🔢 Status:', response.status);
-        console.log('  📝 Status Text:', response.statusText);
-        console.log('  📄 Raw Text:', responseText);
-        console.log('  🔧 Parsed Data:', responseData);
-        console.log('  ⏱️ Duration:', `${duration}ms`);
-
-        // For direct API calls, don't redirect on 401 - just show the response
-        if (response.status === 401) {
-          console.log(
-            '🔒 Direct API call returned 401 (External API authorization required)'
-          );
-        } else if (response.status === 206) {
-          console.log(
-            'ℹ️ Direct API call returned 206 (Partial Content/No New Data)'
-          );
-        } else {
-          console.log('✅ Direct API call successful');
-        }
-
-        // Set the response for display
-        const responseObject = {
-          statusCode: response.status,
-          statusText: response.statusText,
-          body: responseData,
-          headers: Object.fromEntries(response.headers.entries()),
-          responseTime: `${duration}ms`,
-        };
-
-        console.log('🎯 Setting response object:', responseObject);
-        setResponse(responseObject);
-      } else {
-        // Use backend for non-ngrok URLs (existing axios logic)
-        const requestConfig = {
-          method: method.toLowerCase(),
-          url: resolvedUrl,
-          headers: resolvedHeaders,
-          params: resolvedParams,
-        };
-
-        // Add body for non-GET requests using resolved body
-        if (method !== 'GET' && resolvedBody) {
-          requestConfig.data = resolvedBody;
-        }
-
-        // Make the API call using the Axios instance
-        const directResponse = await api(requestConfig);
-
-        // Set the response for display
-        setResponse({
-          statusCode: directResponse.status,
-          statusText: directResponse.statusText,
-          body: directResponse.data,
-          headers: directResponse.headers,
-          responseTime: new Date().toISOString(),
-        });
-      }
+      setResponse(formattedResponse);
 
       // Switch to the response tab
       setActiveTab('response');
       setResponseTab('body');
     } catch (error) {
-      console.error('❌ Error executing API:', error);
+      console.error('❌ Error executing API via backend:', error);
 
-      // Check if this was a direct API call vs backend call
-      const isNgrokUrl =
-        resolvedUrl &&
-        (resolvedUrl.includes('.ngrok.') ||
-          resolvedUrl.includes('ngrok-free.app'));
-
-      // For direct API calls (ngrok), don't trigger auth redirects
-      if (isNgrokUrl) {
-        console.log(
-          '🔗 Direct API call error (no auth redirect triggered):',
-          error
-        );
-
-        // For direct API call errors, show the error response
-        setResponse({
-          statusCode: error.status || 500,
-          statusText: error.statusText || 'Error',
-          body: { error: error.message || 'Network error occurred' },
-          headers: {},
-          responseTime: 'Error',
-        });
-      } else {
-        // Format error response for backend calls
-        setResponse({
-          statusCode: error.response?.status || 500,
-          statusText: error.response?.statusText || 'Error',
-          body: {
-            message: error.message,
-            details: error.response?.data || 'No response details available',
-          },
-          headers: error.response?.headers || {},
-          responseTime: new Date().toISOString(),
-          isError: true,
-        });
-      }
+      // Format error response to match UI expectations
+      setResponse({
+        status: error.response?.status || 500,
+        statusText: error.response?.statusText || 'Error',
+        time: 'Error',
+        size: '0 bytes',
+        headers: {},
+        body: error.message || 'Backend API execution failed',
+        isError: true,
+      });
 
       // Switch to the response tab to show error
       setActiveTab('response');
@@ -759,7 +571,6 @@ export default function RequestPanel({ activeRequest }) {
       setIsSending(false);
     }
   };
-
   // Function to validate the API by creating a test case and then validating
   const handleValidateApi = async () => {
     setIsSending(true);
@@ -787,8 +598,11 @@ export default function RequestPanel({ activeRequest }) {
         body: normalizeBody(bodyContent, bodyType),
       };
 
-      // Resolve environment variables
-      const resolvedRequest = await resolveApiRequest(requestData);
+      // Resolve environment variables locally - no API calls needed!
+      const resolvedRequest = VariableResolver.resolveApiRequest(
+        requestData,
+        variables
+      );
 
       // Create a test case with the resolved parameters
       const testCaseData = {
@@ -1116,12 +930,11 @@ export default function RequestPanel({ activeRequest }) {
           <option value="OPTIONS">OPTIONS</option>
         </select>
 
-        <input
-          type="text"
+        <VariableInput
           className={styles.urlInput}
           value={url}
           onChange={e => setUrl(e.target.value)}
-          placeholder="Enter request URL"
+          placeholder="Enter request URL (use {{VARIABLE_NAME}} for variables)"
         />
 
         <div className={styles.buttonGroup}>
@@ -1443,6 +1256,12 @@ export default function RequestPanel({ activeRequest }) {
           onClick={() => setActiveTab('apiTests')}
         >
           API Tests
+        </div>
+        <div
+          className={`${styles.tab} ${activeTab === 'response' ? styles.active : ''}`}
+          onClick={() => setActiveTab('response')}
+        >
+          Response
         </div>
       </div>
 
@@ -2114,60 +1933,58 @@ export default function RequestPanel({ activeRequest }) {
             )}
           </div>
         )}
-      </div>
 
-      {/* Resizable handle */}
-      <div
-        className={styles.resizeHandle}
-        onMouseDown={startResize}
-        title="Drag to resize"
-      >
-        {/* This is the draggable resize handle */}
-      </div>
-
-      {/* Response Section - Hidden in API Tests tab */}
-      {activeTab !== 'apiTests' && (
-        <div className={styles.responseSection}>
-          <div className={styles.responseMeta}>
-            {response && (
+        {activeTab === 'response' && (
+          <div className={styles.responseContent}>
+            {response ? (
               <>
-                <div
-                  className={`${styles.statusBadge} ${response.status < 300 ? styles.success : styles.error}`}
-                >
-                  Status: {response.status} {response.statusText}
+                <div className={styles.responseMeta}>
+                  <div
+                    className={`${styles.statusBadge} ${response.status < 300 ? styles.success : styles.error}`}
+                  >
+                    Status: {response.status} {response.statusText}
+                  </div>
+                  <div className={styles.responseInfo}>
+                    <span>Time: {response.time}</span>
+                    <span>Size: {response.size}</span>
+                  </div>
                 </div>
-                <div className={styles.responseInfo}>
-                  <span>Time: {response.time}</span>
-                  <span>Size: {response.size}</span>
-                </div>
-              </>
-            )}
-          </div>
 
-          {response && (
-            <>
-              <div className={styles.responseTabs}>
-                <div
-                  className={`${styles.responseTab} ${responseTab === 'body' ? styles.active : ''}`}
-                  onClick={() => setResponseTab('body')}
-                >
-                  Body
+                <div className={styles.responseTabs}>
+                  <div
+                    className={`${styles.responseTab} ${responseTab === 'body' ? styles.active : ''}`}
+                    onClick={() => setResponseTab('body')}
+                  >
+                    Body
+                  </div>
+                  <div
+                    className={`${styles.responseTab} ${responseTab === 'headers' ? styles.active : ''}`}
+                    onClick={() => setResponseTab('headers')}
+                  >
+                    Headers
+                  </div>
                 </div>
-                <div
-                  className={`${styles.responseTab} ${responseTab === 'headers' ? styles.active : ''}`}
-                  onClick={() => setResponseTab('headers')}
-                >
-                  Headers
-                </div>
-              </div>
 
-              <div className={styles.responseContent}>
-                {responseTab === 'body' && (
-                  <div className={`${styles.responseBody} scrollable`}>
-                    {response.body &&
-                    response.body.response_code !== undefined ? (
-                      // Format for standard API response with response_code and data/error_message
-                      <div className={styles.structuredResponse}>
+                <div className={styles.responseBody}>
+                  {responseTab === 'body' && (
+                    <div className={`${styles.responseBodyContent} scrollable`}>
+                      {response.body &&
+                      response.body.response_code !== undefined ? (
+                        // Format for standard API response with response_code and data/error_message
+                        <div className={styles.structuredResponse}>
+                          <JsonEditor
+                            value={JSON.stringify(response.body, null, 2)}
+                            language="json"
+                            showCopyButton={true}
+                            resizable={true}
+                            minHeight={150}
+                            maxHeight={400}
+                            disabled={true}
+                            className={styles.responseJsonEditor}
+                          />
+                        </div>
+                      ) : (
+                        // For other response formats
                         <JsonEditor
                           value={JSON.stringify(response.body, null, 2)}
                           language="json"
@@ -2178,38 +1995,41 @@ export default function RequestPanel({ activeRequest }) {
                           disabled={true}
                           className={styles.responseJsonEditor}
                         />
-                      </div>
-                    ) : (
-                      // For other response formats
-                      <JsonEditor
-                        value={JSON.stringify(response.body, null, 2)}
-                        language="json"
-                        showCopyButton={true}
-                        resizable={true}
-                        minHeight={150}
-                        maxHeight={400}
-                        disabled={true}
-                        className={styles.responseJsonEditor}
-                      />
-                    )}
-                  </div>
-                )}
+                      )}
+                    </div>
+                  )}
 
-                {responseTab === 'headers' && (
-                  <div className={`${styles.responseHeaders} scrollable`}>
-                    {Object.entries(response.headers).map(([key, value]) => (
-                      <div key={key} className={styles.headerRow}>
-                        <span className={styles.headerKey}>{key}:</span>
-                        <span className={styles.headerValue}>{value}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                  {responseTab === 'headers' && (
+                    <div className={`${styles.responseHeaders} scrollable`}>
+                      {Object.entries(response.headers).map(([key, value]) => (
+                        <div key={key} className={styles.headerRow}>
+                          <span className={styles.headerKey}>{key}:</span>
+                          <span className={styles.headerValue}>{value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className={styles.emptyResponse}>
+                <p>
+                  No response yet. Make an API call to see the response here.
+                </p>
               </div>
-            </>
-          )}
-        </div>
-      )}
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Resizable handle */}
+      <div
+        className={styles.resizeHandle}
+        onMouseDown={startResize}
+        title="Drag to resize"
+      >
+        {/* This is the draggable resize handle */}
+      </div>
 
       {/* Test Case Form Modal */}
       {showTestCaseForm && selectedNode?.type === 'file' && (

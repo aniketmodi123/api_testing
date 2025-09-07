@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { environmentService } from '../services/environmentService';
+import { VariableResolver } from '../utils/variableResolver';
 import { useWorkspace } from './workspace';
 
 const EnvironmentContext = createContext();
@@ -660,6 +661,10 @@ export const EnvironmentProvider = ({ children }) => {
     getActiveEnvironmentVariables,
     resolveVariables,
     resolveApiRequest,
+    resolveVariablesLocal: text =>
+      VariableResolver.resolveText(text, variables),
+    resolveApiRequestLocal: apiRequest =>
+      VariableResolver.resolveApiRequest(apiRequest, variables),
 
     // Utilities
     getAvailableTemplates,

@@ -508,12 +508,6 @@ class ApiCreateRequest(BaseModel):
             raise ValueError('Endpoint cannot be empty')
 
         endpoint = v.strip()
-
-        # Check if endpoint already has a protocol
-        if not (endpoint.startswith('http://') or endpoint.startswith('https://')):
-            # If no protocol, add https:// as default
-            endpoint = 'https://' + endpoint
-
         return endpoint
 
 
@@ -544,12 +538,6 @@ class ApiUpdateRequest(BaseModel):
                 raise ValueError('Endpoint cannot be empty')
 
             endpoint = v.strip()
-
-            # Check if endpoint already has a protocol
-            if not (endpoint.startswith('http://') or endpoint.startswith('https://')):
-                # If no protocol, add https:// as default
-                endpoint = 'https://' + endpoint
-
             return endpoint
         return v
 
