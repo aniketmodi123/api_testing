@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import thinkingGif from '../../assets/think_emoji.gif';
 import { BackendApiCallService } from '../../services/backendApiCallService';
 import { useApi } from '../../store/api';
 import { useEnvironment } from '../../store/environment';
@@ -786,7 +787,6 @@ export default function RequestPanel({ activeRequest }) {
     try {
       setIsUpdatingConfig(true);
       const result = await saveApi(selectedNode.id, modalApiData);
-      alert('API configuration updated successfully');
 
       // Reload the API details
       await getApi(selectedNode.id);
@@ -1049,12 +1049,6 @@ export default function RequestPanel({ activeRequest }) {
                 // Use the unified saveApi function for both create and update
                 const result = await saveApi(selectedNode.id, apiData);
 
-                const message = activeApi
-                  ? 'API configuration updated successfully'
-                  : 'New API created successfully';
-
-                alert(message);
-
                 // Reload the API details if this was a new API
                 if (!activeApi) {
                   await getApi(selectedNode.id);
@@ -1180,7 +1174,6 @@ export default function RequestPanel({ activeRequest }) {
                       );
 
                       if (result && (result.data || result.success)) {
-                        alert('Test case saved successfully!');
                         // Refresh the test cases list
                         await getTestCases(selectedNode.id);
                       } else {
@@ -2044,22 +2037,18 @@ export default function RequestPanel({ activeRequest }) {
               </>
             ) : (
               <div className={styles.emptyResponse}>
-                <p>
-                  No response yet. Make an API call to see the response here.
-                </p>
+                <div>
+                  <img
+                    src={thinkingGif}
+                    alt="Thinking animation"
+                    style={{ width: 120, height: 120, objectFit: 'contain' }}
+                  />
+                  <p>Still thinking... Try making an API call!</p>
+                </div>
               </div>
             )}
           </div>
         )}
-      </div>
-
-      {/* Resizable handle */}
-      <div
-        className={styles.resizeHandle}
-        onMouseDown={startResize}
-        title="Drag to resize"
-      >
-        {/* This is the draggable resize handle */}
       </div>
 
       {/* Test Case Form Modal */}
