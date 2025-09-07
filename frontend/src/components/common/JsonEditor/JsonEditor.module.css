@@ -9,6 +9,11 @@
   max-height: 600px;
   overflow: hidden;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  transition: height 0.1s ease-out;
+}
+
+.jsonEditorContainer.resizing {
+  transition: none;
 }
 
 .editorHeader {
@@ -88,6 +93,8 @@
   flex: 1;
   overflow: hidden;
   position: relative;
+  display: flex;
+  flex-direction: column;
 }
 
 .textarea {
@@ -103,9 +110,18 @@
   resize: none;
   outline: none;
   overflow-y: auto;
+  overflow-x: hidden;
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
-  transition: background-color 0.2s ease;
+  transition:
+    background-color 0.2s ease,
+    height 0.1s ease-out;
+  flex: 1;
+  min-height: 0;
+}
+
+.textarea.resizing {
+  transition: none;
 }
 
 /* Enhanced scrollbar styling */

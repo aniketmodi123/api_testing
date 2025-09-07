@@ -99,23 +99,26 @@ export const JsonEditor = ({
 
   // Auto-resize functionality
   const autoResize = useCallback(() => {
-    if (textareaRef.current && resizable) {
+    if (textareaRef.current && !isResizing) {
       const textarea = textareaRef.current;
 
-      // Reset height to recalculate
-      textarea.style.height = 'auto';
+      if (resizable) {
+        // Reset height to recalculate
+        textarea.style.height = 'auto';
 
-      // Calculate new height based on content
-      const scrollHeight = textarea.scrollHeight;
-      const newHeight = Math.max(
-        minHeight,
-        Math.min(maxHeight, scrollHeight + 10)
-      );
+        // Calculate new height based on content
+        const scrollHeight = textarea.scrollHeight;
+        const newHeight = Math.max(
+          minHeight,
+          Math.min(maxHeight, scrollHeight + 10)
+        );
 
-      setHeight(newHeight);
-      textarea.style.height = `${newHeight}px`;
+        // Set the height and let CSS handle scrolling
+        setHeight(newHeight);
+        textarea.style.height = `${newHeight - 40}px`;
+      }
     }
-  }, [minHeight, maxHeight, resizable]);
+  }, [minHeight, maxHeight, resizable, isResizing]);
 
   // Handle content change
   const handleChange = e => {
@@ -231,18 +234,28 @@ export const JsonEditor = ({
           Math.min(maxHeight, startHeight + deltaY)
         );
         setHeight(newHeight);
+
+        // Update textarea height immediately for smooth resizing
+        if (textareaRef.current) {
+          textareaRef.current.style.height = `${newHeight - 40}px`;
+        }
       };
 
       const handleMouseUp = () => {
         setIsResizing(false);
         document.removeEventListener('mousemove', handleMouseMove);
         document.removeEventListener('mouseup', handleMouseUp);
+
+        // Trigger autoResize after manual resize is complete
+        setTimeout(() => {
+          autoResize();
+        }, 0);
       };
 
       document.addEventListener('mousemove', handleMouseMove);
       document.addEventListener('mouseup', handleMouseUp);
     },
-    [height, minHeight, maxHeight, resizable]
+    [height, minHeight, maxHeight, resizable, autoResize]
   );
 
   // Initial auto-resize
@@ -255,7 +268,9 @@ export const JsonEditor = ({
   return (
     <div
       ref={containerRef}
-      className={`${styles.jsonEditorContainer} ${className}`}
+      className={`${styles.jsonEditorContainer} ${className} ${
+        isResizing ? styles.resizing : ''
+      }`}
       style={{ height: `${height}px` }}
     >
       <div className={styles.editorHeader}>
@@ -330,7 +345,9 @@ export const JsonEditor = ({
         <textarea
           ref={textareaRef}
           id={editorId}
-          className={`${styles.textarea} ${!validJson && isJson ? styles.error : ''}`}
+          className={`${styles.textarea} ${!validJson && isJson ? styles.error : ''} ${
+            isResizing ? styles.resizing : ''
+          }`}
           value={value}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
@@ -338,7 +355,6 @@ export const JsonEditor = ({
           disabled={disabled}
           rows={rows}
           spellCheck={false}
-          style={{ height: `${height - 40}px` }}
         />
       </div>
 

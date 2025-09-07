@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api } from '../../api';
-import { headerService } from '../../services/headerService';
+import thinkingGif from '../../assets/think_emoji.gif';
+import { BackendApiCallService } from '../../services/backendApiCallService';
 import { useApi } from '../../store/api';
+import { useEnvironment } from '../../store/environment';
 import { useNode } from '../../store/node';
 import { TestCaseForm } from '../TestCaseForm';
 import TestResultsGrid from '../TestResultsGrid';
-import { Button, JsonEditor } from '../common';
+import { Button, JsonEditor, VariableInput } from '../common';
 import styles from './RequestPanel.module.css';
 import './buttonStyles.css';
 import './dropdown.css';
@@ -176,6 +177,7 @@ function normalizeBody(bodyContent, bodyType) {
 
 export default function RequestPanel({ activeRequest }) {
   const { selectedNode, getNodeById } = useNode();
+  const { variables, activeEnvironment } = useEnvironment();
   const {
     getApi,
     getTestCases,
@@ -206,6 +208,37 @@ export default function RequestPanel({ activeRequest }) {
   const [bodyType, setBodyType] = useState('JSON');
   const [validationSchema, setValidationSchema] = useState('');
   const [requestHeight, setRequestHeight] = useState(200); // Default height for request section
+
+  // Local cache for folder headers to avoid repeated backend calls
+  const [folderHeadersCache, setFolderHeadersCache] = useState(new Map());
+
+  // Function to get folder headers with caching
+  const getFolderHeaders = async headerNodeId => {
+    if (!headerNodeId) return {};
+
+    // Check cache first
+    if (folderHeadersCache.has(headerNodeId)) {
+      console.log('📦 Using cached headers for node:', headerNodeId);
+      return folderHeadersCache.get(headerNodeId);
+    }
+
+    try {
+      console.log('📡 Fetching headers from backend for node:', headerNodeId);
+      const headersResponse = await headerService.getHeaders(headerNodeId);
+      const headers = headersResponse?.data?.content || {};
+
+      // Cache the result
+      setFolderHeadersCache(prev => new Map(prev.set(headerNodeId, headers)));
+
+      console.log('📋 Headers fetched and cached:', headers);
+      return headers;
+    } catch (error) {
+      console.warn('⚠️ Could not fetch headers for node:', headerNodeId, error);
+      // Cache empty result to avoid repeated failed requests
+      setFolderHeadersCache(prev => new Map(prev.set(headerNodeId, {})));
+      return {};
+    }
+  };
 
   // State for detailed test result modal
   const [showDetailedResult, setShowDetailedResult] = useState(false);
@@ -312,6 +345,7 @@ export default function RequestPanel({ activeRequest }) {
 
       // Initialize validation schema
       const schema =
+        extractValue(activeApi, 'extra_meta.expected') ||
         extractValue(activeApi, 'expected') ||
         extractValue(activeApi, 'validation.responseSchema') ||
         extractValue(activeApi, 'validationSchema.response') ||
@@ -477,255 +511,60 @@ export default function RequestPanel({ activeRequest }) {
     setIsSending(true);
 
     try {
-      // Check if this is an ngrok URL
-      const isNgrokUrl =
-        url && (url.includes('.ngrok.') || url.includes('ngrok-free.app'));
-
-      console.log('🚀 Making API call:', {
-        url: url,
+      console.log('🚀 Making API call via backend service:', {
+        fileId: selectedNode?.id,
+        environmentId: activeEnvironment?.id,
         method: method,
-        isNgrokUrl,
+        url: url,
       });
 
-      if (isNgrokUrl) {
-        // Make direct API call from frontend for ngrok URLs
-        console.log('🔗 Making direct frontend call to ngrok URL');
+      const response = await BackendApiCallService.executeApiCall({
+        fileId: selectedNode?.id,
+        environmentId: activeEnvironment?.id,
+        method: method,
+        url: url,
+        headers: extractValue(activeApi, 'headers', {}),
+        params: extractValue(activeApi, 'params', {}),
+        body: method !== 'GET' ? normalizeBody(bodyContent, bodyType) : null,
+      });
 
-        // First, fetch headers from backend for this API's parent folder
-        let backendHeaders = {};
-        if (selectedNode?.id) {
-          try {
-            // Determine which ID to use for header fetching
-            // If it's a file, use its parent_id (folder), if it's a folder, use its own id
-            let headerNodeId = selectedNode.id;
-            if (selectedNode.type === 'file' && selectedNode.parent_id) {
-              headerNodeId = selectedNode.parent_id;
-              console.log(
-                '📁 File detected, using parent folder ID for headers:',
-                headerNodeId,
-                '(file ID:',
-                selectedNode.id,
-                ')'
-              );
-            } else {
-              console.log(
-                '📂 Using node ID for headers:',
-                headerNodeId,
-                '(type:',
-                selectedNode.type,
-                ')'
-              );
-            }
+      console.log('✅ Backend API call successful:', response);
 
-            console.log(
-              '📡 Fetching headers from backend for headerNodeId:',
-              headerNodeId
-            );
-            const headersResponse =
-              await headerService.getHeaders(headerNodeId);
-            backendHeaders = headersResponse?.data?.content || {};
-            console.log(
-              '📋 Backend headers fetched successfully:',
-              backendHeaders
-            );
+      // Format response for display to match UI expectations
+      const formattedResponse = {
+        status: response.data?.status_code || 200,
+        statusText: response.data?.status_code < 300 ? 'OK' : 'Error',
+        time: `${response.data?.execution_time || 0}ms`,
+        size: response.data?.text
+          ? `${new Blob([response.data.text]).size} bytes`
+          : '0 bytes',
+        headers: response.data?.headers || {},
+        body: response.data?.json || response.data?.text || '',
+        // Keep additional data for reference
+        raw_response: response.data,
+        resolved_url: response.data?.resolved_url || url,
+        variables_used: response.data?.variables_used || {},
+        folder_headers: response.data?.folder_headers || {},
+      };
 
-            if (Object.keys(backendHeaders).length === 0) {
-              console.log('ℹ️ No backend headers found for this API');
-            }
-          } catch (headerError) {
-            console.warn('⚠️ Could not fetch backend headers:', headerError);
-            console.log(
-              'Will proceed with form headers and ngrok headers only'
-            );
-          }
-        } else {
-          console.log(
-            '⚠️ No selectedNode.id available, skipping backend header fetch'
-          );
-        }
-
-        // Get current headers from the form
-        const formHeaders = extractValue(activeApi, 'headers', {});
-
-        // Merge backend headers with form headers and ngrok headers
-        console.log('🔧 Merging headers with priority order:');
-        console.log('  1️⃣ Backend headers (lowest priority):', backendHeaders);
-        console.log('  2️⃣ Form headers (medium priority):', formHeaders);
-
-        const ngrokHeaders = addNgrokHeadersIfNeeded(url, {});
-        console.log('  3️⃣ Ngrok headers (highest priority):', ngrokHeaders);
-
-        const mergedHeaders = {
-          'Content-Type': 'application/json',
-          ...backendHeaders, // Backend API-level headers (lowest priority)
-          ...formHeaders, // Form headers (medium priority)
-          ...ngrokHeaders, // Ngrok headers (highest priority)
-        };
-
-        console.log('🎯 Final merged headers for direct call:', mergedHeaders);
-        console.log(
-          '📊 Total header count:',
-          Object.keys(mergedHeaders).length
-        );
-
-        const requestConfig = {
-          method: method,
-          headers: mergedHeaders,
-        };
-
-        // Add query parameters
-        let finalUrl = url;
-        const searchParams = new URLSearchParams();
-
-        // Add user's query parameters
-        const formParams = extractValue(activeApi, 'params', {});
-        if (formParams && Object.keys(formParams).length > 0) {
-          Object.entries(formParams).forEach(([key, value]) => {
-            if (value !== null && value !== undefined && value !== '') {
-              searchParams.append(key, value);
-            }
-          });
-        }
-
-        // Append query parameters to URL
-        const queryString = searchParams.toString();
-        if (queryString) {
-          finalUrl += (finalUrl.includes('?') ? '&' : '?') + queryString;
-        }
-
-        // Add body for non-GET requests
-        if (method !== 'GET') {
-          const bodyData = extractValue(activeApi, 'request_body', {});
-          if (bodyData) {
-            try {
-              requestConfig.body =
-                typeof bodyData === 'string'
-                  ? bodyData
-                  : JSON.stringify(bodyData);
-            } catch (e) {
-              requestConfig.body = bodyData;
-            }
-          }
-        }
-
-        const startTime = Date.now();
-
-        // Log the actual request being sent
-        console.log('🚀 About to send fetch request:');
-        console.log('  📍 URL:', finalUrl);
-        console.log('  🔧 Method:', requestConfig.method);
-        console.log('  📋 Headers being sent:', requestConfig.headers);
-        console.log('  📦 Body:', requestConfig.body || 'No body');
-
-        const response = await fetch(finalUrl, requestConfig);
-        const duration = Date.now() - startTime;
-
-        const responseText = await response.text();
-        let responseData;
-        try {
-          responseData = JSON.parse(responseText);
-        } catch (e) {
-          responseData = responseText;
-        }
-
-        // Enhanced logging for debugging
-        console.log('📥 Response received:');
-        console.log('  🔢 Status:', response.status);
-        console.log('  📝 Status Text:', response.statusText);
-        console.log('  📄 Raw Text:', responseText);
-        console.log('  🔧 Parsed Data:', responseData);
-        console.log('  ⏱️ Duration:', `${duration}ms`);
-
-        // For direct API calls, don't redirect on 401 - just show the response
-        if (response.status === 401) {
-          console.log(
-            '🔒 Direct API call returned 401 (External API authorization required)'
-          );
-        } else if (response.status === 206) {
-          console.log(
-            'ℹ️ Direct API call returned 206 (Partial Content/No New Data)'
-          );
-        } else {
-          console.log('✅ Direct API call successful');
-        }
-
-        // Set the response for display
-        const responseObject = {
-          statusCode: response.status,
-          statusText: response.statusText,
-          body: responseData,
-          headers: Object.fromEntries(response.headers.entries()),
-          responseTime: `${duration}ms`,
-        };
-
-        console.log('🎯 Setting response object:', responseObject);
-        setResponse(responseObject);
-      } else {
-        // Use backend for non-ngrok URLs (existing axios logic)
-        const requestConfig = {
-          method: method.toLowerCase(),
-          url: url,
-          headers: extractValue(activeApi, 'headers', {}),
-          params: extractValue(activeApi, 'params', {}),
-        };
-
-        // Add body for non-GET requests
-        if (method !== 'GET') {
-          requestConfig.data = extractValue(activeApi, 'request_body', {});
-        }
-
-        // Make the API call using the Axios instance
-        const directResponse = await api(requestConfig);
-
-        // Set the response for display
-        setResponse({
-          statusCode: directResponse.status,
-          statusText: directResponse.statusText,
-          body: directResponse.data,
-          headers: directResponse.headers,
-          responseTime: new Date().toISOString(),
-        });
-      }
+      setResponse(formattedResponse);
 
       // Switch to the response tab
       setActiveTab('response');
       setResponseTab('body');
     } catch (error) {
-      console.error('❌ Error executing API:', error);
+      console.error('❌ Error executing API via backend:', error);
 
-      // Check if this was a direct API call vs backend call
-      const isNgrokUrl =
-        url && (url.includes('.ngrok.') || url.includes('ngrok-free.app'));
-
-      // For direct API calls (ngrok), don't trigger auth redirects
-      if (isNgrokUrl) {
-        console.log(
-          '🔗 Direct API call error (no auth redirect triggered):',
-          error
-        );
-
-        // For direct API call errors, show the error response
-        setResponse({
-          statusCode: error.status || 500,
-          statusText: error.statusText || 'Error',
-          body: { error: error.message || 'Network error occurred' },
-          headers: {},
-          responseTime: 'Error',
-        });
-      } else {
-        // Format error response for backend calls
-        setResponse({
-          statusCode: error.response?.status || 500,
-          statusText: error.response?.statusText || 'Error',
-          body: {
-            message: error.message,
-            details: error.response?.data || 'No response details available',
-          },
-          headers: error.response?.headers || {},
-          responseTime: new Date().toISOString(),
-          isError: true,
-        });
-      }
+      // Format error response to match UI expectations
+      setResponse({
+        status: error.response?.status || 500,
+        statusText: error.response?.statusText || 'Error',
+        time: 'Error',
+        size: '0 bytes',
+        headers: {},
+        body: error.message || 'Backend API execution failed',
+        isError: true,
+      });
 
       // Switch to the response tab to show error
       setActiveTab('response');
@@ -734,8 +573,7 @@ export default function RequestPanel({ activeRequest }) {
       setIsSending(false);
     }
   };
-
-  // Function to validate the API by creating a test case and then validating
+  // Function to validate the API using backend validation endpoint
   const handleValidateApi = async () => {
     setIsSending(true);
 
@@ -748,54 +586,69 @@ export default function RequestPanel({ activeRequest }) {
 
       // Get the validation schema from API or use default
       const validationSchema =
+        extractValue(activeApi, 'extra_meta.expected') ||
         extractValue(activeApi, 'expected') ||
         extractValue(activeApi, 'validation.responseSchema') ||
         extractValue(activeApi, 'validationSchema.response') ||
         defaultValidationSchema;
 
-      // Create a test case with the current parameters
-      const testCaseData = {
-        name: `Validation test - ${new Date().toISOString()}`,
-        description: 'Auto-generated test case with validation schema',
-        method: method,
-        endpoint: url,
-        headers: extractValue(activeApi, 'headers', {}),
-        params: extractValue(activeApi, 'params', {}),
-        body: normalizeBody(bodyContent, bodyType),
-        expected: validationSchema, // Store the validation schema directly in the expected field
+      console.log('🔍 Starting API validation with schema:', validationSchema);
+
+      // Use the dedicated validation endpoint
+      const validationResponse =
+        await BackendApiCallService.executeWithValidation({
+          fileId: selectedNode?.id,
+          environmentId: activeEnvironment?.id,
+          method: method,
+          url: url,
+          headers: extractValue(activeApi, 'headers', {}),
+          params: extractValue(activeApi, 'params', {}),
+          body: method !== 'GET' ? normalizeBody(bodyContent, bodyType) : null,
+          expected: validationSchema,
+        });
+
+      console.log('✅ Validation completed:', validationResponse);
+
+      // Format response for display with validation results
+      const formattedResponse = {
+        status: validationResponse.data?.status_code || 200,
+        statusText: validationResponse.data?.status_code < 300 ? 'OK' : 'Error',
+        time: `${validationResponse.data?.execution_time || 0}ms`,
+        size: validationResponse.data?.text
+          ? `${new Blob([validationResponse.data.text]).size} bytes`
+          : '0 bytes',
+        headers: validationResponse.data?.headers || {},
+        body: {
+          ...(validationResponse.data?.json ||
+            validationResponse.data?.text ||
+            ''),
+          validation: validationResponse.data?.validation || null,
+        },
+        raw_response: validationResponse.data,
+        resolved_url: validationResponse.data?.resolved_url || url,
+        variables_used: validationResponse.data?.variables_used || {},
+        folder_headers: validationResponse.data?.folder_headers || {},
       };
 
-      // Create the test case
-      const createResult = await createTestCase(selectedNode.id, testCaseData);
+      setResponse(formattedResponse);
 
-      if (!createResult || !createResult.case_id) {
-        throw new Error('Failed to create test case for validation');
-      }
-
-      if (!selectedNode?.id) {
-        throw new Error(
-          'No selected node ID available for running validation test'
-        );
-      }
-
-      // Run the test using the new case ID
-      const validationResult = await runTest(selectedNode.id, [
-        createResult.case_id,
-      ]);
-      setActiveTab('apiTests');
+      // Switch to the response tab to show validation results
+      setActiveTab('response');
+      setResponseTab('body');
     } catch (error) {
       console.error('Error validating API:', error);
 
       // Show error in response tab
       setResponse({
-        statusCode: 500,
+        status: 500,
         statusText: 'Validation Error',
+        time: 'Error',
+        size: '0 bytes',
+        headers: {},
         body: {
           message: 'Failed to validate API',
           details: error.message,
         },
-        headers: {},
-        responseTime: new Date().toISOString(),
         isError: true,
       });
 
@@ -934,7 +787,6 @@ export default function RequestPanel({ activeRequest }) {
     try {
       setIsUpdatingConfig(true);
       const result = await saveApi(selectedNode.id, modalApiData);
-      alert('API configuration updated successfully');
 
       // Reload the API details
       await getApi(selectedNode.id);
@@ -1079,12 +931,11 @@ export default function RequestPanel({ activeRequest }) {
           <option value="OPTIONS">OPTIONS</option>
         </select>
 
-        <input
-          type="text"
+        <VariableInput
           className={styles.urlInput}
           value={url}
           onChange={e => setUrl(e.target.value)}
-          placeholder="Enter request URL"
+          placeholder="Enter request URL (use {{VARIABLE_NAME}} for variables)"
         />
 
         <div className={styles.buttonGroup}>
@@ -1141,6 +992,28 @@ export default function RequestPanel({ activeRequest }) {
               setIsUpdatingConfig(true);
 
               try {
+                // Parse validation schema if available
+                let validationSchemaData;
+                try {
+                  if (validationSchema && validationSchema.trim()) {
+                    validationSchemaData = JSON.parse(validationSchema);
+                  } else {
+                    // Get schema from active API or use default
+                    validationSchemaData =
+                      extractValue(activeApi, 'extra_meta.expected') ||
+                      extractValue(activeApi, 'expected') ||
+                      extractValue(activeApi, 'validation.responseSchema') ||
+                      extractValue(activeApi, 'validationSchema.response') ||
+                      defaultValidationSchema;
+                  }
+                } catch (e) {
+                  console.warn(
+                    'Invalid validation schema JSON, using default:',
+                    e
+                  );
+                  validationSchemaData = defaultValidationSchema;
+                }
+
                 // Prepare data for saving API (works for both create and update)
                 const apiData = activeApi
                   ? {
@@ -1152,6 +1025,10 @@ export default function RequestPanel({ activeRequest }) {
                       params: extractValue(activeApi, 'params', {}),
                       body: normalizeBody(bodyContent, bodyType),
                       bodyType: bodyType,
+                      extra_meta: {
+                        ...extractValue(activeApi, 'extra_meta', {}),
+                        expected: validationSchemaData, // Add validation schema to extra_meta
+                      },
                     }
                   : {
                       // Create new API
@@ -1164,16 +1041,13 @@ export default function RequestPanel({ activeRequest }) {
                       params: {},
                       body: normalizeBody(bodyContent, bodyType),
                       bodyType: bodyType,
+                      extra_meta: {
+                        expected: validationSchemaData, // Add validation schema to extra_meta
+                      },
                     };
 
                 // Use the unified saveApi function for both create and update
                 const result = await saveApi(selectedNode.id, apiData);
-
-                const message = activeApi
-                  ? 'API configuration updated successfully'
-                  : 'New API created successfully';
-
-                alert(message);
 
                 // Reload the API details if this was a new API
                 if (!activeApi) {
@@ -1236,6 +1110,7 @@ export default function RequestPanel({ activeRequest }) {
                       } else {
                         // Get schema from active API or use default
                         validationSchemaData =
+                          extractValue(activeApi, 'extra_meta.expected') ||
                           extractValue(activeApi, 'expected') ||
                           extractValue(
                             activeApi,
@@ -1299,7 +1174,6 @@ export default function RequestPanel({ activeRequest }) {
                       );
 
                       if (result && (result.data || result.success)) {
-                        alert('Test case saved successfully!');
                         // Refresh the test cases list
                         await getTestCases(selectedNode.id);
                       } else {
@@ -1406,6 +1280,12 @@ export default function RequestPanel({ activeRequest }) {
           onClick={() => setActiveTab('apiTests')}
         >
           API Tests
+        </div>
+        <div
+          className={`${styles.tab} ${activeTab === 'response' ? styles.active : ''}`}
+          onClick={() => setActiveTab('response')}
+        >
+          Response
         </div>
       </div>
 
@@ -2077,60 +1957,58 @@ export default function RequestPanel({ activeRequest }) {
             )}
           </div>
         )}
-      </div>
 
-      {/* Resizable handle */}
-      <div
-        className={styles.resizeHandle}
-        onMouseDown={startResize}
-        title="Drag to resize"
-      >
-        {/* This is the draggable resize handle */}
-      </div>
-
-      {/* Response Section - Hidden in API Tests tab */}
-      {activeTab !== 'apiTests' && (
-        <div className={styles.responseSection}>
-          <div className={styles.responseMeta}>
-            {response && (
+        {activeTab === 'response' && (
+          <div className={styles.responseContent}>
+            {response ? (
               <>
-                <div
-                  className={`${styles.statusBadge} ${response.status < 300 ? styles.success : styles.error}`}
-                >
-                  Status: {response.status} {response.statusText}
+                <div className={styles.responseMeta}>
+                  <div
+                    className={`${styles.statusBadge} ${response.status < 300 ? styles.success : styles.error}`}
+                  >
+                    Status: {response.status} {response.statusText}
+                  </div>
+                  <div className={styles.responseInfo}>
+                    <span>Time: {response.time}</span>
+                    <span>Size: {response.size}</span>
+                  </div>
                 </div>
-                <div className={styles.responseInfo}>
-                  <span>Time: {response.time}</span>
-                  <span>Size: {response.size}</span>
-                </div>
-              </>
-            )}
-          </div>
 
-          {response && (
-            <>
-              <div className={styles.responseTabs}>
-                <div
-                  className={`${styles.responseTab} ${responseTab === 'body' ? styles.active : ''}`}
-                  onClick={() => setResponseTab('body')}
-                >
-                  Body
+                <div className={styles.responseTabs}>
+                  <div
+                    className={`${styles.responseTab} ${responseTab === 'body' ? styles.active : ''}`}
+                    onClick={() => setResponseTab('body')}
+                  >
+                    Body
+                  </div>
+                  <div
+                    className={`${styles.responseTab} ${responseTab === 'headers' ? styles.active : ''}`}
+                    onClick={() => setResponseTab('headers')}
+                  >
+                    Headers
+                  </div>
                 </div>
-                <div
-                  className={`${styles.responseTab} ${responseTab === 'headers' ? styles.active : ''}`}
-                  onClick={() => setResponseTab('headers')}
-                >
-                  Headers
-                </div>
-              </div>
 
-              <div className={styles.responseContent}>
-                {responseTab === 'body' && (
-                  <div className={`${styles.responseBody} scrollable`}>
-                    {response.body &&
-                    response.body.response_code !== undefined ? (
-                      // Format for standard API response with response_code and data/error_message
-                      <div className={styles.structuredResponse}>
+                <div className={styles.responseBody}>
+                  {responseTab === 'body' && (
+                    <div className={`${styles.responseBodyContent} scrollable`}>
+                      {response.body &&
+                      response.body.response_code !== undefined ? (
+                        // Format for standard API response with response_code and data/error_message
+                        <div className={styles.structuredResponse}>
+                          <JsonEditor
+                            value={JSON.stringify(response.body, null, 2)}
+                            language="json"
+                            showCopyButton={true}
+                            resizable={true}
+                            minHeight={150}
+                            maxHeight={400}
+                            disabled={true}
+                            className={styles.responseJsonEditor}
+                          />
+                        </div>
+                      ) : (
+                        // For other response formats
                         <JsonEditor
                           value={JSON.stringify(response.body, null, 2)}
                           language="json"
@@ -2141,38 +2019,37 @@ export default function RequestPanel({ activeRequest }) {
                           disabled={true}
                           className={styles.responseJsonEditor}
                         />
-                      </div>
-                    ) : (
-                      // For other response formats
-                      <JsonEditor
-                        value={JSON.stringify(response.body, null, 2)}
-                        language="json"
-                        showCopyButton={true}
-                        resizable={true}
-                        minHeight={150}
-                        maxHeight={400}
-                        disabled={true}
-                        className={styles.responseJsonEditor}
-                      />
-                    )}
-                  </div>
-                )}
+                      )}
+                    </div>
+                  )}
 
-                {responseTab === 'headers' && (
-                  <div className={`${styles.responseHeaders} scrollable`}>
-                    {Object.entries(response.headers).map(([key, value]) => (
-                      <div key={key} className={styles.headerRow}>
-                        <span className={styles.headerKey}>{key}:</span>
-                        <span className={styles.headerValue}>{value}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                  {responseTab === 'headers' && (
+                    <div className={`${styles.responseHeaders} scrollable`}>
+                      {Object.entries(response.headers).map(([key, value]) => (
+                        <div key={key} className={styles.headerRow}>
+                          <span className={styles.headerKey}>{key}:</span>
+                          <span className={styles.headerValue}>{value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className={styles.emptyResponse}>
+                <div>
+                  <img
+                    src={thinkingGif}
+                    alt="Thinking animation"
+                    style={{ width: 120, height: 120, objectFit: 'contain' }}
+                  />
+                  <p>Still thinking... Try making an API call!</p>
+                </div>
               </div>
-            </>
-          )}
-        </div>
-      )}
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Test Case Form Modal */}
       {showTestCaseForm && selectedNode?.type === 'file' && (

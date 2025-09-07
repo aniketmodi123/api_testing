@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Type, Union
 from fastapi import HTTPException, Response, status
 from fastapi.responses import JSONResponse
+import httpx
 
 from jose import jwt
 import pandas as pd
@@ -18,7 +19,7 @@ from pydantic import BaseModel, TypeAdapter, ValidationError
 from sqlalchemy import select
 
 from config import JWT_ALGORITHM, JWT_SECRET_KEY, SessionLocal
-from models import Cache, OTPAttempt
+from models import Cache
 from schema import PaginationRes
 
 # Get the base directory
@@ -150,31 +151,83 @@ async def blacklist_token(username: str, token: str = '') -> bool:
 
 
 
-def ExceptionHandler(e):
+def ExceptionHandler(e, context_data=None):
+    """
+    Enhanced global exception handler that handles various types of errors
+    including HTTP connection errors, database errors, and general exceptions.
+
+    Args:
+        e: The exception to handle
+        context_data: Optional dict with context information (url, headers, request_data, etc.)
+    """
     response_code = status.HTTP_409_CONFLICT
     error_message = "Something went wrong"
+    error_data = None
 
     if isinstance(e, HTTPException):
-        response_code=e.status_code
-        error_message=e.detail
+        response_code = e.status_code
+        error_message = e.detail
+
+    elif isinstance(e, httpx.ConnectError):
+        response_code = 502
+        error_message = "Connection failed"
+        error_data = {
+            "error_type": "Connection Error",
+            "target_url": context_data.get('url') if context_data else "Unknown",
+            "message": "Unable to connect to the target server",
+            "troubleshooting": [
+                "Check if the server is running on the specified port",
+                "Verify the URL is correct",
+                "Check network connectivity",
+                "Ensure firewall is not blocking the connection"
+            ],
+            "original_error": str(e)
+        }
+        if context_data:
+            error_data["request_data"] = {
+                "method": context_data.get('method', 'Unknown'),
+                "url": context_data.get('url', 'Unknown'),
+                "headers": context_data.get('headers', {})
+            }
+
+    elif isinstance(e, httpx.TimeoutException):
+        response_code = 408
+        error_message = "Request timeout"
+        error_data = {
+            "error_type": "Timeout Error",
+            "target_url": context_data.get('url') if context_data else "Unknown",
+            "message": "Request timed out - server took too long to respond",
+            "original_error": str(e)
+        }
+
+    elif isinstance(e, httpx.RequestError):
+        response_code = 502
+        error_message = "Request failed"
+        error_data = {
+            "error_type": "Request Error",
+            "target_url": context_data.get('url') if context_data else "Unknown",
+            "message": f"Request failed: {str(e)}",
+            "original_error": str(e)
+        }
+
     elif isinstance(e, ValueError):
-        response_code= 400
-        error_message= "Invalid value provided."+ str(e)
+        response_code = 400
+        error_message = "Invalid value provided." + str(e)
     elif isinstance(e, TypeError):
-        response_code= 400
-        error_message= "Operation not supported for the type." + str(e)
+        response_code = 400
+        error_message = "Operation not supported for the type." + str(e)
     elif isinstance(e, KeyError):
-        response_code= 400
-        error_message= "Key not found in the dictionary." + str(e)
+        response_code = 400
+        error_message = "Key not found in the dictionary." + str(e)
     elif isinstance(e, IndexError):
-        response_code= 400
-        error_message= "Index out of range." + str(e)
+        response_code = 400
+        error_message = "Index out of range." + str(e)
     elif isinstance(e, FileNotFoundError):
-        error_message= "File not found." + str(e)
-        response_code= 404
+        error_message = "File not found." + str(e)
+        response_code = 404
     elif isinstance(e, PermissionError):
-        response_code= 403
-        error_message= "Permission denied." + str(e)
+        response_code = 403
+        error_message = "Permission denied." + str(e)
     elif isinstance(e, SQLAlchemyError):
         response_code = 409
         error_message = f"Database error: {str(e)}"
@@ -188,10 +241,36 @@ def ExceptionHandler(e):
         response_code = 400
         error_message = "Syntax error in the SQL query: " + str(e)
 
-    raise HTTPException(
-        status_code=response_code,
-        detail=error_message
-    )
+    # Return structured response instead of raising HTTPException
+    if error_data:
+        return create_response(
+            response_code=response_code,
+            error_message=error_message,
+            data=error_data
+        )
+    else:
+        raise HTTPException(
+            status_code=response_code,
+            detail=error_message
+        )
+
+
+def handle_http_error(e, url=None, method=None, headers=None):
+    """
+    Convenience function for handling HTTP errors with context.
+
+    Args:
+        e: The HTTP exception
+        url: The request URL
+        method: The HTTP method
+        headers: The request headers
+    """
+    context_data = {
+        'url': url,
+        'method': method,
+        'headers': headers
+    }
+    return ExceptionHandler(e, context_data)
 
 
 def value_correction(data):
@@ -421,3 +500,206 @@ def email_otp_message(otp, email, use_for):
     except Exception as e:
         logs(f"Failed to send OTP email: {e}", type="error")
         return False
+
+
+# Variable Resolution Functions
+import re
+from typing import Dict, Any, List, Union
+
+
+def extract_variables_from_text(text: str) -> List[str]:
+    """
+    Extract all variable names from text that follow the {{variable_name}} pattern.
+
+    Args:
+        text (str): The text to extract variables from
+
+    Returns:
+        List[str]: List of unique variable names found in the text
+    """
+    if not isinstance(text, str):
+        return []
+
+    pattern = r'\{\{([^}]+)\}\}'
+    matches = re.findall(pattern, text)
+    return list(set(matches))  # Return unique variable names
+
+
+def replace_variables_in_text(text: str, variables: Dict[str, str]) -> str:
+    """
+    Replace all variables in text with their values from the variables dictionary.
+
+    Args:
+        text (str): The text containing variables in {{variable_name}} format
+        variables (Dict[str, str]): Dictionary of variable names to values
+
+    Returns:
+        str: Text with variables replaced by their values
+    """
+    if not isinstance(text, str) or not variables:
+        return text
+
+    def replace_match(match):
+        variable_name = match.group(1).strip()
+        return str(variables.get(variable_name, match.group(0)))  # Return original if not found
+
+    pattern = r'\{\{([^}]+)\}\}'
+    return re.sub(pattern, replace_match, text)
+
+
+def replace_variables_in_dict(data: Dict[str, Any], variables: Dict[str, str]) -> Dict[str, Any]:
+    """
+    Recursively replace variables in all string values within a dictionary.
+
+    Args:
+        data (Dict[str, Any]): Dictionary that may contain variables
+        variables (Dict[str, str]): Dictionary of variable names to values
+
+    Returns:
+        Dict[str, Any]: Dictionary with variables replaced
+    """
+    if not isinstance(data, dict) or not variables:
+        return data
+
+    result = {}
+    for key, value in data.items():
+        if isinstance(value, str):
+            result[key] = replace_variables_in_text(value, variables)
+        elif isinstance(value, dict):
+            result[key] = replace_variables_in_dict(value, variables)
+        elif isinstance(value, list):
+            result[key] = replace_variables_in_list(value, variables)
+        else:
+            result[key] = value
+
+    return result
+
+
+def replace_variables_in_list(data: List[Any], variables: Dict[str, str]) -> List[Any]:
+    """
+    Recursively replace variables in all string values within a list.
+
+    Args:
+        data (List[Any]): List that may contain variables
+        variables (Dict[str, str]): Dictionary of variable names to values
+
+    Returns:
+        List[Any]: List with variables replaced
+    """
+    if not isinstance(data, list) or not variables:
+        return data
+
+    result = []
+    for item in data:
+        if isinstance(item, str):
+            result.append(replace_variables_in_text(item, variables))
+        elif isinstance(item, dict):
+            result.append(replace_variables_in_dict(item, variables))
+        elif isinstance(item, list):
+            result.append(replace_variables_in_list(item, variables))
+        else:
+            result.append(item)
+
+    return result
+
+
+def replace_variables_in_api_data(api_data: Dict[str, Any], variables: Dict[str, str]) -> Dict[str, Any]:
+    """
+    Replace variables in complete API data structure including url, headers, body, params, etc.
+
+    Args:
+        api_data (Dict[str, Any]): Complete API data structure
+        variables (Dict[str, str]): Dictionary of variable names to values
+
+    Returns:
+        Dict[str, Any]: API data with all variables replaced
+    """
+    if not isinstance(api_data, dict) or not variables:
+        return api_data
+
+    # Create a copy to avoid modifying the original
+    result = {}
+
+    for key, value in api_data.items():
+        if isinstance(value, str):
+            # Replace variables in string fields like URL, method, etc.
+            result[key] = replace_variables_in_text(value, variables)
+        elif isinstance(value, dict):
+            # Replace variables in nested objects like headers, body, params
+            result[key] = replace_variables_in_dict(value, variables)
+        elif isinstance(value, list):
+            # Replace variables in arrays
+            result[key] = replace_variables_in_list(value, variables)
+        else:
+            # Keep other types as-is (numbers, booleans, null)
+            result[key] = value
+
+    return result
+
+
+async def get_environment_variables(environment_id: int) -> Dict[str, str]:
+    """
+    Get all variables for a specific environment from the database.
+
+    Args:
+        environment_id (int): The ID of the environment
+
+    Returns:
+        Dict[str, str]: Dictionary of variable names to values
+    """
+    try:
+        async with SessionLocal() as db:
+            from models import Environment
+
+            stmt = select(Environment).where(Environment.id == environment_id)
+            result = await db.execute(stmt)
+            environment = result.scalar_one_or_none()
+
+            if environment and environment.variables:
+                return environment.variables
+
+            return {}
+    except Exception as e:
+        logs(f"Error getting environment variables: {e}", type="error")
+        return {}
+
+
+async def resolve_api_variables(environment_id: int, api_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Resolve all variables in API data using variables from the specified environment.
+
+    Args:
+        environment_id (int): The ID of the environment containing variables
+        api_data (Dict[str, Any]): The API data structure to resolve variables in
+
+    Returns:
+        Dict[str, Any]: API data with all variables resolved
+    """
+    variables = await get_environment_variables(environment_id)
+    return replace_variables_in_api_data(api_data, variables)
+
+
+def get_variables_from_api_data(api_data: Dict[str, Any]) -> List[str]:
+    """
+    Extract all variable names used in an API data structure.
+
+    Args:
+        api_data (Dict[str, Any]): The API data structure to analyze
+
+    Returns:
+        List[str]: List of unique variable names found
+    """
+    variables = set()
+
+    def extract_from_value(value):
+        if isinstance(value, str):
+            variables.update(extract_variables_from_text(value))
+        elif isinstance(value, dict):
+            for v in value.values():
+                extract_from_value(v)
+        elif isinstance(value, list):
+            for item in value:
+                extract_from_value(item)
+
+    extract_from_value(api_data)
+    return list(variables)

@@ -1,11 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
-import { FiKey, FiUser, FiUserX } from 'react-icons/fi';
-import { Link } from 'react-router-dom';
+import { FiHome, FiKey, FiUser, FiUserX } from 'react-icons/fi';
+import { Link, useLocation } from 'react-router-dom';
 import styles from './HeaderComponents.module.css';
 
 const UserProfile = ({ username }) => {
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef(null);
+  const location = useLocation();
+
+  // Check if we're on the home page
+  const isHomePage = location.pathname === '/';
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -42,13 +46,24 @@ const UserProfile = ({ username }) => {
         <div className={styles.dropdown}>
           <p className={styles.email}>{username}</p>
           <div className={styles.divider}></div>
-          <Link
-            to="/profile"
-            className={styles.dropdownItem}
-            onClick={closeDropdown}
-          >
-            <FiUser className={styles.menuIcon} /> Profile
-          </Link>
+          {/* Dynamically show Home or Profile based on current page */}
+          {isHomePage ? (
+            <Link
+              to="/profile"
+              className={styles.dropdownItem}
+              onClick={closeDropdown}
+            >
+              <FiUser className={styles.menuIcon} /> Profile
+            </Link>
+          ) : (
+            <Link
+              to="/"
+              className={styles.dropdownItem}
+              onClick={closeDropdown}
+            >
+              <FiHome className={styles.menuIcon} /> Home
+            </Link>
+          )}
           <Link
             to="/change-password"
             className={styles.dropdownItem}
