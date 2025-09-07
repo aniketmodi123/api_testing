@@ -45,6 +45,21 @@ export default function EnvironmentDetail({
     setHasVariableChanges(false);
   }, [environment.id, variables]);
 
+  // Update edit form when environment changes
+  useEffect(() => {
+    console.log('🔄 Environment prop changed:', {
+      id: environment.id,
+      name: environment.name,
+      description: environment.description,
+      updated_at: environment.updated_at,
+    });
+    console.log('🎯 Full environment object:', environment);
+    setEditForm({
+      name: environment.name,
+      description: environment.description || '',
+    });
+  }, [environment]); // Changed to depend on the entire environment object
+
   // Handle inline editing
   const handleEditToggle = () => {
     if (isEditing) {

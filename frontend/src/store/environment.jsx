@@ -26,6 +26,11 @@ export const EnvironmentProvider = ({ children }) => {
   // Get workspace context
   const { activeWorkspace } = useWorkspace();
 
+  // Debug selectedEnvironment changes
+  useEffect(() => {
+    console.log('🎪 selectedEnvironment changed:', selectedEnvironment);
+  }, [selectedEnvironment]);
+
   // Clear error after 5 seconds
   useEffect(() => {
     if (error) {
@@ -51,7 +56,10 @@ export const EnvironmentProvider = ({ children }) => {
   const handleError = (error, customMessage) => {
     console.error(customMessage, error);
     const errorMessage =
-      error.response?.data?.detail || error.message || customMessage;
+      error.response?.data?.error_message ||
+      error.response?.data?.detail ||
+      error.message ||
+      customMessage;
     setError(errorMessage);
     return false;
   };
@@ -156,6 +164,67 @@ export const EnvironmentProvider = ({ children }) => {
     }
   };
 
+  // Create environment with default variables but custom name and description
+  const createEnvironmentWithDefaults = async (
+    name,
+    description,
+    isActive = false
+  ) => {
+    if (!activeWorkspace?.id) return false;
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // Get template variables from the 'api_testing' template
+      const templates = environmentService.getAvailableTemplates();
+      const template = templates.find(t => t.name === 'api_testing');
+
+      // Convert template variables to simple key-value format
+      const variables = {};
+      if (template) {
+        template.variables.forEach(variable => {
+          variables[variable.key] = variable.value;
+        });
+      }
+
+      // Create environment data with user's name/description but template variables
+      const environmentData = {
+        name: name,
+        description: description,
+        is_active: isActive,
+        variables: variables,
+      };
+
+      console.log(
+        '📦 Creating environment with custom name and default variables:',
+        environmentData
+      );
+
+      const newEnvironment = await environmentService.createEnvironment(
+        activeWorkspace.id,
+        environmentData
+      );
+
+      // Add to environments list
+      setEnvironments(prev => [...prev, newEnvironment]);
+
+      // Select the new environment
+      setSelectedEnvironment(newEnvironment);
+      await loadVariables(newEnvironment.id);
+
+      showSuccess(
+        `Environment "${newEnvironment.name}" created with default variables`
+      );
+      return newEnvironment;
+    } catch (error) {
+      handleError(error, 'Failed to create environment with defaults');
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Update environment
   const updateEnvironment = async (environmentId, updateData) => {
     if (!activeWorkspace?.id) return false;
@@ -177,7 +246,15 @@ export const EnvironmentProvider = ({ children }) => {
 
       // Update selected environment if it's the one being updated
       if (selectedEnvironment?.id === environmentId) {
+        console.log('📝 Updating selectedEnvironment:', {
+          oldName: selectedEnvironment.name,
+          newName: updatedEnvironment.name,
+          oldDesc: selectedEnvironment.description,
+          newDesc: updatedEnvironment.description,
+        });
+        console.log('🎯 Full updatedEnvironment object:', updatedEnvironment);
         setSelectedEnvironment(updatedEnvironment);
+        console.log('✨ setSelectedEnvironment called');
       }
 
       // Update active environment if it changed
@@ -566,6 +643,7 @@ export const EnvironmentProvider = ({ children }) => {
     loadEnvironments,
     createEnvironment,
     createEnvironmentFromTemplate,
+    createEnvironmentWithDefaults,
     updateEnvironment,
     activateEnvironment,
     deleteEnvironment,

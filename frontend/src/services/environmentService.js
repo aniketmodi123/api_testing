@@ -26,20 +26,87 @@ export class EnvironmentService {
   }
 
   // Create environment from template
-  static async createEnvironmentFromTemplate(workspaceId, templateName) {
+  static async createEnvironmentFromTemplate(
+    workspaceId,
+    templateName,
+    customData = {}
+  ) {
     try {
-      const response = await api.post(
-        `/environment/workspace/${workspaceId}/environments/from-template/${templateName}`
-      );
-      // Handle backend response wrapper format: { response_code: 200, data: ... }
-      return response.data?.data || response.data;
+      console.log('🎯 Template creation data:', { templateName, customData });
+
+      // Get the template data
+      const templates = this.getAvailableTemplates();
+      const template = templates.find(t => t.name === templateName);
+
+      if (!template) {
+        throw new Error(`Template '${templateName}' not found`);
+      }
+
+      // Convert template variables to the format expected by backend (simple key-value pairs)
+      const variables = {};
+      template.variables.forEach(variable => {
+        variables[variable.key] = variable.value;
+      });
+
+      // Create environment data from template, but allow custom overrides
+      // Use explicit checks to ensure empty strings are preserved
+      const environmentData = {
+        name:
+          customData.name !== undefined && customData.name !== null
+            ? customData.name
+            : template.displayName,
+        description:
+          customData.description !== undefined &&
+          customData.description !== null
+            ? customData.description
+            : template.description,
+        is_active:
+          customData.is_active !== undefined ? customData.is_active : false,
+        variables: variables,
+      };
+
+      console.log('📦 Final environment data being sent:', environmentData);
+
+      try {
+        const response = await api.post(
+          `/environment/workspace/${workspaceId}/environments`,
+          environmentData
+        );
+        // Handle backend response wrapper format: { response_code: 200, data: ... }
+        return response.data?.data || response.data;
+      } catch (error) {
+        // If it's a name conflict error, try with a timestamped name
+        if (
+          error.response?.status === 400 &&
+          error.response?.data?.error_message?.includes('already exists')
+        ) {
+          const timestamp = new Date()
+            .toLocaleString('en-US', {
+              month: 'short',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit',
+              hour12: false,
+            })
+            .replace(',', '');
+
+          environmentData.name = `${environmentData.name} (${timestamp})`;
+
+          const retryResponse = await api.post(
+            `/environment/workspace/${workspaceId}/environments`,
+            environmentData
+          );
+          return retryResponse.data?.data || retryResponse.data;
+        }
+
+        // Re-throw the original error if it's not a name conflict
+        throw error;
+      }
     } catch (error) {
       console.error('Error creating environment from template:', error);
       throw error;
     }
-  }
-
-  // List all environments in a workspace
+  } // List all environments in a workspace
   static async listEnvironments(workspaceId) {
     try {
       const response = await api.get(
@@ -399,19 +466,20 @@ export class EnvironmentService {
         description: 'Common variables for API testing',
         variables: [
           {
-            key: 'BASE_URL',
-            value: 'https://api.example.com',
-            description: 'Base API URL',
+            key: 'devurl',
+            value: 'http://localhost:8000',
           },
           {
-            key: 'API_KEY',
-            value: '',
-            description: 'API authentication key',
+            key: 'surl',
+            value: 'http://example.com',
           },
           {
-            key: 'TIMEOUT',
-            value: '30000',
-            description: 'Request timeout in milliseconds',
+            key: 'stageurl',
+            value: 'http://stage.example.com',
+          },
+          {
+            key: 'username',
+            value: 'aniket modi',
           },
         ],
       },

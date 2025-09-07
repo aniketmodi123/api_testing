@@ -5,6 +5,7 @@
   background: var(--background);
   border-radius: 8px;
   overflow: hidden;
+  min-width: 0; /* Allow component to shrink */
 }
 
 /* Header */

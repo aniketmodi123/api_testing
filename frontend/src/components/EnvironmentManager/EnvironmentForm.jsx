@@ -52,6 +52,13 @@ export default function EnvironmentForm({
         environmentData.includeDefaults = true;
       }
 
+      console.log('📝 Form data being submitted:', {
+        formName: formData.name,
+        formDescription: formData.description,
+        includeDefaults: formData.includeDefaults,
+        finalEnvironmentData: environmentData,
+      });
+
       try {
         const result = await onSave(environmentData, setApiError);
         if (result !== false) {
@@ -173,8 +180,8 @@ export default function EnvironmentForm({
                   </span>
                 </label>
                 <div className={styles.checkboxDescription}>
-                  Add common variables like base_url, api_key, timeout to get
-                  started quickly
+                  Add common variables like urls for deffrent setup and username
+                  to get started quickly
                 </div>
               </div>
             </div>

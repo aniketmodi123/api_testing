@@ -18,6 +18,11 @@ export default function Header() {
       backgroundColor: 'var(--header-bg, transparent)',
       borderBottom: '1px solid var(--border-color, #eaeaea)',
     },
+    leftSection: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '20px',
+    },
     actionsContainer: {
       display: 'flex',
       alignItems: 'center',
@@ -36,7 +41,7 @@ export default function Header() {
 
   return (
     <header style={styles.header}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+      <div style={styles.leftSection}>
         <Logo />
         {user && (
           <>

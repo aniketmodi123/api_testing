@@ -15,7 +15,6 @@ export default function Home() {
   // State for collection, and request
   const [activeTab, setActiveTab] = useState('collections');
   const [activeRequest, setActiveRequest] = useState(null);
-  const [selectedEnvironment, setSelectedEnvironment] = useState(null);
 
   // Variable modal states
   const [showVariableModal, setShowVariableModal] = useState(false);
@@ -38,9 +37,12 @@ export default function Home() {
   const {
     variables,
     activeEnvironment,
+    selectedEnvironment,
+    setSelectedEnvironment,
     createEnvironment,
     updateEnvironment,
     createEnvironmentFromTemplate,
+    createEnvironmentWithDefaults,
   } = useEnvironment();
 
   // Enable workspace loading when home component mounts
@@ -97,7 +99,21 @@ export default function Home() {
       } else {
         // Create new environment
         if (environmentData.includeDefaults) {
-          result = await createEnvironmentFromTemplate(environmentData);
+          console.log(
+            '🚀 Creating environment with default variables but custom name/desc:',
+            {
+              userProvidedName: environmentData.name,
+              userProvidedDescription: environmentData.description,
+              is_active: environmentData.is_active,
+            }
+          );
+
+          // Create environment with user's custom name and description but template variables
+          result = await createEnvironmentWithDefaults(
+            environmentData.name,
+            environmentData.description,
+            environmentData.is_active
+          );
         } else {
           result = await createEnvironment(environmentData);
         }

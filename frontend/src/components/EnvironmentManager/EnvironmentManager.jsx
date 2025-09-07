@@ -99,7 +99,9 @@ export default function EnvironmentManager({
       {error && (
         <div className={styles.error}>
           <span className={styles.errorIcon}>⚠️</span>
-          <span>{error}</span>
+          <span>
+            {typeof error === 'object' ? JSON.stringify(error) : error}
+          </span>
         </div>
       )}
 

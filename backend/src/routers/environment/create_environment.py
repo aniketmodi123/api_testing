@@ -58,15 +58,8 @@ async def create_environment(
             )
             await db.execute(deactivate_query)
 
-        # Prepare variables JSON
-        variables_json = {}
-        if environment_data.variables:
-            for key, var_data in environment_data.variables.items():
-                variables_json[key] = {
-                    "value": var_data.value,
-                    "description": var_data.description,
-                    "is_enabled": var_data.is_enabled
-                }
+        # Prepare variables (simple key-value format like save_variables.py)
+        variables_dict = environment_data.variables or {}
 
         # Create the environment
         new_environment = Environment(
@@ -74,27 +67,21 @@ async def create_environment(
             name=environment_data.name,
             description=environment_data.description,
             is_active=environment_data.is_active,
-            variables=variables_json
+            variables=variables_dict  # Direct assignment like save_variables.py
         )
 
         db.add(new_environment)
         await db.commit()
         await db.refresh(new_environment)
 
-        # Format response data with masked secrets
-        masked_variables = {}
-        if new_environment.variables:
-            for key, var_data in new_environment.variables.items():
-                masked_var = var_data.copy()
-                masked_variables[key] = masked_var
-
+        # Format response data (same simple format as save_variables.py)
         data = {
             "id": new_environment.id,
             "workspace_id": new_environment.workspace_id,
             "name": new_environment.name,
             "description": new_environment.description,
             "is_active": new_environment.is_active,
-            "variables": masked_variables,
+            "variables": new_environment.variables or {},  # Simple key-value format
             "created_at": str(new_environment.created_at),
             "updated_at": str(new_environment.updated_at)
         }

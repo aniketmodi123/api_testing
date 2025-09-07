@@ -2,36 +2,36 @@
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: #ffffff;
+  background: var(--background);
 }
 
 .header {
   padding: 20px;
-  border-bottom: 1px solid #e5e7eb;
-  background: #f9fafb;
+  border-bottom: 1px solid var(--border);
+  background: var(--background-lighter);
 }
 
 .header h3 {
   margin: 0 0 8px 0;
   font-size: 18px;
   font-weight: 600;
-  color: #111827;
+  color: var(--text);
 }
 
 .description {
   margin: 0;
-  color: #6b7280;
+  color: var(--text-muted);
   line-height: 1.5;
   font-size: 14px;
 }
 
 .description code {
-  background: #f3f4f6;
+  background: var(--input-background);
   padding: 2px 4px;
   border-radius: 3px;
   font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
   font-size: 13px;
-  color: #374151;
+  color: var(--text);
 }
 
 .content {
@@ -53,14 +53,14 @@
   margin: 0;
   font-size: 16px;
   font-weight: 600;
-  color: #111827;
+  color: var(--text);
 }
 
 .section h5 {
   margin: 0;
   font-size: 14px;
   font-weight: 600;
-  color: #374151;
+  color: var(--text);
 }
 
 .sectionHeader {
@@ -86,13 +86,13 @@
 .inputTextarea {
   width: 100%;
   padding: 12px;
-  border: 1.5px solid #d1d5db;
+  border: 1.5px solid var(--border);
   border-radius: 8px;
   font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
   font-size: 13px;
   line-height: 1.5;
-  background: #ffffff;
-  color: #374151;
+  background: var(--background);
+  color: var(--text);
   resize: vertical;
   min-height: 120px;
   transition: all 0.2s ease;
@@ -100,12 +100,12 @@
 
 .inputTextarea:focus {
   outline: none;
-  border-color: #3b82f6;
+  border-color: var(--primary);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
 .inputTextarea::placeholder {
-  color: #9ca3af;
+  color: var(--text-muted);
   font-style: italic;
 }
 
@@ -142,7 +142,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 8px 12px;
-  background: #f9fafb;
+  background: var(--background-lighter);
   border-radius: 6px;
   font-size: 13px;
 }
@@ -150,12 +150,12 @@
 .variableName {
   font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
   font-weight: 600;
-  color: #374151;
+  color: var(--text);
 }
 
 .variableValue {
   font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
-  color: #6b7280;
+  color: var(--text-muted);
   font-style: italic;
   text-align: right;
   flex: 1;
@@ -173,9 +173,9 @@
 
 /* Output */
 .outputContainer {
-  border: 1.5px solid #e5e7eb;
+  border: 1.5px solid var(--border);
   border-radius: 8px;
-  background: #f9fafb;
+  background: var(--background-lighter);
   overflow: hidden;
 }
 
@@ -185,8 +185,8 @@
   font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
   font-size: 13px;
   line-height: 1.5;
-  color: #374151;
-  background: #ffffff;
+  color: var(--text);
+  background: var(--background);
   overflow-x: auto;
   white-space: pre-wrap;
   word-wrap: break-word;
@@ -195,9 +195,9 @@
 .emptyOutput {
   padding: 40px 20px;
   text-align: center;
-  color: #9ca3af;
+  color: var(--text-muted);
   font-style: italic;
-  border: 1.5px dashed #e5e7eb;
+  border: 1.5px dashed var(--border);
   border-radius: 8px;
 }
 
@@ -207,15 +207,15 @@
   justify-content: center;
   gap: 8px;
   padding: 20px;
-  color: #6b7280;
+  color: var(--text-muted);
   font-size: 14px;
 }
 
 .spinner {
   width: 16px;
   height: 16px;
-  border: 2px solid #e5e7eb;
-  border-top: 2px solid #3b82f6;
+  border: 2px solid var(--border);
+  border-top: 2px solid var(--primary);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -235,9 +235,9 @@
   gap: 20px;
   flex-wrap: wrap;
   padding: 16px;
-  background: #f9fafb;
+  background: var(--background-lighter);
   border-radius: 8px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border);
 }
 
 .stat {
@@ -249,7 +249,7 @@
 
 .statLabel {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--text-muted);
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.025em;
@@ -257,7 +257,7 @@
 
 .statValue {
   font-size: 14px;
-  color: #111827;
+  color: var(--text);
   font-weight: 600;
 }
 
@@ -320,37 +320,37 @@
   }
 }
 
-/* Scrollbar Styling */
+/* Scrollbar Styling - Using global scrollbar variables */
 .content::-webkit-scrollbar {
-  width: 6px;
+  width: var(--scrollbar-width);
 }
 
 .content::-webkit-scrollbar-track {
-  background: #f3f4f6;
+  background: var(--scrollbar-track-color);
 }
 
 .content::-webkit-scrollbar-thumb {
-  background: #d1d5db;
-  border-radius: 3px;
+  background: var(--scrollbar-thumb-color);
+  border-radius: var(--scrollbar-border-radius);
 }
 
 .content::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
+  background: var(--scrollbar-thumb-hover-color);
 }
 
 .outputText::-webkit-scrollbar {
-  height: 6px;
+  height: var(--scrollbar-width);
 }
 
 .outputText::-webkit-scrollbar-track {
-  background: #f3f4f6;
+  background: var(--scrollbar-track-color);
 }
 
 .outputText::-webkit-scrollbar-thumb {
-  background: #d1d5db;
-  border-radius: 3px;
+  background: var(--scrollbar-thumb-color);
+  border-radius: var(--scrollbar-border-radius);
 }
 
 .outputText::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
+  background: var(--scrollbar-thumb-hover-color);
 }
