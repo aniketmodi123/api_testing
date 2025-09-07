@@ -344,6 +344,7 @@ export default function RequestPanel({ activeRequest }) {
 
       // Initialize validation schema
       const schema =
+        extractValue(activeApi, 'extra_meta.expected') ||
         extractValue(activeApi, 'expected') ||
         extractValue(activeApi, 'validation.responseSchema') ||
         extractValue(activeApi, 'validationSchema.response') ||
@@ -571,7 +572,7 @@ export default function RequestPanel({ activeRequest }) {
       setIsSending(false);
     }
   };
-  // Function to validate the API by creating a test case and then validating
+  // Function to validate the API using backend validation endpoint
   const handleValidateApi = async () => {
     setIsSending(true);
 
@@ -584,69 +585,69 @@ export default function RequestPanel({ activeRequest }) {
 
       // Get the validation schema from API or use default
       const validationSchema =
+        extractValue(activeApi, 'extra_meta.expected') ||
         extractValue(activeApi, 'expected') ||
         extractValue(activeApi, 'validation.responseSchema') ||
         extractValue(activeApi, 'validationSchema.response') ||
         defaultValidationSchema;
 
-      // Prepare request data for variable resolution
-      const requestData = {
-        url: url,
-        method: method,
-        headers: extractValue(activeApi, 'headers', {}),
-        params: extractValue(activeApi, 'params', {}),
-        body: normalizeBody(bodyContent, bodyType),
+      console.log('🔍 Starting API validation with schema:', validationSchema);
+
+      // Use the dedicated validation endpoint
+      const validationResponse =
+        await BackendApiCallService.executeWithValidation({
+          fileId: selectedNode?.id,
+          environmentId: activeEnvironment?.id,
+          method: method,
+          url: url,
+          headers: extractValue(activeApi, 'headers', {}),
+          params: extractValue(activeApi, 'params', {}),
+          body: method !== 'GET' ? normalizeBody(bodyContent, bodyType) : null,
+          expected: validationSchema,
+        });
+
+      console.log('✅ Validation completed:', validationResponse);
+
+      // Format response for display with validation results
+      const formattedResponse = {
+        status: validationResponse.data?.status_code || 200,
+        statusText: validationResponse.data?.status_code < 300 ? 'OK' : 'Error',
+        time: `${validationResponse.data?.execution_time || 0}ms`,
+        size: validationResponse.data?.text
+          ? `${new Blob([validationResponse.data.text]).size} bytes`
+          : '0 bytes',
+        headers: validationResponse.data?.headers || {},
+        body: {
+          ...(validationResponse.data?.json ||
+            validationResponse.data?.text ||
+            ''),
+          validation: validationResponse.data?.validation || null,
+        },
+        raw_response: validationResponse.data,
+        resolved_url: validationResponse.data?.resolved_url || url,
+        variables_used: validationResponse.data?.variables_used || {},
+        folder_headers: validationResponse.data?.folder_headers || {},
       };
 
-      // Resolve environment variables locally - no API calls needed!
-      const resolvedRequest = VariableResolver.resolveApiRequest(
-        requestData,
-        variables
-      );
+      setResponse(formattedResponse);
 
-      // Create a test case with the resolved parameters
-      const testCaseData = {
-        name: `Validation test - ${new Date().toISOString()}`,
-        description: 'Auto-generated test case with validation schema',
-        method: method,
-        endpoint: resolvedRequest.url,
-        headers: resolvedRequest.headers,
-        params: resolvedRequest.params,
-        body: resolvedRequest.body,
-        expected: validationSchema, // Store the validation schema directly in the expected field
-      };
-
-      // Create the test case
-      const createResult = await createTestCase(selectedNode.id, testCaseData);
-
-      if (!createResult || !createResult.case_id) {
-        throw new Error('Failed to create test case for validation');
-      }
-
-      if (!selectedNode?.id) {
-        throw new Error(
-          'No selected node ID available for running validation test'
-        );
-      }
-
-      // Run the test using the new case ID
-      const validationResult = await runTest(selectedNode.id, [
-        createResult.case_id,
-      ]);
-      setActiveTab('apiTests');
+      // Switch to the response tab to show validation results
+      setActiveTab('response');
+      setResponseTab('body');
     } catch (error) {
       console.error('Error validating API:', error);
 
       // Show error in response tab
       setResponse({
-        statusCode: 500,
+        status: 500,
         statusText: 'Validation Error',
+        time: 'Error',
+        size: '0 bytes',
+        headers: {},
         body: {
           message: 'Failed to validate API',
           details: error.message,
         },
-        headers: {},
-        responseTime: new Date().toISOString(),
         isError: true,
       });
 
@@ -991,6 +992,28 @@ export default function RequestPanel({ activeRequest }) {
               setIsUpdatingConfig(true);
 
               try {
+                // Parse validation schema if available
+                let validationSchemaData;
+                try {
+                  if (validationSchema && validationSchema.trim()) {
+                    validationSchemaData = JSON.parse(validationSchema);
+                  } else {
+                    // Get schema from active API or use default
+                    validationSchemaData =
+                      extractValue(activeApi, 'extra_meta.expected') ||
+                      extractValue(activeApi, 'expected') ||
+                      extractValue(activeApi, 'validation.responseSchema') ||
+                      extractValue(activeApi, 'validationSchema.response') ||
+                      defaultValidationSchema;
+                  }
+                } catch (e) {
+                  console.warn(
+                    'Invalid validation schema JSON, using default:',
+                    e
+                  );
+                  validationSchemaData = defaultValidationSchema;
+                }
+
                 // Prepare data for saving API (works for both create and update)
                 const apiData = activeApi
                   ? {
@@ -1002,6 +1025,10 @@ export default function RequestPanel({ activeRequest }) {
                       params: extractValue(activeApi, 'params', {}),
                       body: normalizeBody(bodyContent, bodyType),
                       bodyType: bodyType,
+                      extra_meta: {
+                        ...extractValue(activeApi, 'extra_meta', {}),
+                        expected: validationSchemaData, // Add validation schema to extra_meta
+                      },
                     }
                   : {
                       // Create new API
@@ -1014,6 +1041,9 @@ export default function RequestPanel({ activeRequest }) {
                       params: {},
                       body: normalizeBody(bodyContent, bodyType),
                       bodyType: bodyType,
+                      extra_meta: {
+                        expected: validationSchemaData, // Add validation schema to extra_meta
+                      },
                     };
 
                 // Use the unified saveApi function for both create and update
@@ -1086,6 +1116,7 @@ export default function RequestPanel({ activeRequest }) {
                       } else {
                         // Get schema from active API or use default
                         validationSchemaData =
+                          extractValue(activeApi, 'extra_meta.expected') ||
                           extractValue(activeApi, 'expected') ||
                           extractValue(
                             activeApi,

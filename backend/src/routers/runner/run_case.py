@@ -91,11 +91,11 @@ async def get_workspace_variables(db: AsyncSession, workspace_id: int) -> dict:
         # Get all enabled variables with actual values (including secrets for execution)
         variables_dict = {}
         for key, var_data in active_environment.variables.items():
-            if var_data.get('is_enabled', True) and var_data.get('value') is not None:
-                variables_dict[key] = var_data['value']
+            if var_data is not None:
+                variables_dict[key] = var_data
 
         return variables_dict
-    except Exception:
+    except Exception as e:
         return {}
 
 

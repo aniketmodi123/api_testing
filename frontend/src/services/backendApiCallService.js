@@ -66,14 +66,58 @@ export class BackendApiCallService {
    * @param {Object} request - API request with validation schema
    * @returns {Promise} - API response with validation results
    */
-  static async executeWithValidation(request) {
-    return this.executeApiCall({
-      ...request,
-      options: {
-        ...request.options,
-        validateResponse: true,
-      },
-    });
+  static async executeWithValidation({
+    fileId,
+    environmentId,
+    method = 'GET',
+    url,
+    headers = {},
+    params = {},
+    body = null,
+    expected = null,
+    options = {},
+  }) {
+    try {
+      console.log('🔍 Sending API call with validation to backend:', {
+        fileId,
+        environmentId,
+        method,
+        url: url?.substring(0, 100) + '...',
+        hasValidationSchema: !!expected,
+      });
+
+      const requestPayload = {
+        file_id: fileId,
+        environment_id: environmentId,
+        method: method,
+        url: url,
+        headers: headers,
+        params: params,
+        body: body,
+        expected: expected,
+        options: {
+          timeout: options.timeout || 30000,
+          ...options,
+        },
+      };
+
+      // Use the validation endpoint
+      const response = await api.post(
+        '/api/execute-with-validation',
+        requestPayload
+      );
+
+      console.log('✅ Backend validation completed:', {
+        status: response.status,
+        responseCode: response.data?.response_code,
+        validationPassed: response.data?.data?.validation?.passed,
+      });
+
+      return response.data;
+    } catch (error) {
+      console.error('❌ Backend validation failed:', error);
+      throw error;
+    }
   }
 
   /**

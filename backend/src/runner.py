@@ -10,6 +10,18 @@ import yaml
 
 from validator import evaluate_expect  # your light-mode validator
 
+
+def resolve_docker_url(url: str) -> str:
+    """
+    Resolve URL for Docker container networking.
+    When running inside Docker, localhost refers to the host machine.
+    """
+    if 'localhost' in url:
+        # Replace localhost with host.docker.internal for Docker networking
+        return url.replace('localhost', 'host.docker.internal')
+
+    return url
+
 ROOT = Path(__file__).parent
 CONFIG = ROOT / "config.yaml"
 
@@ -112,7 +124,11 @@ async def _run_case(
                 return val
 
             # Apply ${ts} to case first (endpoint/body/etc.)
-            case = replace_ts(case)
+            replaced_case = replace_ts(case)
+            if isinstance(replaced_case, dict):
+                case = replaced_case
+            else:
+                raise TypeError("After replace_ts, case is not a dict as expected")
 
             # Merge meta defaults into case
             method = (case.get("method") or "GET").upper()
@@ -121,31 +137,37 @@ async def _run_case(
             # Merge headers from global → service → case, then apply ${ts} into headers as well
             merged_headers = {**headers, **case['headers']}
 
-            headers = replace_ts(merged_headers)
+            replaced_headers = replace_ts(merged_headers)
+            if not isinstance(replaced_headers, dict):
+                replaced_headers = {}
+            headers = {str(k): str(v) for k, v in replaced_headers.items()}
 
             body = case.get("body")
             params = case.get("params")
 
             print(f"{case['name']} | {method} {url}")
 
+            # Resolve Docker URL for localhost
+            resolved_url = resolve_docker_url(url)
+
             # time the request
             t0 = time.perf_counter()
 
             # Send request (pass params as query parameters when present)
             if method == "GET":
-                resp = await client.get(url, headers=headers, params=params, timeout=timeout)
+                resp = await client.get(resolved_url, headers=headers, params=params, timeout=timeout)
             elif method == "POST":
-                resp = await client.post(url, headers=headers, json=body, params=params, timeout=timeout)
+                resp = await client.post(resolved_url, headers=headers, json=body, params=params, timeout=timeout)
             elif method == "PUT":
-                resp = await client.put(url, headers=headers, json=body, params=params, timeout=timeout)
+                resp = await client.put(resolved_url, headers=headers, json=body, params=params, timeout=timeout)
             elif method == "DELETE":
-                resp = await client.delete(url, headers=headers, params=params, timeout=timeout)
+                resp = await client.delete(resolved_url, headers=headers, params=params, timeout=timeout)
             elif method == "PATCH":
-                resp = await client.patch(url, headers=headers, json=body, params=params, timeout=timeout)
+                resp = await client.patch(resolved_url, headers=headers, json=body, params=params, timeout=timeout)
             elif method == "HEAD":
-                resp = await client.head(url, headers=headers, params=params, timeout=timeout)
+                resp = await client.head(resolved_url, headers=headers, params=params, timeout=timeout)
             elif method == "OPTIONS":
-                resp = await client.options(url, headers=headers, params=params, timeout=timeout)
+                resp = await client.options(resolved_url, headers=headers, params=params, timeout=timeout)
             else:
                 raise ValueError(f"Unsupported method: {method}")
 

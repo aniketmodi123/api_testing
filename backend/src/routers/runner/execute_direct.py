@@ -3,7 +3,9 @@ from fastapi import APIRouter, Depends, Header as FastAPIHeader, HTTPException
 from pydantic import BaseModel, Field
 import httpx
 import time
-import os
+import json
+
+from validator import evaluate_expect
 
 from utils import (
     ExceptionHandler,
@@ -24,43 +26,16 @@ from config import (
 )
 from models import Environment, Node, Header
 
-def resolve_docker_url(url: str) -> list:
+def resolve_docker_url(url: str) -> str:
     """
     Resolve URL for Docker container networking.
-    Returns a list of possible URLs to try in order of preference.
+    When running inside Docker, localhost refers to the host machine.
     """
-    alternative_urls = [url]  # Always try original first
-
     if 'localhost' in url:
-        # Docker networking alternatives
-        alternative_urls.extend([
-            url.replace('localhost', 'host.docker.internal'),
-            url.replace('localhost', '172.17.0.1'),  # Default Docker gateway
-            url.replace('localhost', '127.0.0.1'),
-        ])
+        # Replace localhost with host.docker.internal for Docker networking
+        return url.replace('localhost', 'host.docker.internal')
 
-        # Specific container mapping for known services
-        if 'localhost:8003' in url:
-            alternative_urls.append(
-                url.replace('localhost:8003', 'mes_dashboard_dev:8000')
-            )
-
-        # Environment variable override
-        docker_host = os.getenv('DOCKER_HOST_IP', None)
-        if docker_host:
-            alternative_urls.append(
-                url.replace('localhost', docker_host)
-            )
-
-    # Remove duplicates while preserving order
-    seen = set()
-    unique_urls = []
-    for u in alternative_urls:
-        if u not in seen:
-            seen.add(u)
-            unique_urls.append(u)
-
-    return unique_urls
+    return url
 
 
 router = APIRouter()
@@ -131,6 +106,7 @@ class ApiExecuteRequest(BaseModel):
     params: Dict[str, Any] = Field(default_factory=dict, description="Query parameters")
     body: Any = Field(None, description="Request body")
     options: Dict[str, Any] = Field(default_factory=dict, description="Additional options")
+    expected: Optional[Dict[str, Any]] = Field(None, description="Expected response criteria for validation")
 
 
 async def get_folder_headers(db: AsyncSession, node_id: int) -> Dict[str, str]:
@@ -280,25 +256,12 @@ async def execute_api_direct(
                 else:
                     request_data['content'] = str(resolved_body)
 
-            # Get Docker-aware URL alternatives
-            alternative_urls = resolve_docker_url(final_url)
+            # Get Docker-aware resolved URL
+            resolved_final_url = resolve_docker_url(final_url)
+            request_data['url'] = resolved_final_url
 
-            last_error = None
-            for attempt_url in alternative_urls:
-                try:
-                    request_data_copy = request_data.copy()
-                    request_data_copy['url'] = attempt_url
-
-                    # Make the request
-                    response = await client.request(**request_data_copy)
-                    break
-                except (httpx.ConnectError, httpx.RequestError) as e:
-                    last_error = e
-                    continue
-            else:
-                # If all attempts failed, raise the last error
-                if last_error:
-                    raise last_error
+            # Make the request
+            response = await client.request(**request_data)
 
         execution_time = time.time() - start_time
 
@@ -351,13 +314,78 @@ async def execute_api_direct(
 @router.post("/execute-with-validation")
 async def execute_api_with_validation(
     request: ApiExecuteRequest,
-    x_username: str = FastAPIHeader(...),
+    username: str = FastAPIHeader(...),
     db: AsyncSession = Depends(get_db)
 ):
     """Execute API call with validation against expected results"""
-    # First execute the API
-    response = await execute_api_direct(request, x_username, db)
+    try:
+        # 1. First, execute the API using the working execute_api_direct function
+        api_response = await execute_api_direct(request, username, db)
 
-    # TODO: Add validation logic here
-    # For now, just return the execution result
-    return response
+        # 2. If no expected criteria provided, return the normal response
+        if not request.expected:
+            return api_response
+
+        # 3. Extract the execution data from the API response
+        # The api_response is a JSONResponse object with the data in its content
+        try:
+            # Get the response content
+            if hasattr(api_response, 'body'):
+                # For JSONResponse, access the body
+                response_content = bytes(api_response.body).decode('utf-8')
+                response_data = json.loads(response_content)
+            else:
+                # Fallback - this shouldn't happen but provides safety
+                print("Warning: Unexpected response format from execute_api_direct")
+                return api_response
+
+            execution_data = response_data.get('data', {})
+            if not execution_data:
+                print("Warning: No execution data found in API response")
+                return api_response
+
+        except Exception as e:
+            print(f"Error extracting execution data: {e}")
+            return api_response
+
+        # 4. Create mock response object for validation
+        class MockResponse:
+            def __init__(self, status_code, text, headers):
+                self.status_code = status_code
+                self.text = text
+                self.headers = headers
+                self._json_data = None
+
+            def json(self):
+                if self._json_data is None:
+                    try:
+                        self._json_data = json.loads(self.text) if self.text else {}
+                    except json.JSONDecodeError:
+                        self._json_data = {}
+                return self._json_data
+
+        # 5. Create mock response from the actual API response data
+        mock_response = MockResponse(
+            status_code=execution_data.get("status_code", 200),
+            text=execution_data.get("text", ""),
+            headers=execution_data.get("headers", {})
+        )
+
+        # 6. Perform validation using the existing validator
+        validation_passed, validation_failures = evaluate_expect(mock_response, request.expected)
+
+        # 7. Add validation results to the execution data
+        execution_data['validation'] = {
+            "performed": True,
+            "passed": validation_passed,
+            "failures": validation_failures,
+            "expected_criteria": request.expected,
+            "summary": f"{'PASSED' if validation_passed else 'FAILED'} - {len(validation_failures)} failure(s)"
+        }
+
+        # 8. Return enhanced response with validation results
+        return create_response(200, data=execution_data)
+
+    except Exception as e:
+        print(f"Error in validation: {e}")
+        return ExceptionHandler(e)
