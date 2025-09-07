@@ -34,6 +34,8 @@
 .urlBar {
   display: flex;
   margin-bottom: 10px;
+  align-items: center;
+  height: 34px;
 }
 
 @media (max-width: 768px) {
@@ -115,17 +117,12 @@
   font-size: 14px;
   border-right: none;
   outline: none;
+  height: 34px;
+  box-sizing: border-box;
 }
 
 .urlInput {
   flex-grow: 1;
-  padding: 8px 12px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background-color: var(--input-background);
-  color: var(--text);
-  font-size: 14px;
-  outline: none;
 }
 
 .buttonGroup {
