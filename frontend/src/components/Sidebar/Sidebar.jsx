@@ -21,6 +21,14 @@ export default function Sidebar({ onTabChange }) {
           <span className={styles.tabIcon}>📚</span>
           <span className={styles.tabLabel}>Collections</span>
         </div>
+        {/* Bulk Test tab inserted here */}
+        <div
+          className={`${styles.tab} ${activeTab === 'bulkTest' ? styles.active : ''}`}
+          onClick={() => handleTabChange('bulkTest')}
+        >
+          <span className={styles.tabIcon}>🧪</span>
+          <span className={styles.tabLabel}>Bulk Test</span>
+        </div>
         <div
           className={`${styles.tab} ${activeTab === 'environments' ? styles.active : ''}`}
           onClick={() => handleTabChange('environments')}

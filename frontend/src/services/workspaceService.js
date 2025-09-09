@@ -101,6 +101,21 @@ export const workspaceService = {
   },
 
   /**
+   * Get workspace tree with APIs and test cases for bulk testing
+   * @param {number} workspaceId - Workspace ID
+   * @returns {Promise} Promise with workspace tree data including APIs and test cases
+   */
+  async getBulkTestingTree(workspaceId) {
+    const response = await api.get(
+      `/workspace/${workspaceId}?include_apis=true`
+    );
+
+    // Return the response directly without transformation to avoid multiple calls
+    // and preserve the exact structure from backend
+    return response.data;
+  },
+
+  /**
    * Delete a workspace
    * @param {number} workspaceId - Workspace ID
    * @returns {Promise} Promise with deletion result

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import BulkTestPanel from '../../components/BulkTestPanel.jsx';
 import CollectionTree from '../../components/CollectionTree/CollectionTree';
 import { EnvironmentManager } from '../../components/EnvironmentManager';
 import EnvironmentDetail from '../../components/EnvironmentManager/EnvironmentDetail';
@@ -199,32 +200,36 @@ export default function Home() {
         <Sidebar onTabChange={handleTabChange} />
 
         {/* Collection or Environment Panel based on active tab */}
-        <div
-          className={styles.sidePanel}
-          style={{ width: `${sidePanelWidth}px` }}
-        >
-          {activeTab === 'collections' ? (
-            <CollectionTree onSelectRequest={handleSelectRequest} />
-          ) : (
-            <EnvironmentManager
-              onEnvironmentSelect={handleEnvironmentSelect}
-              onCreateEnvironment={handleCreateEnvironment}
-              onEditEnvironment={handleEditEnvironment}
-            />
-          )}
-        </div>
+        {activeTab !== 'bulkTest' && (
+          <div
+            className={styles.sidePanel}
+            style={{ width: `${sidePanelWidth}px` }}
+          >
+            {activeTab === 'collections' ? (
+              <CollectionTree onSelectRequest={handleSelectRequest} />
+            ) : (
+              <EnvironmentManager
+                onEnvironmentSelect={handleEnvironmentSelect}
+                onCreateEnvironment={handleCreateEnvironment}
+                onEditEnvironment={handleEditEnvironment}
+              />
+            )}
+          </div>
+        )}
 
         {/* Resize Handle */}
-        <div
-          className={styles.resizeHandle}
-          onMouseDown={handleMouseDown}
-        ></div>
+        {activeTab !== 'bulkTest' && (
+          <div
+            className={styles.resizeHandle}
+            onMouseDown={handleMouseDown}
+          ></div>
+        )}
 
         {/* Main Content Area */}
         <div className={styles.contentPanel}>
           {activeTab === 'collections' ? (
             <RequestPanel activeRequest={activeRequest} />
-          ) : (
+          ) : activeTab === 'environments' ? (
             /* Show variable management or environment form when in environments tab */
             <div className={styles.variableManagementPanel}>
               {showEnvironmentForm ? (
@@ -262,6 +267,9 @@ export default function Home() {
                 </div>
               )}
             </div>
+          ) : (
+            // Bulk Test tab: render new BulkTestPanel
+            <BulkTestPanel onSelectRequest={handleSelectRequest} />
           )}
         </div>
       </div>

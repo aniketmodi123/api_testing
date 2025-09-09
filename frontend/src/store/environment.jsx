@@ -25,12 +25,11 @@ export const EnvironmentProvider = ({ children }) => {
   const [error, setError] = useState(null);
 
   // Get workspace context
-  const { activeWorkspace } = useWorkspace();
+  const workspaceContext = useWorkspace();
+  const { activeWorkspace } = workspaceContext || {};
 
   // Debug selectedEnvironment changes
-  useEffect(() => {
-    console.log('🎪 selectedEnvironment changed:', selectedEnvironment);
-  }, [selectedEnvironment]);
+  useEffect(() => {}, [selectedEnvironment]);
 
   // Clear error after 5 seconds
   useEffect(() => {
@@ -247,15 +246,7 @@ export const EnvironmentProvider = ({ children }) => {
 
       // Update selected environment if it's the one being updated
       if (selectedEnvironment?.id === environmentId) {
-        console.log('📝 Updating selectedEnvironment:', {
-          oldName: selectedEnvironment.name,
-          newName: updatedEnvironment.name,
-          oldDesc: selectedEnvironment.description,
-          newDesc: updatedEnvironment.description,
-        });
-        console.log('🎯 Full updatedEnvironment object:', updatedEnvironment);
         setSelectedEnvironment(updatedEnvironment);
-        console.log('✨ setSelectedEnvironment called');
       }
 
       // Update active environment if it changed

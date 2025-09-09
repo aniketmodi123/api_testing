@@ -103,7 +103,6 @@ export default function VariableList({
   if (safeVariables.length === 0) {
     return (
       <div className={styles.emptyState}>
-        <div className={styles.emptyIcon}>📝</div>
         <h3>No variables yet</h3>
         <p>
           Add your first environment variable to start managing dynamic values
