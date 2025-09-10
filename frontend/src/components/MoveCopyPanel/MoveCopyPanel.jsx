@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { workspaceService } from '../../services/workspaceService';
 import { useWorkspace } from '../../store/workspace';
-import { useTheme } from '../ThemeProvider';
 import styles from './MoveCopyPanel.module.css';
 
 // MoveCopyPanel: modal to move/copy nodes between workspaces/folders
@@ -13,8 +12,6 @@ export default function MoveCopyPanel({
   fileTree,
 }) {
   const { workspaces, activeWorkspace } = useWorkspace();
-  const { theme } = useTheme();
-  const isDarkMode = theme === 'dark';
   const [operation, setOperation] = useState('copy');
   const [selectedWorkspace, setSelectedWorkspace] = useState(
     activeWorkspace || null
@@ -205,9 +202,7 @@ export default function MoveCopyPanel({
 
   return (
     <div className={styles.overlay}>
-      <div
-        className={`${styles.panel} ${isDarkMode ? styles.dark : styles.light}`}
-      >
+      <div className={styles.panel}>
         <div className={styles.header}>
           <h3>
             {operation === 'copy' ? 'Copy' : 'Move'}{' '}
