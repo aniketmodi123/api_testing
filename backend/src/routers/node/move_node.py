@@ -6,6 +6,8 @@ from config import get_db
 from schema import NodeMoveRequest
 import logging
 
+from utils import ExceptionHandler, create_response, value_correction
+
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
@@ -23,13 +25,13 @@ async def move_node(
         result = await db.execute(select(Node).where(Node.id == node_id))
         node = result.scalar_one_or_none()
         if not node:
-            raise HTTPException(status_code=404, detail="Node not found")
+            return create_response(206, error_message="Node not found")
 
         # Verify target workspace exists
         result = await db.execute(select(Workspace).where(Workspace.id == request.target_workspace_id))
         target_workspace = result.scalar_one_or_none()
         if not target_workspace:
-            raise HTTPException(status_code=404, detail="Target workspace not found")
+            return create_response(206, error_message="Target workspace not found")
 
         # Verify target folder exists if specified
         if request.target_folder_id:
@@ -41,14 +43,11 @@ async def move_node(
             )
             target_folder = result.scalar_one_or_none()
             if not target_folder:
-                raise HTTPException(status_code=404, detail="Target folder not found")
+                return create_response(206, error_message="Target folder not found")
 
             # Ensure target folder is in the target workspace
             if target_folder.workspace_id != request.target_workspace_id:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Target folder must be in the target workspace"
-                )
+                return create_response(400, error_message="Target folder must be in the target workspace")
 
         # Check for name conflicts in target location
         result = await db.execute(
@@ -62,20 +61,14 @@ async def move_node(
         existing_node = result.scalar_one_or_none()
 
         if existing_node:
-            raise HTTPException(
-                status_code=409,
-                detail=f"A {existing_node.type} with name '{request.new_name}' already exists in the target location"
-            )
+            return create_response(409, error_message=f"A {existing_node.type} with name '{request.new_name}' already exists in the target location")
 
         # Prevent moving a folder into itself or its descendants
         if node.type == "folder" and request.target_folder_id:
             current_parent = request.target_folder_id
             while current_parent:
                 if current_parent == node.id:
-                    raise HTTPException(
-                        status_code=400,
-                        detail="Cannot move a folder into itself or its descendants"
-                    )
+                    return create_response(400, error_message="Cannot move a folder into itself or its descendants")
                 result = await db.execute(select(Node).where(Node.id == current_parent))
                 parent_node = result.scalar_one_or_none()
                 current_parent = parent_node.parent_id if parent_node else None
@@ -102,26 +95,20 @@ async def move_node(
             f"to workspace {request.target_workspace_id} with name '{request.new_name}'"
         )
 
-        return {
-            "success": True,
-            "message": f"{node.type.title()} moved successfully",
-            "data": {
-                "id": node.id,
-                "name": request.new_name,
-                "type": node.type,
-                "workspace_id": request.target_workspace_id,
-                "parent_id": request.target_folder_id,
-                "old_location": {
-                    "workspace_id": old_workspace_id,
-                    "parent_id": old_parent_id,
-                    "name": old_name
-                }
+        data = {
+            "id": node.id,
+            "name": request.new_name,
+            "type": node.type,
+            "workspace_id": request.target_workspace_id,
+            "parent_id": request.target_folder_id,
+            "old_location": {
+                "workspace_id": old_workspace_id,
+                "parent_id": old_parent_id,
+                "name": old_name
             }
         }
-
-    except HTTPException:
-        raise
+        return create_response(200, value_correction(data))
     except Exception as e:
         logger.error(f"Error moving node {node_id}: {str(e)}")
         await db.rollback()
-        raise HTTPException(status_code=500, detail="Internal server error")
+        ExceptionHandler(e)

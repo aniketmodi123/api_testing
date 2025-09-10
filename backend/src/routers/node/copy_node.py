@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -7,6 +7,8 @@ from config import get_db
 from schema import NodeCopyRequest
 from typing import Optional
 import logging
+
+from utils import ExceptionHandler, create_response, value_correction
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -26,9 +28,7 @@ async def copy_node_recursive(
         name=new_name,
         type=source_node.type,
         workspace_id=target_workspace_id,
-        parent_id=target_parent_id,
-        content=source_node.content,
-        description=source_node.description
+        parent_id=target_parent_id
     )
 
     db.add(copied_node)
@@ -47,17 +47,11 @@ async def copy_node_recursive(
                 file_id=copied_node.id,
                 name=new_name,
                 method=source_api.method,
-                url=source_api.url,
-                headers=source_api.headers,
-                body=source_api.body,
+                endpoint=source_api.endpoint,
                 description=source_api.description,
-                base_url=source_api.base_url,
-                timeout=source_api.timeout,
-                follow_redirects=source_api.follow_redirects,
-                auth_type=source_api.auth_type,
-                auth_config=source_api.auth_config,
+                is_active=source_api.is_active,
+                extra_meta=source_api.extra_meta,
                 created_at=source_api.created_at,
-                updated_at=source_api.updated_at
             )
             db.add(copied_api)
             await db.flush()
@@ -67,18 +61,11 @@ async def copy_node_recursive(
                 copied_test_case = ApiCase(
                     api_id=copied_api.id,
                     name=source_case.name,
-                    expected_status_code=source_case.expected_status_code,
-                    expected_response=source_case.expected_response,
+                    params=source_case.params,
                     headers=source_case.headers,
                     body=source_case.body,
-                    description=source_case.description,
-                    setup_script=source_case.setup_script,
-                    teardown_script=source_case.teardown_script,
-                    assertions=source_case.assertions,
-                    variables=source_case.variables,
-                    is_active=source_case.is_active,
+                    expected=source_case.expected,
                     created_at=source_case.created_at,
-                    updated_at=source_case.updated_at
                 )
                 db.add(copied_test_case)
 
@@ -112,13 +99,13 @@ async def copy_node(
         result = await db.execute(select(Node).where(Node.id == node_id))
         source_node = result.scalar_one_or_none()
         if not source_node:
-            raise HTTPException(status_code=404, detail="Node not found")
+            return create_response(206, error_message="Node not found")
 
         # Verify target workspace exists
         result = await db.execute(select(Workspace).where(Workspace.id == request.target_workspace_id))
         target_workspace = result.scalar_one_or_none()
         if not target_workspace:
-            raise HTTPException(status_code=404, detail="Target workspace not found")
+            return create_response(206, error_message="Target workspace not found")
 
         # Verify target folder exists if specified
         if request.target_folder_id:
@@ -130,14 +117,11 @@ async def copy_node(
             )
             target_folder = result.scalar_one_or_none()
             if not target_folder:
-                raise HTTPException(status_code=404, detail="Target folder not found")
+                return create_response(206, error_message="Target folder not found")
 
             # Ensure target folder is in the target workspace
             if target_folder.workspace_id != request.target_workspace_id:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Target folder must be in the target workspace"
-                )
+                return create_response(400, error_message="Target folder must be in the target workspace")
 
         # Check for name conflicts in target location
         result = await db.execute(
@@ -150,10 +134,7 @@ async def copy_node(
         existing_node = result.scalar_one_or_none()
 
         if existing_node:
-            raise HTTPException(
-                status_code=409,
-                detail=f"A {existing_node.type} with name '{request.new_name}' already exists in the target location"
-            )
+            return create_response(409, error_message=f"A {existing_node.type} with name '{request.new_name}' already exists in the target location")
 
         # Perform the copy operation
         copied_node = await copy_node_recursive(
@@ -171,27 +152,22 @@ async def copy_node(
             f"with name '{request.new_name}'"
         )
 
-        return {
-            "success": True,
-            "message": f"{source_node.type.title()} copied successfully",
-            "data": {
-                "id": copied_node.id,
-                "name": copied_node.name,
-                "type": copied_node.type,
-                "workspace_id": copied_node.workspace_id,
-                "parent_id": copied_node.parent_id,
-                "source": {
-                    "id": source_node.id,
-                    "name": source_node.name,
-                    "workspace_id": source_node.workspace_id,
-                    "parent_id": source_node.parent_id
-                }
+        data = {
+            "id": copied_node.id,
+            "name": copied_node.name,
+            "type": copied_node.type,
+            "workspace_id": copied_node.workspace_id,
+            "parent_id": copied_node.parent_id,
+            "source": {
+                "id": source_node.id,
+                "name": source_node.name,
+                "workspace_id": source_node.workspace_id,
+                "parent_id": source_node.parent_id
             }
         }
+        return create_response(201, value_correction(data))
 
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"Error copying node {node_id}: {str(e)}")
         await db.rollback()
-        raise HTTPException(status_code=500, detail="Internal server error")
+        ExceptionHandler(e)
