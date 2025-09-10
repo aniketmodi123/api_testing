@@ -5,21 +5,18 @@ import styles from './MoveCopyPanel.module.css';
 
 /** ---- helpers ---- **/
 
-// Treat anything "folder-like" as a folder, case-insensitive
 const isFolderType = node =>
   node &&
   ((typeof node.type === 'string' && node.type.toLowerCase() === 'folder') ||
     Array.isArray(node.children) ||
     Array.isArray(node.items));
 
-// Normalize any incoming shape (raw backend `file_tree` or transformed `collections`) to folders-only
 const normalizeToFolders = nodes => {
   if (!Array.isArray(nodes)) return [];
   const out = [];
   for (const n of nodes) {
     if (!n) continue;
 
-    // Case 1: raw backend folder with `children`
     if (isFolderType(n) && Array.isArray(n.children)) {
       out.push({
         id: n.id,
@@ -30,7 +27,6 @@ const normalizeToFolders = nodes => {
       continue;
     }
 
-    // Case 2: transformed collection with `items`
     if (Array.isArray(n.items)) {
       out.push({
         id: n.id,
@@ -41,7 +37,6 @@ const normalizeToFolders = nodes => {
       continue;
     }
 
-    // Case 3: plain folder without children/items (leaf folder)
     if (isFolderType(n)) {
       out.push({
         id: n.id,
@@ -54,7 +49,6 @@ const normalizeToFolders = nodes => {
   return out;
 };
 
-// Extract any usable tree array from a service response
 const extractTreeFromResponse = resp => {
   if (!resp) return [];
   if (Array.isArray(resp?.data?.file_tree)) return resp.data.file_tree;
@@ -71,7 +65,7 @@ export default function MoveCopyPanel({
   onClose,
   node,
   onMoveCopyComplete,
-  fileTree, // optional prop from parent
+  fileTree,
 }) {
   const { workspaces, activeWorkspace } = useWorkspace();
 
@@ -79,19 +73,14 @@ export default function MoveCopyPanel({
   const [selectedWorkspace, setSelectedWorkspace] = useState(
     activeWorkspace || null
   );
-
-  // folders-only, normalized, and the only source of truth for the tree
   const [localFolders, setLocalFolders] = useState([]);
-
   const [selectedFolder, setSelectedFolder] = useState(null);
   const [customName, setCustomName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [expandedFolders, setExpandedFolders] = useState([]);
 
-  // prevent setState on stale fetches
   const requestSeq = useRef(0);
 
-  /** Load workspace tree (raw) and normalize to folders-only */
   const loadWorkspaceTree = async workspaceId => {
     if (!workspaceId) return;
     const mySeq = ++requestSeq.current;
@@ -110,10 +99,6 @@ export default function MoveCopyPanel({
     }
   };
 
-  /** When the panel opens, decide the data source:
-   *  - If parent provided a usable fileTree with folders -> use it.
-   *  - Else fetch from the service.
-   */
   useEffect(() => {
     if (!isOpen) return;
 
@@ -132,10 +117,8 @@ export default function MoveCopyPanel({
     } else {
       setLocalFolders([]);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, node, operation, activeWorkspace?.id]);
 
-  /** Expand all top-level folders when localFolders changes */
   useEffect(() => {
     if (Array.isArray(localFolders) && localFolders.length > 0) {
       setExpandedFolders(localFolders.map(f => f.id));
@@ -144,7 +127,6 @@ export default function MoveCopyPanel({
     }
   }, [localFolders]);
 
-  /** Switching workspace -> fetch that workspace’s tree */
   const handleWorkspaceChange = async workspace => {
     setSelectedWorkspace(workspace || null);
     setSelectedFolder(null);
@@ -155,14 +137,12 @@ export default function MoveCopyPanel({
     }
   };
 
-  /** UI handlers */
   const handleFolderSelect = folder => setSelectedFolder(folder);
   const toggleFolder = id =>
     setExpandedFolders(prev =>
       prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
     );
 
-  /** Utility to find a folder by id inside our normalized tree */
   const findFolderById = (folders, id) => {
     for (const folder of folders || []) {
       if (!folder) continue;
@@ -173,19 +153,17 @@ export default function MoveCopyPanel({
     return null;
   };
 
-  /** Generate unique name among siblings */
   const generateUniqueName = (baseName, existingNames) => {
     if (!existingNames.includes(baseName)) return baseName;
     let counter = 1;
-    let next = `${baseName} (${counter})`;
+    let next = `${baseName} (Copy)`;
     while (existingNames.includes(next)) {
       counter += 1;
-      next = `${baseName} (${counter})`;
+      next = `${baseName} (Copy ${counter})`;
     }
     return next;
   };
 
-  /** Confirm move/copy */
   const handleConfirm = async () => {
     if (!selectedWorkspace || !node) return;
     setIsLoading(true);
@@ -193,7 +171,6 @@ export default function MoveCopyPanel({
       const targetFolderId = selectedFolder?.id || null;
       const finalName = (customName || node.name || '').trim();
 
-      // siblings at target
       let existing = [];
       if (targetFolderId) {
         const folder = findFolderById(localFolders, targetFolderId);
@@ -202,7 +179,16 @@ export default function MoveCopyPanel({
         existing = (localFolders || []).map(c => c?.name).filter(Boolean);
       }
 
-      const uniqueName = generateUniqueName(finalName, existing);
+      let uniqueName = finalName;
+      if (operation === 'copy') {
+        uniqueName = generateUniqueName(finalName, existing);
+      } else {
+        if (existing.includes(finalName)) {
+          throw new Error(
+            `A file named "${finalName}" already exists in the target folder`
+          );
+        }
+      }
 
       let result;
       if (operation === 'copy') {
@@ -221,11 +207,7 @@ export default function MoveCopyPanel({
         );
       }
 
-      if (
-        result?.success === true ||
-        result?.response_code === 200 ||
-        (result?.data && !result?.error)
-      ) {
+      if (result?.success) {
         onMoveCopyComplete?.();
         onClose();
       } else {
@@ -233,13 +215,12 @@ export default function MoveCopyPanel({
       }
     } catch (err) {
       console.error(`Error ${operation}ing node:`, err);
-      alert(`Failed to ${operation} ${node?.type || 'item'}.`);
+      alert(`Failed to ${operation} ${node?.type || 'item'}. ${err.message}`);
     } finally {
       setIsLoading(false);
     }
   };
 
-  /** Render folders-only tree */
   const renderFolderTree = (folders = [], level = 0) => {
     if (!Array.isArray(folders) || folders.length === 0) return null;
 
@@ -266,7 +247,6 @@ export default function MoveCopyPanel({
                 e.stopPropagation();
                 if (hasSubfolders) toggleFolder(folder.id);
               }}
-              title={hasSubfolders ? 'Expand/Collapse' : 'No subfolders'}
             >
               {hasSubfolders
                 ? expandedFolders.includes(folder.id)
@@ -343,7 +323,7 @@ export default function MoveCopyPanel({
           </div>
 
           <div className={styles.section}>
-            <label>Target Folder (optional):</label>
+            <label>Target Folder:</label>
             <div className={styles.folderTree}>
               {renderFolderTree(localFolders)}
               {(!Array.isArray(localFolders) || localFolders.length === 0) && (
@@ -355,12 +335,13 @@ export default function MoveCopyPanel({
           </div>
 
           <div className={styles.section}>
-            <label>Custom Name (optional):</label>
+            <label>Custom Name (for copy):</label>
             <input
               type="text"
               value={customName}
               onChange={e => setCustomName(e.target.value)}
               placeholder={node?.name || ''}
+              disabled={operation === 'move'}
             />
           </div>
 
