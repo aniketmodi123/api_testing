@@ -336,6 +336,7 @@ export default function CollectionTree({ onSelectRequest }) {
     activeWorkspace,
     workspaceTree,
     loading: workspaceLoading,
+    refreshWorkspaces, // <-- add this
   } = useWorkspace();
   const {
     nodes,
@@ -605,8 +606,18 @@ export default function CollectionTree({ onSelectRequest }) {
     return methodColors[method] || '#6b7280';
   };
 
+  // Helper to force refresh and wait before closing Move/Copy panel
+  const refreshAndWait = async () => {
+    if (activeWorkspace) {
+      await refreshWorkspaces();
+      await fetchNodesByWorkspaceId(activeWorkspace.id);
+      // Optionally, add a small delay to ensure UI updates
+      await new Promise(res => setTimeout(res, 200));
+    }
+  };
+
   return (
-    <div className={styles.collectionTree}>
+    <div className={styles.collectionTreeRoot}>
       <div className={styles.header}>
         <input
           type="text"
@@ -820,11 +831,9 @@ export default function CollectionTree({ onSelectRequest }) {
           setMoveCopyNode(null);
         }}
         node={moveCopyNode}
-        onMoveCopyComplete={() => {
-          // Refresh the workspace tree after move/copy operation
-          if (activeWorkspace) {
-            fetchNodesByWorkspaceId(activeWorkspace.id);
-          }
+        onMoveCopyComplete={async () => {
+          // Force refresh and wait before closing panel
+          await refreshAndWait();
         }}
         fileTree={workspaceTree?.file_tree || []}
       />

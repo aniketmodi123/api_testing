@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { workspaceService } from '../../services/workspaceService';
+import { useNode } from '../../store/node';
 import { useWorkspace } from '../../store/workspace';
 import styles from './MoveCopyPanel.module.css';
 
@@ -68,6 +69,7 @@ export default function MoveCopyPanel({
   fileTree,
 }) {
   const { workspaces, activeWorkspace } = useWorkspace();
+  const { deleteNode } = useNode();
 
   const [operation, setOperation] = useState('copy');
   const [selectedWorkspace, setSelectedWorkspace] = useState(
@@ -127,6 +129,18 @@ export default function MoveCopyPanel({
     }
   }, [localFolders]);
 
+  // highlight only the immediate parent folder
+  useEffect(() => {
+    if (!isOpen || !node?.parent_id) return;
+    const directParent = findFolderById(localFolders, node.parent_id);
+    if (directParent) {
+      setSelectedFolder(directParent);
+      if (!expandedFolders.includes(directParent.id)) {
+        setExpandedFolders(prev => [...prev, directParent.id]);
+      }
+    }
+  }, [isOpen, node, localFolders]);
+
   const handleWorkspaceChange = async workspace => {
     setSelectedWorkspace(workspace || null);
     setSelectedFolder(null);
@@ -179,39 +193,52 @@ export default function MoveCopyPanel({
         existing = (localFolders || []).map(c => c?.name).filter(Boolean);
       }
 
-      let uniqueName = finalName;
-      if (operation === 'copy') {
-        uniqueName = generateUniqueName(finalName, existing);
-      } else {
-        if (existing.includes(finalName)) {
-          throw new Error(
-            `A file named "${finalName}" already exists in the target folder`
-          );
-        }
-      }
-
       let result;
+
       if (operation === 'copy') {
+        const uniqueName = generateUniqueName(finalName, existing);
         result = await workspaceService.copyNode(
           node.id,
           selectedWorkspace.id,
           targetFolderId,
           uniqueName
         );
+        if (
+          result?.success ||
+          result?.response_code === 200 ||
+          result?.response_code === 201 ||
+          (result?.data && !result?.error)
+        ) {
+          onMoveCopyComplete?.();
+          onClose();
+        } else {
+          throw new Error(result?.message || 'copy failed');
+        }
       } else {
-        result = await workspaceService.moveNode(
+        // MOVE = copy + delete
+        const copyResult = await workspaceService.copyNode(
           node.id,
           selectedWorkspace.id,
           targetFolderId,
-          uniqueName
+          finalName
         );
-      }
 
-      if (result?.success) {
-        onMoveCopyComplete?.();
-        onClose();
-      } else {
-        throw new Error(result?.message || `${operation} failed`);
+        if (
+          copyResult?.success ||
+          copyResult?.response_code === 200 ||
+          copyResult?.response_code === 201 ||
+          (copyResult?.data && !copyResult?.error)
+        ) {
+          console.log('[MoveCopyPanel] Deleting original node:', node.id);
+          const deleteResult = await deleteNode(node.id);
+          console.log('[MoveCopyPanel] Delete response:', deleteResult);
+          onMoveCopyComplete?.();
+          onClose();
+        } else {
+          throw new Error(
+            copyResult?.message || 'Move failed during copy step'
+          );
+        }
       }
     } catch (err) {
       console.error(`Error ${operation}ing node:`, err);
@@ -268,6 +295,10 @@ export default function MoveCopyPanel({
   };
 
   if (!isOpen) return null;
+
+  const isSameLocationMove =
+    operation === 'move' &&
+    (selectedFolder?.id || null) === (node?.parent_id || null);
 
   return (
     <div className={styles.overlay}>
@@ -335,7 +366,9 @@ export default function MoveCopyPanel({
           </div>
 
           <div className={styles.section}>
-            <label>Custom Name (for copy):</label>
+            <label>
+              {operation === 'copy' ? 'Custom Name (optional):' : 'Name:'}
+            </label>
             <input
               type="text"
               value={customName}
@@ -349,7 +382,8 @@ export default function MoveCopyPanel({
             <button
               className={styles.confirmButton}
               onClick={handleConfirm}
-              disabled={isLoading}
+              disabled={isLoading || isSameLocationMove}
+              title={isSameLocationMove ? "Can't move to same location" : ''}
             >
               {isLoading
                 ? 'Processing...'
