@@ -36,6 +36,42 @@
   background-color: var(--hover-background);
 }
 
+.folderSelector {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  padding: 3px 6px;
+  border-radius: 4px;
+  transition: all 0.2s;
+  border: 1px solid transparent;
+  min-width: 28px;
+  justify-content: center;
+}
+
+.folderSelector:hover {
+  background-color: var(--hover-background);
+}
+
+.folderSelector.selected {
+  background-color: var(--selected-item-background);
+  border-color: var(--primary);
+}
+
+.folderToggle {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  flex: 1;
+  padding: 4px 6px;
+  border-radius: 3px;
+  transition: background-color 0.2s;
+  gap: 4px;
+}
+
+.folderToggle:hover {
+  background-color: var(--hover-background);
+}
+
 .folderIcon {
   font-size: 14px;
 }
@@ -61,7 +97,7 @@
 .fileHeader {
   display: flex;
   align-items: center;
-  padding: 6px 8px;
+  /* padding: 6px 8px; */
   border-radius: 3px;
   /* gap: 4px; */
 }
@@ -70,7 +106,7 @@
   display: flex;
   align-items: center;
   cursor: pointer;
-  padding: 3px 6px;
+  padding: 3px 0;
   border-radius: 4px;
   transition: all 0.2s;
   border: 1px solid transparent;
@@ -97,10 +133,10 @@
   align-items: center;
   cursor: pointer;
   flex: 1;
-  padding: 4px 6px;
+  padding: 4px 0;
   border-radius: 3px;
   transition: background-color 0.2s;
-  gap: 6px;
+  /* gap: 6px; */
 }
 
 .fileToggle:hover {

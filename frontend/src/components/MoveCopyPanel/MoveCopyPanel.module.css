@@ -1,0 +1,388 @@
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+}
+
+.panel {
+  background: white;
+  border-radius: 8px;
+  width: 600px;
+  max-width: 90vw;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+}
+
+/* Light theme (default) */
+.panel.light {
+  background: white;
+  color: #333;
+}
+
+/* Dark theme */
+.panel.dark {
+  background: #2d3748;
+  color: #e2e8f0;
+}
+
+.panel.dark .header {
+  border-bottom-color: #4a5568;
+}
+
+.panel.dark .closeButton {
+  color: #a0aec0;
+}
+
+.panel.dark .closeButton:hover {
+  background: #4a5568;
+  color: #e2e8f0;
+}
+
+/* Support applying theme via standalone classes (.dark / .light) used by the React component */
+.dark {
+  background: #2d3748;
+  color: #e2e8f0;
+}
+
+.light {
+  background: white;
+  color: #333;
+}
+
+.dark .header {
+  border-bottom-color: #4a5568;
+}
+
+.dark .closeButton {
+  color: #a0aec0;
+}
+
+.dark .closeButton:hover {
+  background: #4a5568;
+  color: #e2e8f0;
+}
+
+.dark .operationToggle {
+  background: #4a5568;
+}
+
+.dark select,
+.dark input[type="text"] {
+  background: #4a5568;
+  border-color: #718096;
+  color: #e2e8f0;
+}
+
+.dark .folderTree {
+  background: #4a5568;
+  border-color: #718096;
+}
+
+.dark .rootFolder:hover,
+.dark .folderHeader:hover {
+  background: #2a4365;
+}
+
+.dark .rootFolder.selected,
+.dark .folderHeader.selected {
+  background: #2c5530;
+  border-color: #38a169;
+}
+
+.dark .sourceInfo {
+  background: #4a5568;
+  border-left-color: #4299e1;
+}
+
+.dark .footer {
+  background: #4a5568;
+  border-top-color: #718096;
+}
+
+.panel.dark .operationToggle {
+  background: #4a5568;
+}
+
+.panel.dark select,
+.panel.dark input[type="text"] {
+  background: #4a5568;
+  border-color: #718096;
+  color: #e2e8f0;
+}
+
+.panel.dark .folderTree {
+  background: #4a5568;
+  border-color: #718096;
+}
+
+.panel.dark .rootFolder:hover,
+.panel.dark .folderHeader:hover {
+  background: #2a4365;
+}
+
+.panel.dark .rootFolder.selected,
+.panel.dark .folderHeader.selected {
+  background: #2c5530;
+  border-color: #38a169;
+}
+
+.panel.dark .sourceInfo {
+  background: #4a5568;
+  border-left-color: #4299e1;
+}
+
+.panel.dark .footer {
+  background: #4a5568;
+  border-top-color: #718096;
+}
+
+/* Additional dark-mode overrides for full panel theming */
+.panel.dark .header h3 {
+  color: #e2e8f0;
+}
+
+.panel.dark .section label {
+  color: #e6eef5;
+}
+
+.panel.dark .content {
+  background: transparent; /* inherit panel dark background */
+}
+
+.panel.dark .operationToggle {
+  background: #3b4a59;
+}
+
+.panel.dark .rootFolder,
+.panel.dark .folderHeader {
+  color: #e6eef5;
+}
+
+.panel.dark .rootFolder:hover,
+.panel.dark .folderHeader:hover {
+  background: #2a4365;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  border-bottom: 1px solid #eee;
+}
+
+.header h3 {
+  margin: 0;
+  color: #333;
+  font-size: 18px;
+}
+
+.closeButton {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #666;
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+.closeButton:hover {
+  background: #f5f5f5;
+  color: #333;
+}
+
+.content {
+  padding: 20px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.operationToggle {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 20px;
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 6px;
+}
+
+.operationToggle label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.operationToggle input[type="radio"] {
+  margin: 0;
+}
+
+.section {
+  margin-bottom: 20px;
+}
+
+.section label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: #333;
+}
+
+.section select,
+.section input[type="text"] {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.section select:focus,
+.section input[type="text"]:focus {
+  outline: none;
+  border-color: #4caf50;
+  box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2);
+}
+
+.folderTree {
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 10px;
+  max-height: 200px;
+  overflow-y: auto;
+  background: #fafafa;
+}
+
+.rootFolder {
+  padding: 8px;
+  cursor: pointer;
+  border-radius: 4px;
+  margin-bottom: 5px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rootFolder:hover {
+  background: #e8f5e8;
+}
+
+.rootFolder.selected {
+  background: #d4edda;
+  border: 1px solid #c3e6cb;
+}
+
+.folderItem {
+  margin-bottom: 2px;
+}
+
+.folderHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  cursor: pointer;
+  border-radius: 4px;
+  user-select: none;
+}
+
+.folderHeader:hover {
+  background: #e8f5e8;
+}
+
+.folderHeader.selected {
+  background: #d4edda;
+  border: 1px solid #c3e6cb;
+}
+
+.expandIcon {
+  font-size: 12px;
+  width: 16px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.folderName {
+  flex: 1;
+  font-size: 14px;
+}
+
+.folderName::before {
+  content: "📁 ";
+  margin-right: 4px;
+}
+
+.subFolders {
+  margin-left: 20px;
+}
+
+.sourceInfo {
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #666;
+  border-left: 4px solid #17a2b8;
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 20px;
+  border-top: 1px solid #eee;
+  background: #f8f9fa;
+}
+
+/* Primary confirm button used for Move/Copy */
+.confirmButton {
+  background: #4caf50;
+  color: #fff;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.confirmButton:hover {
+  background: #43a047;
+}
+
+.confirmButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background: #9e9e9e;
+}
+
+/* Dark theme overrides for primary confirm button */
+.panel.dark .confirmButton {
+  background: #2f855a; /* darker green */
+  color: #e6fffa;
+}
+
+.panel.dark .confirmButton:hover {
+  background: #285e46;
+}
+
+.panel.dark .confirmButton:disabled {
+  background: #4a5568;
+  opacity: 0.7;
+}

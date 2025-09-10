@@ -188,7 +188,6 @@ export default function RequestPanel({ activeRequest }) {
     updateApi,
     saveApi,
     saveTestCase,
-    duplicateApi,
     deleteTestCase,
   } = useApi();
 

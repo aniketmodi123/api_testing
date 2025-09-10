@@ -13,9 +13,9 @@ from routers.runner import run_case, execute_direct
 from routers.workspace import list_workspace_tree
 from routers.sso import create_user, forget_password, login, logout, otp_generation, update_user, delete_user, user_profile
 from routers.workspace import create_workspace, update_workspace, list_workspace, list_workspace_tree,delete_workspace
-from routers.node import create_node, update_node, list_node, delete_node
+from routers.node import create_node, update_node, list_node, delete_node, move_node, copy_node
 from routers.headers import complete_headers, set_headers,list_headers,delete_headers, update_headers
-from routers.api import list_apis, create_dup, save_api
+from routers.api import list_apis, save_api
 from routers.api_cases import delete_case, get_case, list_search_api_case, create_dup_case, save_api_case
 from routers.environment import create_environment, list_environments, resolve_variables, save_variables,delete_variables, list_variables
 from security import AuthMiddleware
@@ -184,6 +184,8 @@ app.include_router(create_node.router, prefix="/node", tags=["node"])
 app.include_router(update_node.router, prefix="/node", tags=["node"])
 app.include_router(list_node.router, prefix="/node", tags=["node"])
 app.include_router(delete_node.router, prefix="/node", tags=["node"])
+app.include_router(move_node.router, prefix="/node", tags=["node"])
+app.include_router(copy_node.router, prefix="/node", tags=["node"])
 
 
 # headers
@@ -196,7 +198,6 @@ app.include_router(complete_headers.router, tags=["Headers"])
 
 # apis
 app.include_router(list_apis.router, tags=["APIs"])
-app.include_router(create_dup.router, tags=["APIs"])
 app.include_router(save_api.router, tags=["APIs"])
 
 #api cases

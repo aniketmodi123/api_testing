@@ -1,8 +1,21 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { workspaceService } from '../services/workspaceService';
 
-// Create context
-const WorkspaceContext = createContext();
+// Create context with default values
+const WorkspaceContext = createContext({
+  workspaces: [],
+  activeWorkspace: null,
+  setActiveWorkspace: () => {},
+  workspaceTree: null,
+  loading: false,
+  error: null,
+  createWorkspace: () => {},
+  updateWorkspace: () => {},
+  deleteWorkspace: () => {},
+  refreshWorkspaces: () => {},
+  setShouldLoadWorkspaces: () => {},
+  shouldLoadWorkspaces: true,
+});
 
 export function WorkspaceProvider({ children }) {
   const [workspaces, setWorkspaces] = useState([]);
@@ -51,6 +64,17 @@ export function WorkspaceProvider({ children }) {
       // Only fetch workspaces when explicitly enabled
       if (!shouldLoadWorkspaces) {
         setLoading(false);
+        return;
+      }
+
+      // If no auth token is present, avoid calling protected endpoints which will 401
+      const storedToken = localStorage.getItem('token');
+      if (!storedToken) {
+        console.debug(
+          '[WorkspaceProvider] No auth token found in localStorage; skipping workspace fetch'
+        );
+        setLoading(false);
+        setWorkspaces([]);
         return;
       }
 
@@ -238,5 +262,6 @@ export function WorkspaceProvider({ children }) {
 }
 
 export function useWorkspace() {
-  return useContext(WorkspaceContext);
+  const context = useContext(WorkspaceContext);
+  return context;
 }

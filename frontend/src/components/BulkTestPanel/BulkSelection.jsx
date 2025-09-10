@@ -32,16 +32,28 @@ export default function BulkSelection({
     );
   }
 
-  // Group items by API/file
+  // Group items by API/file or Folder
   const groupedItems = {};
   selectedItems.forEach(item => {
-    if (item.type === 'api') {
+    if (item.type === 'folder') {
+      // This is a whole folder selection
+      if (!groupedItems[item.id]) {
+        groupedItems[item.id] = {
+          folder: item,
+          apis: [],
+          cases: [],
+          isWholeFolder: true,
+          type: 'folder',
+        };
+      }
+    } else if (item.type === 'api') {
       // This is a whole API selection
       if (!groupedItems[item.id]) {
         groupedItems[item.id] = {
           api: item,
           cases: [],
           isWholeApi: true,
+          type: 'api',
         };
       } else {
         // If there are individual cases and now we select whole API,
@@ -63,6 +75,7 @@ export default function BulkSelection({
           },
           cases: [],
           isWholeApi: false,
+          type: 'api',
         };
       }
 
@@ -89,6 +102,11 @@ export default function BulkSelection({
     onRemoveSelection(parseInt(apiId), 'api', null);
   };
 
+  const removeWholeFolder = folderId => {
+    // Remove the whole folder selection
+    onRemoveSelection(parseInt(folderId), 'folder', null);
+  };
+
   const removeIndividualCase = (caseId, apiId) => {
     // Remove individual test case
     onRemoveSelection(caseId, 'case', caseId);
@@ -103,14 +121,54 @@ export default function BulkSelection({
       </div>
 
       <div className={styles.selectedItemsList}>
-        {Object.entries(groupedItems).map(([apiId, group]) => {
-          const isExpanded = expandedApis.has(apiId);
-          const selectedCasesCount = group.cases.length;
+        {Object.entries(groupedItems).map(([itemId, group]) => {
+          const isExpanded = expandedApis.has(itemId);
+
+          // Handle folder display
+          if (group.type === 'folder') {
+            return (
+              <div key={itemId} className={styles.apiGroup}>
+                {/* Folder Header */}
+                <div className={styles.apiHeader}>
+                  <div
+                    className={styles.apiInfo}
+                    onClick={() => removeWholeFolder(itemId)}
+                    style={{ cursor: 'pointer' }}
+                    title="Click to remove this folder"
+                  >
+                    <span className={styles.itemIcon}>
+                      {getItemIcon('folder')}
+                    </span>
+                    <div className={styles.apiDetails}>
+                      <span className={styles.apiName}>
+                        {group.folder.name}
+                      </span>
+                      <span className={styles.apiSummary}>
+                        Entire folder ({group.folder.testCasesCount || 0} test
+                        cases)
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    className={styles.removeButton}
+                    onClick={() => removeWholeFolder(itemId)}
+                    title="Remove this folder"
+                  >
+                    ❌
+                  </button>
+                </div>
+              </div>
+            );
+          }
+
+          // Handle API display
+          const selectedCasesCount = group.cases?.length || 0;
           const totalCasesCount =
-            group.api.testCasesCount || selectedCasesCount;
+            group.api?.testCasesCount || selectedCasesCount;
 
           return (
-            <div key={apiId} className={styles.apiGroup}>
+            <div key={itemId} className={styles.apiGroup}>
               {/* API Header */}
               <div className={styles.apiHeader}>
                 <div
@@ -118,15 +176,12 @@ export default function BulkSelection({
                   onClick={() => {
                     // Toggle API selection when clicking on the API info
                     if (group.isWholeApi) {
-                      removeWholeApi(apiId);
+                      removeWholeApi(itemId);
                     } else {
-                      toggleApiExpansion(apiId);
+                      toggleApiExpansion(itemId);
                     }
                   }}
                 >
-                  <span className={styles.expandIcon}>
-                    {group.isWholeApi ? '🔗' : isExpanded ? '📂' : '📁'}
-                  </span>
                   <span className={styles.itemIcon}>{getItemIcon('api')}</span>
                   <div className={styles.apiDetails}>
                     <span className={styles.apiName}>{group.api.name}</span>
@@ -181,7 +236,7 @@ export default function BulkSelection({
                         className={styles.removeCaseButton}
                         onClick={e => {
                           e.stopPropagation(); // Prevent triggering the parent onClick
-                          removeIndividualCase(case_.id, parseInt(apiId));
+                          removeIndividualCase(case_.id, parseInt(itemId));
                         }}
                         title="Remove this test case"
                       >

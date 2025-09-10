@@ -754,3 +754,22 @@ class VariableResolutionResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# Node Move/Copy Schemas
+class NodeMoveRequest(BaseModel):
+    target_workspace_id: int = Field(..., description="ID of the target workspace")
+    target_folder_id: Optional[int] = Field(None, description="ID of the target folder (null for root)")
+    new_name: str = Field(..., description="New name for the moved node")
+
+    class Config:
+        from_attributes = True
+
+
+class NodeCopyRequest(BaseModel):
+    target_workspace_id: int = Field(..., description="ID of the target workspace")
+    target_folder_id: Optional[int] = Field(None, description="ID of the target folder (null for root)")
+    new_name: str = Field(..., description="New name for the copied node")
+
+    class Config:
+        from_attributes = True

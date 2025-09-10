@@ -102,12 +102,34 @@ export default function BulkTestPanel({ onSelectRequest }) {
 
         let newItems = [...prev];
 
-        if (item.type === 'api') {
+        if (item.type === 'folder') {
+          // If selecting whole folder, remove any individual APIs or test cases within this folder
+          newItems = newItems.filter(
+            existing =>
+              !(
+                existing.parentFolderId === item.id ||
+                (existing.type === 'api' && existing.folderId === item.id) ||
+                (existing.type === 'case' &&
+                  existing.parentFolderId === item.id)
+              )
+          );
+        } else if (item.type === 'api') {
           // If selecting whole API, remove any individual test cases for this API
           newItems = newItems.filter(
             existing =>
               !(existing.parentFileId === item.id && existing.type === 'case')
           );
+
+          // Also check if whole folder containing this API is already selected
+          const wholeFolderSelected = newItems.find(
+            existing =>
+              existing.id === item.parentFolderId && existing.type === 'folder'
+          );
+
+          if (wholeFolderSelected) {
+            // Whole folder is already selected, don't add individual API
+            return prev;
+          }
         } else if (item.type === 'case') {
           // If selecting individual case, check if whole API is already selected
           const wholeApiSelected = newItems.find(
@@ -115,8 +137,14 @@ export default function BulkTestPanel({ onSelectRequest }) {
               existing.id === item.parentFileId && existing.type === 'api'
           );
 
-          if (wholeApiSelected) {
-            // Whole API is already selected, don't add individual case
+          // Also check if whole folder is already selected
+          const wholeFolderSelected = newItems.find(
+            existing =>
+              existing.id === item.parentFolderId && existing.type === 'folder'
+          );
+
+          if (wholeApiSelected || wholeFolderSelected) {
+            // Whole API or folder is already selected, don't add individual case
             return prev;
           }
         }
@@ -240,6 +268,7 @@ export default function BulkTestPanel({ onSelectRequest }) {
           <BulkCollectionTree
             onSelectRequest={handleTreeSelection}
             selectedItems={selectedItems}
+            testScope={testScope}
           />
         </div>
       </div>

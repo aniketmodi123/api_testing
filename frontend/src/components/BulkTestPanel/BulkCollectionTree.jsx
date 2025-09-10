@@ -12,21 +12,62 @@ const BulkNodeItem = ({
   selectedItems,
   getMethodColor,
   level = 0,
+  testScope = 'selected',
 }) => {
   if (node.type === 'folder') {
+    const handleFolderSelection = () => {
+      const folderItem = {
+        id: node.id,
+        type: 'folder',
+        name: node.name,
+        children: node.children || [],
+        testCasesCount: node.children
+          ? node.children.reduce((count, child) => {
+              if (child.type === 'file') {
+                return count + (child.children ? child.children.length : 0);
+              }
+              return count;
+            }, 0)
+          : 0,
+      };
+      onSelectRequest(folderItem);
+    };
+
+    const isFolderSelected = () => {
+      return selectedItems.some(
+        item => item.id === node.id && item.type === 'folder'
+      );
+    };
+
     return (
-      <div
-        className={styles.folderItem}
-        style={{ paddingLeft: `${level * 2}px` }}
-      >
-        <div
-          className={styles.folderHeader}
-          onClick={() => toggleFolder(node.id)}
-        >
-          <span className={styles.folderIcon}>
-            {expandedFolders.includes(node.id) ? '📂' : '📁'}
-          </span>
-          <span className={styles.folderName}>{node.name}</span>
+      <div className={styles.folderItem}>
+        <div className={styles.folderHeader}>
+          {/* Folder Selection checkbox/button - only show if testScope is folder */}
+          {testScope === 'folder' && (
+            <div
+              className={`${styles.folderSelector} ${isFolderSelected() ? styles.selected : ''}`}
+              onClick={e => {
+                e.stopPropagation();
+                handleFolderSelection();
+              }}
+              title="Select entire folder with all APIs and test cases"
+            >
+              <span className={styles.selectIcon}>
+                {isFolderSelected() ? '☑️' : '☐'}
+              </span>
+            </div>
+          )}
+
+          {/* Toggle expand/collapse */}
+          <div
+            className={styles.folderToggle}
+            onClick={() => toggleFolder(node.id)}
+          >
+            <span className={styles.folderIcon}>
+              {expandedFolders.includes(node.id) ? '📂' : '📁'}
+            </span>
+            <span className={styles.folderName}>{node.name}</span>
+          </div>
         </div>
 
         {node.children && expandedFolders.includes(node.id) && (
@@ -41,6 +82,7 @@ const BulkNodeItem = ({
                 selectedItems={selectedItems}
                 getMethodColor={getMethodColor}
                 level={level + 1}
+                testScope={testScope}
               />
             ))}
           </div>
@@ -119,10 +161,6 @@ const BulkNodeItem = ({
             className={styles.fileToggle}
             onClick={() => toggleFolder(node.id)}
           >
-            <span className={styles.expandIcon}>
-              {expandedFolders.includes(node.id) ? '📂' : '📁'}
-            </span>
-            {/* Show method badge for files since they now have methods */}
             {node.method && (
               <span
                 className={styles.methodBadge}
@@ -133,12 +171,7 @@ const BulkNodeItem = ({
                 {node.method}
               </span>
             )}
-            <span className={styles.fileName}>
-              {node.name}{' '}
-              {node.children &&
-                node.children.length > 0 &&
-                `(${node.children.length})`}
-            </span>
+            <span className={styles.fileName}>{node.name}</span>
           </div>
         </div>
 
@@ -171,6 +204,7 @@ const BulkNodeItem = ({
 export default function BulkCollectionTree({
   onSelectRequest,
   selectedItems = [],
+  testScope = 'selected',
 }) {
   const { activeWorkspace } = useWorkspace();
   const [bulkTreeData, setBulkTreeData] = useState([]);
@@ -305,6 +339,7 @@ export default function BulkCollectionTree({
           onSelectRequest={handleSelectRequest}
           selectedItems={selectedItems}
           getMethodColor={getMethodColor}
+          testScope={testScope}
         />
       ))}
     </div>

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { useApi } from '../../store/api';
 import { useNode } from '../../store/node';
 import { useWorkspace } from '../../store/workspace';
 import HeaderEditor from '../HeaderEditor/HeaderEditor';
+import MoveCopyPanel from '../MoveCopyPanel';
 import { Button } from '../common';
 import styles from './CollectionTree.module.css';
 
@@ -54,7 +54,7 @@ const NodeItem = ({
   selectedItem,
   getMethodColor,
   handleRenameAction,
-  handleDuplicateNode,
+  handleMoveCopyAction,
   handleCreateNewItem,
   handleEditHeaders, // Added this prop
   closeAllMenus,
@@ -101,18 +101,15 @@ const NodeItem = ({
     setMenuOpen(false);
 
     switch (action) {
-      case 'create':
-        // Only available for folders
-        if (node.type === 'folder') {
-          // Set the parent folder ID and toggle it open
-          handleCreateNewItem(node.id);
-        }
+      case 'createfolder':
+        // Open the create item form for this folder
+        handleCreateNewItem(node.id);
         break;
       case 'rename':
         handleRenameAction(node);
         break;
-      case 'duplicate':
-        handleDuplicateNode(node);
+      case 'moveorcopy':
+        handleMoveCopyAction(node);
         break;
       case 'headers':
         // Only available for folders
@@ -142,7 +139,6 @@ const NodeItem = ({
           <span className={styles.expansionIcon}>
             {expandedFolders.includes(node.id) ? '▼' : '▶'}
           </span>
-          <span className={styles.folderIcon}>📁</span>
           <span className={styles.folderName}>{node.name}</span>
           <div className={styles.nodeActions}>
             <Button
@@ -164,9 +160,9 @@ const NodeItem = ({
               >
                 <div
                   className={`${styles.menuItem} ${styles.createItem}`}
-                  onClick={e => handleAction('create', e)}
+                  onClick={e => handleAction('createfolder', e)}
                 >
-                  Create
+                  Create Folder
                 </div>
                 <div
                   className={styles.menuItem}
@@ -176,9 +172,9 @@ const NodeItem = ({
                 </div>
                 <div
                   className={styles.menuItem}
-                  onClick={e => handleAction('duplicate', e)}
+                  onClick={e => handleAction('moveorcopy', e)}
                 >
-                  Duplicate
+                  Move/Copy
                 </div>
                 {node.type === 'folder' && (
                   <div
@@ -213,7 +209,7 @@ const NodeItem = ({
                 getMethodColor={getMethodColor}
                 level={level + 1}
                 handleRenameAction={handleRenameAction}
-                handleDuplicateNode={handleDuplicateNode}
+                handleMoveCopyAction={handleMoveCopyAction}
                 handleCreateNewItem={handleCreateNewItem}
                 handleEditHeaders={handleEditHeaders}
                 closeAllMenus={closeAllMenus}
@@ -264,9 +260,9 @@ const NodeItem = ({
               </div>
               <div
                 className={styles.menuItem}
-                onClick={e => handleAction('duplicate', e)}
+                onClick={e => handleAction('moveorcopy', e)}
               >
-                Duplicate
+                Move/Copy
               </div>
               <div
                 className={styles.menuItem}
@@ -336,7 +332,11 @@ const sampleCollections = [
 ];
 
 export default function CollectionTree({ onSelectRequest }) {
-  const { activeWorkspace, loading: workspaceLoading } = useWorkspace();
+  const {
+    activeWorkspace,
+    workspaceTree,
+    loading: workspaceLoading,
+  } = useWorkspace();
   const {
     nodes,
     loading: nodeLoading,
@@ -346,7 +346,6 @@ export default function CollectionTree({ onSelectRequest }) {
     updateNode,
     deleteNode,
   } = useNode();
-  const { duplicateApi } = useApi();
 
   const [expandedFolders, setExpandedFolders] = useState([]);
   const [selectedItem, setSelectedItem] = useState(null);
@@ -378,6 +377,10 @@ export default function CollectionTree({ onSelectRequest }) {
     type: 'delete',
   });
 
+  // Move/Copy panel state
+  const [isMoveCopyPanelOpen, setIsMoveCopyPanelOpen] = useState(false);
+  const [moveCopyNode, setMoveCopyNode] = useState(null);
+
   // Fetch nodes when workspace changes
   useEffect(() => {
     if (activeWorkspace) {
@@ -385,9 +388,10 @@ export default function CollectionTree({ onSelectRequest }) {
     }
   }, [activeWorkspace, fetchNodesByWorkspaceId]);
 
-  // Use actual nodes or fallback to sample data
+  // Use workspace tree data (file_tree) if available, otherwise fallback to nodes or sample data
   const rootNodes =
-    nodes.length > 0 ? nodes : activeWorkspace ? [] : sampleCollections;
+    workspaceTree?.file_tree ||
+    (nodes.length > 0 ? nodes : activeWorkspace ? [] : sampleCollections);
 
   const toggleFolder = folderId => {
     setExpandedFolders(prev =>
@@ -555,69 +559,10 @@ export default function CollectionTree({ onSelectRequest }) {
     setNewItemName('');
   };
 
-  // Handle duplicate API functionality
-
-  // Handle duplicate node
-  const handleDuplicateNode = async node => {
-    if (activeWorkspace) {
-      const duplicateName = `${node.name} (Copy)`;
-
-      try {
-        // If this is a file node that contains an API, use the API duplication endpoint
-        if (node.type === 'file' && node.id) {
-          // Ask for custom API name
-          const customName = prompt(
-            'Enter a name for the duplicated API:',
-            duplicateName
-          );
-
-          if (customName === null) {
-            // User canceled the prompt
-            return;
-          }
-
-          // Ask if test cases should be included
-          const includeCases = confirm(
-            'Include test cases in the duplication?'
-          );
-
-          // Call the duplicateApi function
-          const result = await duplicateApi(node.id, customName, includeCases);
-
-          if (result && result.response_code === 201) {
-            alert(
-              `API duplicated successfully to file: ${result.data.new_file_name}`
-            );
-            // Refresh the node tree to show the new file
-            if (activeWorkspace) {
-              fetchNodesByWorkspaceId(activeWorkspace.id);
-            }
-          } else {
-            alert('Failed to duplicate API. Please try again.');
-          }
-        } else {
-          // For folder nodes or if API duplication fails, use the standard file/folder duplication
-          const duplicateData = {
-            name: duplicateName,
-            workspace_id: activeWorkspace.id,
-            parent_id: node.parent_id,
-          };
-
-          if (node.type === 'folder') {
-            createFolder(duplicateData);
-          } else {
-            createFile({
-              ...duplicateData,
-              method: node.method || 'GET',
-              url: node.url || '',
-            });
-          }
-        }
-      } catch (err) {
-        console.error('Error duplicating node:', err);
-        alert(`Error during duplication: ${err.message || 'Unknown error'}`);
-      }
-    }
+  // Handle Move/Copy action
+  const handleMoveCopyAction = node => {
+    setMoveCopyNode(node);
+    setIsMoveCopyPanelOpen(true);
   };
 
   // Handle opening the header editor
@@ -812,7 +757,7 @@ export default function CollectionTree({ onSelectRequest }) {
               selectedItem={selectedItem}
               getMethodColor={getMethodColor}
               handleRenameAction={handleRenameAction}
-              handleDuplicateNode={handleDuplicateNode}
+              handleMoveCopyAction={handleMoveCopyAction}
               handleCreateNewItem={handleCreateNewItem}
               handleEditHeaders={handleEditHeaders}
               closeAllMenus={menuUpdateTrigger}
@@ -866,6 +811,23 @@ export default function CollectionTree({ onSelectRequest }) {
           />
         </div>
       )}
+
+      {/* Move/Copy Panel */}
+      <MoveCopyPanel
+        isOpen={isMoveCopyPanelOpen}
+        onClose={() => {
+          setIsMoveCopyPanelOpen(false);
+          setMoveCopyNode(null);
+        }}
+        node={moveCopyNode}
+        onMoveCopyComplete={() => {
+          // Refresh the workspace tree after move/copy operation
+          if (activeWorkspace) {
+            fetchNodesByWorkspaceId(activeWorkspace.id);
+          }
+        }}
+        fileTree={workspaceTree?.file_tree || []}
+      />
     </div>
   );
 }

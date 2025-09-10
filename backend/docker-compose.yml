@@ -14,8 +14,8 @@ services:
         image: api_testing
         container_name: api_testing
         ports:
-            - 8000:8000
-            - 5000:5000
+            - 7000:8000
+            - 7001:5000
         env_file:
         - .env
         volumes:

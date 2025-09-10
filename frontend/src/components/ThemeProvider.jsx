@@ -16,7 +16,9 @@ export function ThemeProvider({ children }) {
   }, [theme]);
 
   return (
-    <ThemeCtx.Provider value={{ theme, setTheme }}>
+    <ThemeCtx.Provider
+      value={{ theme, setTheme, isDarkMode: theme === 'dark' }}
+    >
       {children}
     </ThemeCtx.Provider>
   );

@@ -6,7 +6,8 @@ import { useWorkspace } from './workspace';
 const NodeContext = createContext();
 
 export function NodeProvider({ children }) {
-  const { activeWorkspace, shouldLoadWorkspaces } = useWorkspace();
+  const workspaceContext = useWorkspace();
+  const { activeWorkspace, shouldLoadWorkspaces } = workspaceContext || {};
   const [selectedNode, setSelectedNode] = useState(null);
   const [nodes, setNodes] = useState([]);
   const [loading, setLoading] = useState(false);

@@ -12,6 +12,7 @@ export default function WorkspaceSelector() {
     loading,
     shouldLoadWorkspaces,
   } = useWorkspace();
+
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);

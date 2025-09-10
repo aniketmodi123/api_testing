@@ -256,28 +256,6 @@ export const apiService = {
   },
 
   /**
-   * Duplicates an API to a new file within the same folder
-   * @param {number} fileId - Original file ID containing the API to duplicate
-   * @param {string} newApiName - Optional name for the duplicated API
-   * @param {boolean} includeCases - Whether to include test cases in the duplication
-   * @returns {Promise} Promise with duplication result
-   */
-  async duplicateApi(fileId, newApiName = null, includeCases = true) {
-    try {
-      const response = await api.post(`/file/${fileId}/api/duplicate`, null, {
-        params: {
-          include_cases: includeCases,
-          new_api_name: newApiName,
-        },
-      });
-      return response.data;
-    } catch (error) {
-      console.error('Error duplicating API:', error, error.response?.data);
-      throw error;
-    }
-  },
-
-  /**
    * Save a test case (create or update) for an API
    * @param {number} fileId - File ID containing the API
    * @param {Object} testCaseData - Test case data
