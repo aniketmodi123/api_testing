@@ -1,17 +1,14 @@
 from sqlalchemy.exc import SQLAlchemyError
 from psycopg2.errors import UndefinedTable, IntegrityError
 from decimal import Decimal
-import json
-import os
+import json, os, logging, httpx
 from dateutil.relativedelta import relativedelta
 from datetime import date, datetime, timedelta
-import logging
 from pathlib import Path
 from typing import Any, Dict, Optional, Type, Union
 from fastapi import HTTPException, Response, status
 from fastapi.responses import JSONResponse
-import httpx
-
+from sqlalchemy.ext.asyncio import AsyncSession
 from jose import jwt
 import pandas as pd
 from passlib.context import CryptContext
@@ -19,7 +16,7 @@ from pydantic import BaseModel, TypeAdapter, ValidationError
 from sqlalchemy import select
 
 from config import JWT_ALGORITHM, JWT_SECRET_KEY, SessionLocal
-from models import Cache
+from models import Cache, Node
 from schema import PaginationRes
 
 # Get the base directory
@@ -703,3 +700,39 @@ def get_variables_from_api_data(api_data: Dict[str, Any]) -> List[str]:
 
     extract_from_value(api_data)
     return list(variables)
+
+
+async def get_unique_name(base_name: str, target_workspace_id: int, target_folder_id: int | None, db: AsyncSession) -> str:
+    """
+    Generate a unique name for the copied/moved node in the target location.
+    If 'name' exists, try 'name copy', 'name copy 2', etc.
+    """
+    async def name_exists(name):
+        query = select(Node).where(
+            Node.workspace_id == target_workspace_id,
+            Node.name == name
+        )
+        if target_folder_id is None:
+            query = query.where(Node.parent_id.is_(None))
+        else:
+            query = query.where(Node.parent_id == target_folder_id)
+        result = await db.execute(query)
+        return result.scalar_one_or_none() is not None
+
+    name = base_name
+    _re_copy = re.compile(r"^(.*?)( copy(?: (\d+))?)?$", re.IGNORECASE)
+    n = 1
+    while True:
+        if not await name_exists(name):
+            return name
+        m = _re_copy.match(name)
+        if m:
+            base = m.group(1)
+            num = m.group(3)
+            if num:
+                n = int(num) + 1
+            else:
+                n = 2 if name.lower().endswith("copy") else 1
+            name = f"{base} copy {n}" if n > 1 else f"{base} copy"
+        else:
+            name = f"{base_name} copy"

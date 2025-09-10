@@ -8,7 +8,7 @@ from schema import NodeCopyRequest
 from typing import Optional
 import logging
 
-from utils import ExceptionHandler, create_response, value_correction
+from utils import ExceptionHandler, create_response, get_unique_name, value_correction
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -92,7 +92,8 @@ async def copy_node(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Copy a node (file or folder) to a different location
+    Copy a node (file or folder) to a different location.
+    Handles name conflicts by appending 'copy', 'copy 2', etc.
     """
     try:
         # Get the node to copy
@@ -118,30 +119,24 @@ async def copy_node(
             target_folder = result.scalar_one_or_none()
             if not target_folder:
                 return create_response(206, error_message="Target folder not found")
-
             # Ensure target folder is in the target workspace
             if target_folder.workspace_id != request.target_workspace_id:
                 return create_response(400, error_message="Target folder must be in the target workspace")
 
-        # Check for name conflicts in target location
-        result = await db.execute(
-            select(Node).where(
-                Node.workspace_id == request.target_workspace_id,
-                Node.parent_id == request.target_folder_id,
-                Node.name == request.new_name
-            )
+        # Generate a unique name in the target location
+        unique_name = await get_unique_name(
+            request.new_name or source_node.name,
+            request.target_workspace_id,
+            request.target_folder_id,
+            db
         )
-        existing_node = result.scalar_one_or_none()
-
-        if existing_node:
-            return create_response(409, error_message=f"A {existing_node.type} with name '{request.new_name}' already exists in the target location")
 
         # Perform the copy operation
         copied_node = await copy_node_recursive(
             source_node,
             request.target_workspace_id,
             request.target_folder_id,
-            request.new_name,
+            unique_name,
             db
         )
 
@@ -149,7 +144,7 @@ async def copy_node(
 
         logger.info(
             f"Node {node_id} ({source_node.name}) copied to workspace {request.target_workspace_id} "
-            f"with name '{request.new_name}'"
+            f"with name '{unique_name}'"
         )
 
         data = {
