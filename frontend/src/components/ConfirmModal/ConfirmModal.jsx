@@ -1,15 +1,17 @@
+import { Button } from '../common';
 import LookingLoader from '../LookingLoader/LookingLoader.jsx';
 import styles from './ConfirmModal.module.css';
 
 export default function ConfirmModal({
   isOpen,
-  title,
-  message,
-  onConfirm,
-  onCancel,
+  title = 'Confirm Action',
+  message, // can be string OR React node
+  warn_message, // can be string OR React node
   confirmText = 'Confirm',
   cancelText = 'Cancel',
   type = 'delete',
+  onConfirm,
+  onCancel,
   loading = false,
   loaderText = 'Processing...',
 }) {
@@ -17,7 +19,7 @@ export default function ConfirmModal({
 
   if (loading) {
     return (
-      <div className={styles.overlay}>
+      <div className={styles.modal}>
         <div className={styles.loaderBox}>
           <LookingLoader size={120} text={null} overlay={false} />
           <div className={styles.loaderText}>{loaderText}</div>
@@ -27,20 +29,36 @@ export default function ConfirmModal({
   }
 
   return (
-    <div className={styles.overlay}>
-      <div className={styles.content}>
-        <h3 className={styles.title}>{title}</h3>
-        <div className={styles.message}>{message}</div>
-        <div className={styles.actions}>
-          <button className="btn btn-secondary" onClick={onCancel}>
+    <div className={styles.modal}>
+      <div className={styles.modalContent}>
+        {/* Header */}
+        <div className={styles.modalHeader}>
+          <h3>{title}</h3>
+        </div>
+
+        {/* Body */}
+        <div className={styles.modalBody}>
+          {message &&
+            (typeof message === 'string' ? <p>{message}</p> : message)}
+          {warn_message &&
+            (typeof warn_message === 'string' ? (
+              <p className={styles.warning}>{warn_message}</p>
+            ) : (
+              <div className={styles.warning}>{warn_message}</div>
+            ))}
+        </div>
+
+        {/* Footer */}
+        <div className={styles.modalFooter}>
+          <Button variant="secondary" onClick={onCancel}>
             {cancelText}
-          </button>
-          <button
-            className={`btn btn-${type === 'delete' ? 'danger' : 'primary'}`}
+          </Button>
+          <Button
+            variant={type === 'delete' ? 'danger' : 'primary'}
             onClick={onConfirm}
           >
             {confirmText}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

@@ -4,6 +4,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import App from './App.jsx';
 import AuthGuard from './components/AuthGuard.jsx';
 import { ThemeProvider } from './components/ThemeProvider.jsx';
+import ConfirmModalPreview from './ConfirmModalPreview.jsx';
 import SignIn from './pages/SignIn.jsx';
 import SignUp from './pages/SignUp.jsx';
 import { EnvironmentProvider } from './store/environment.jsx';
@@ -98,6 +99,14 @@ createRoot(document.getElementById('root')).render(
                         element={
                           <App>
                             <UpdateProfile />
+                          </App>
+                        }
+                      />
+                      <Route
+                        path="/modal-preview"
+                        element={
+                          <App>
+                            <ConfirmModalPreview />
                           </App>
                         }
                       />

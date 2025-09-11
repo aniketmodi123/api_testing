@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNode } from '../../store/node';
 import { useWorkspace } from '../../store/workspace';
+import { Button } from '../common';
+import ConfirmModal from '../ConfirmModal/ConfirmModal';
 import HeaderEditor from '../HeaderEditor/HeaderEditor';
 import MoveCopyPanel from '../MoveCopyPanel';
-import { Button } from '../common';
-// import ConfirmModal from '../common/ConfirmModal.jsx';
 import styles from './CollectionTree.module.css';
 
 // Recursive component for rendering node items (folders and files)
@@ -723,64 +723,44 @@ export default function CollectionTree({ onSelectRequest }) {
       </div>
 
       {/* Confirmation Modal */}
-      {modalOpen && (
-        <div className={styles.modal}>
-          <div className={styles.modalContent}>
-            <div className={styles.modalHeader}>
-              <h3>Delete Item</h3>
-            </div>
-            <div className={styles.modalBody}>
-              <p>
-                Are you sure you want to delete the item{' '}
-                <strong>"{modalConfig.nodeName}"</strong>?
-              </p>
-              <p className={styles.warning}>
-                This action cannot be undone. All data in this item will be
-                permanently deleted.
-              </p>
-            </div>
-            <div className={styles.modalFooter}>
-              <Button
-                variant="secondary"
-                onClick={() => setModalOpen(false)}
-                disabled={deleteLoading}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="danger"
-                onClick={async () => {
-                  setDeleteLoading(true);
-                  setIsAddingFolder(false);
-                  setIsRenaming(false);
-                  setIsCreatingItem(false);
-                  try {
-                    const { deleteNodeAndGetTree } = await import(
-                      '../../services/deleteNodeAndGetTree.js'
-                    );
-                    const result = await deleteNodeAndGetTree(
-                      modalConfig.nodeId
-                    );
-                    if (result?.data) {
-                      if (typeof setWorkspaceTree === 'function') {
-                        setWorkspaceTree(result.data);
-                      }
-                      setSelectedItem(null);
-                    }
-                  } catch (err) {
-                    alert('Failed to delete node. ' + (err?.message || ''));
-                  }
-                  setDeleteLoading(false);
-                  setModalOpen(false);
-                }}
-                disabled={deleteLoading}
-              >
-                {deleteLoading ? 'Deleting...' : 'Delete Item'}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmModal
+        isOpen={modalOpen}
+        title="Delete Item"
+        message={
+          <>
+            Are you sure you want to delete the item{' '}
+            <strong>"{modalConfig?.nodeName}"</strong>?
+          </>
+        }
+        warn_message="This action cannot be undone. All data in this item will be permanently deleted."
+        confirmText={deleteLoading ? 'Deleting...' : 'Delete Item'}
+        cancelText="Cancel"
+        type="delete"
+        loading={deleteLoading}
+        onCancel={() => setModalOpen(false)}
+        onConfirm={async () => {
+          setDeleteLoading(true);
+          setIsAddingFolder(false);
+          setIsRenaming(false);
+          setIsCreatingItem(false);
+          try {
+            const { deleteNodeAndGetTree } = await import(
+              '../../services/deleteNodeAndGetTree.js'
+            );
+            const result = await deleteNodeAndGetTree(modalConfig.nodeId);
+            if (result?.data) {
+              if (typeof setWorkspaceTree === 'function') {
+                setWorkspaceTree(result.data);
+              }
+              setSelectedItem(null);
+            }
+          } catch (err) {
+            alert('Failed to delete node. ' + (err?.message || ''));
+          }
+          setDeleteLoading(false);
+          setModalOpen(false);
+        }}
+      />
 
       {/* Header Editor Modal */}
       {isHeaderEditorOpen && currentFolder && (

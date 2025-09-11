@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useEnvironment } from '../../store/environment';
 import { Button } from '../common';
+import ConfirmModal from '../ConfirmModal/ConfirmModal';
 import styles from './EnvironmentManager.module.css';
 import EnvironmentSelector from './EnvironmentSelector';
 
@@ -135,40 +136,28 @@ export default function EnvironmentManager({
       </div>
 
       {/* Delete Confirmation */}
-      {environmentToDelete && (
-        <div className={styles.modal}>
-          <div className={styles.modalContent}>
-            <div className={styles.modalHeader}>
-              <h3>Delete Environment</h3>
-            </div>
-            <div className={styles.modalBody}>
-              <p>
-                Are you sure you want to delete the environment{' '}
-                <strong>"{environmentToDelete.name}"</strong>?
-              </p>
-              <p className={styles.warning}>
-                This action cannot be undone. All variables in this environment
-                will be permanently deleted.
-              </p>
-            </div>
-            <div className={styles.modalFooter}>
-              <Button
-                variant="secondary"
-                onClick={() => setEnvironmentToDelete(null)}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="danger"
-                onClick={confirmDeleteEnvironment}
-                disabled={isLoading}
-              >
-                Delete Environment
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmModal
+        isOpen={!!environmentToDelete}
+        title="Delete Environment"
+        message={
+          <>
+            Are you sure you want to delete the environment{' '}
+            <strong>"{environmentToDelete?.name}"</strong>?
+          </>
+        }
+        warn_message={
+          <>
+            <strong>⚠ Warning:</strong> This action cannot be undone. All
+            variables in this environment will be permanently deleted.
+          </>
+        }
+        confirmText="Delete Environment"
+        cancelText="Cancel"
+        type="delete"
+        loading={isLoading}
+        onConfirm={confirmDeleteEnvironment}
+        onCancel={() => setEnvironmentToDelete(null)}
+      />
     </div>
   );
 }

@@ -64,6 +64,7 @@
   --input-background: #1e293b;
   --text: #e5e7eb;
   --text-muted: #9aa0a6;
+  --text-warn: #dc2626;
   --border: rgba(255, 255, 255, 0.1);
   --primary: #3b82f6;
   --primary-dark: #2563eb;
@@ -91,6 +92,7 @@
   --input-background: #f1f5f9;
   --text: #0f172a;
   --text-muted: #64748b;
+  --text-warn: #dc2626;
   --border: #e2e8f0;
   --primary: #3b82f6;
   --primary-dark: #2563eb;
