@@ -5,6 +5,7 @@ import BulkResults from './BulkTestPanel/BulkResults.jsx';
 import BulkScheduler from './BulkTestPanel/BulkScheduler.jsx';
 import BulkSelection from './BulkTestPanel/BulkSelection.jsx';
 import styles from './BulkTestPanel/BulkTestPanel.module.css';
+import LookingLoader from './LookingLoader/LookingLoader';
 
 export default function BulkTestPanel({ onSelectRequest }) {
   const [selectedItems, setSelectedItems] = useState([]);
@@ -253,6 +254,7 @@ export default function BulkTestPanel({ onSelectRequest }) {
 
   return (
     <div className={styles.bulkTestContainer} ref={containerRef}>
+      {isRunning && <LookingLoader overlay text="Running bulk tests..." />}
       {/* Left Panel: Collection Tree */}
       <div
         className={styles.leftPanel}

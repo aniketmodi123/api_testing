@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { workspaceService } from '../../services/workspaceService';
 import { useWorkspace } from '../../store/workspace';
+import LookingLoader from '../LookingLoader/LookingLoader';
 import styles from './BulkCollectionTree.module.css';
 
 // Enhanced Node Item component with bulk selection support
@@ -305,11 +306,7 @@ export default function BulkCollectionTree({
   };
 
   if (loading) {
-    return (
-      <div className={styles.loadingState}>
-        <p>Loading bulk testing tree...</p>
-      </div>
-    );
+    return <LookingLoader overlay text="Loading ..." />;
   }
 
   if (!activeWorkspace) {
