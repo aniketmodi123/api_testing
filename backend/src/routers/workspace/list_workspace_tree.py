@@ -54,6 +54,19 @@ def build_file_tree(nodes: List[Node], include_apis: bool = False, apis_dict: Op
             if parent:
                 parent["children"].append(node_data)
 
+    # Sort children: files first, then folders, for every node recursively
+    def sort_children(node):
+        if node["children"]:
+            # Only sort children that have a 'type' key (i.e., nodes, not API cases)
+            node_children_with_type = [c for c in node["children"] if "type" in c]
+            node_children_without_type = [c for c in node["children"] if "type" not in c]
+            node_children_with_type.sort(key=lambda x: x["type"] == "folder")
+            node["children"] = node_children_with_type + node_children_without_type
+            for child in node_children_with_type:
+                sort_children(child)
+    for root in root_nodes:
+        sort_children(root)
+
     return root_nodes
 
 
@@ -152,4 +165,3 @@ async def get_workspace_with_tree(
 
     except Exception as e:
         ExceptionHandler(e)
-
