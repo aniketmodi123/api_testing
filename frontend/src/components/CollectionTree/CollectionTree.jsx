@@ -383,11 +383,7 @@ export default function CollectionTree({ onSelectRequest }) {
   const [moveCopyNode, setMoveCopyNode] = useState(null);
 
   // Fetch nodes when workspace changes
-  useEffect(() => {
-    if (activeWorkspace) {
-      fetchNodesByWorkspaceId(activeWorkspace.id);
-    }
-  }, [activeWorkspace, fetchNodesByWorkspaceId]);
+  // No need to re-fetch nodes after move/copy/delete; use API response instead
 
   // Use workspace tree data (file_tree) if available, otherwise fallback to nodes or sample data
   const rootNodes =
@@ -831,9 +827,11 @@ export default function CollectionTree({ onSelectRequest }) {
           setMoveCopyNode(null);
         }}
         node={moveCopyNode}
-        onMoveCopyComplete={async () => {
-          // Force refresh and wait before closing panel
-          await refreshAndWait();
+        onMoveCopyComplete={({ updatedWorkspaceTree }) => {
+          setSelectedItem(null);
+          if (updatedWorkspaceTree && typeof setWorkspaceTree === 'function') {
+            setWorkspaceTree(updatedWorkspaceTree);
+          }
         }}
         fileTree={workspaceTree?.file_tree || []}
       />

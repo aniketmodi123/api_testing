@@ -304,7 +304,8 @@ def create_response(
     data: Optional[Any] = None,
     schema: Optional[Type[BaseModel]] = None,
     pagination: Optional[Dict[str, int]] = None,
-    error_message: Optional[str] = None
+    error_message: Optional[str] = None,
+    message: Optional[str] = None
 ) -> Union[JSONResponse, Response]:
     """
     Constructs a well-structured JSON response that supports data validation, error handling,
@@ -328,6 +329,8 @@ def create_response(
     }
     if response_code == 204:
         return Response(status_code=204)
+    if message:
+        response['message'] = message
 
     if data:
         if not schema:

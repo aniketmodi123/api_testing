@@ -71,6 +71,25 @@ async def get_workspace_with_tree(
         if not user:
             return create_response(400, error_message="User not found")
 
+
+        # Set all user's workspaces inactive, then set this one active
+        await db.execute(
+            select(Workspace)
+            .where(Workspace.user_id == user.id)
+            .execution_options(synchronize_session="fetch")
+        )
+        await db.execute(
+            Workspace.__table__.update()
+            .where(Workspace.user_id == user.id)
+            .values(active=False)
+        )
+        await db.execute(
+            Workspace.__table__.update()
+            .where(Workspace.id == workspace_id)
+            .values(active=True)
+        )
+        await db.commit()
+
         # Get workspace with nodes
         result = await db.execute(
             select(Workspace)

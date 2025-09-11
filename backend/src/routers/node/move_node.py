@@ -1,135 +1,29 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, delete
-from models import Node, Workspace
+from sqlalchemy import select, delete
+from models import Node, Workspace, Api
 from config import get_db
-from schema import NodeMoveRequest, NodeCopyRequest
+from schema import NodeCopyRequest
 import logging
+from sqlalchemy.orm import selectinload
+from sqlalchemy import and_
 
-from utils import ExceptionHandler, create_response, get_unique_name, value_correction
+from utils import ExceptionHandler, create_response, get_unique_name
 from routers.node.copy_node import copy_node_recursive
+from routers.workspace.list_workspace_tree import build_file_tree
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-@router.put("/{node_id}/move")
+@router.post("/{node_id}/move")
 async def move_node(
-    node_id: int,
-    request: NodeMoveRequest,
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Move a node (file or folder) to a different location
-    """
-    try:
-        # Get the node to move
-        result = await db.execute(select(Node).where(Node.id == node_id))
-        node = result.scalar_one_or_none()
-        if not node:
-            return create_response(206, error_message="Node not found")
-
-        # Verify target workspace exists
-        result = await db.execute(select(Workspace).where(Workspace.id == request.target_workspace_id))
-        target_workspace = result.scalar_one_or_none()
-        if not target_workspace:
-            return create_response(206, error_message="Target workspace not found")
-
-        # Verify target folder exists if specified
-        if request.target_folder_id:
-            result = await db.execute(
-                select(Node).where(
-                    Node.id == request.target_folder_id,
-                    Node.type == "folder"
-                )
-            )
-            target_folder = result.scalar_one_or_none()
-            if not target_folder:
-                return create_response(206, error_message="Target folder not found")
-
-            # Ensure target folder is in the target workspace
-            if target_folder.workspace_id != request.target_workspace_id:
-                return create_response(400, error_message="Target folder must be in the target workspace")
-
-        # Check for name conflicts in target location
-        result = await db.execute(
-            select(Node).where(
-                Node.workspace_id == request.target_workspace_id,
-                Node.parent_id == request.target_folder_id,
-                Node.name == request.new_name,
-                Node.id != node_id  # Exclude the node being moved
-            )
-        )
-        existing_node = result.scalar_one_or_none()
-
-        if existing_node:
-            return create_response(409, error_message=f"A {existing_node.type} with name '{request.new_name}' already exists in the target location")
-
-        # Prevent moving a folder into itself or its descendants
-        if node.type == "folder" and request.target_folder_id:
-            current_parent = request.target_folder_id
-            while current_parent:
-                if current_parent == node.id:
-                    return create_response(400, error_message="Cannot move a folder into itself or its descendants")
-                result = await db.execute(select(Node).where(Node.id == current_parent))
-                parent_node = result.scalar_one_or_none()
-                current_parent = parent_node.parent_id if parent_node else None
-
-        # Update the node
-        old_name = node.name
-        old_workspace_id = node.workspace_id
-        old_parent_id = node.parent_id
-
-        await db.execute(
-            update(Node)
-            .where(Node.id == node_id)
-            .values(
-                workspace_id=request.target_workspace_id,
-                parent_id=request.target_folder_id,
-                name=request.new_name
-            )
-        )
-
-        await db.commit()
-
-        # Re-fetch the node to get updated values
-        result = await db.execute(select(Node).where(Node.id == node_id))
-        updated_node = result.scalar_one_or_none()
-        if not updated_node:
-            return create_response(500, error_message="Node not found after update. Database may be inconsistent.")
-
-        logger.info(
-            f"Node {node_id} ({old_name}) moved from workspace {old_workspace_id} "
-            f"to workspace {request.target_workspace_id} with name '{request.new_name}'"
-        )
-
-        data = {
-            "id": updated_node.id,
-            "name": updated_node.name,
-            "type": updated_node.type,
-            "workspace_id": updated_node.workspace_id,
-            "parent_id": updated_node.parent_id,
-            "old_location": {
-                "workspace_id": old_workspace_id,
-                "parent_id": old_parent_id,
-                "name": old_name
-            }
-        }
-        return create_response(200, value_correction(data))
-    except Exception as e:
-        logger.error(f"Error moving node {node_id}: {str(e)}")
-        await db.rollback()
-        ExceptionHandler(e)
-
-@router.post("/{node_id}/move_simple")
-async def move_node_simple(
     node_id: int,
     request: NodeCopyRequest,  # reuse the copy request schema
     db: AsyncSession = Depends(get_db)
 ):
     """
     Move a node (file or folder) to a different location by copy-then-delete.
-    This approach copies the node and its data, then deletes the original.
-    Handles name conflicts by appending 'copy', 'copy 2', etc.
+    Returns the full workspace tree structure (like list_workspace_tree).
     """
     try:
         # 1. Get the node to move
@@ -160,15 +54,57 @@ async def move_node_simple(
         await db.execute(delete(Node).where(Node.id == node_id))
         await db.commit()
 
-        # 5. Return the new node info
-        return create_response(200, value_correction({
-            "id": copied_node.id,
-            "name": copied_node.name,
-            "type": copied_node.type,
-            "workspace_id": copied_node.workspace_id,
-            "parent_id": copied_node.parent_id,
-            "moved_from": node_id
-        }))
+        # 5. Fetch the updated workspace and nodes
+        result = await db.execute(
+            select(Workspace)
+            .options(selectinload(Workspace.nodes))
+            .where(Workspace.id == request.target_workspace_id)
+        )
+        workspace = result.scalar_one_or_none()
+        if not workspace:
+            return create_response(206, error_message="Workspace not found after move.")
+
+        apis_dict = {}
+        total_apis = 0
+        total_test_cases = 0
+
+        # Fetch all APIs with test cases for this workspace
+        apis_result = await db.execute(
+            select(Api)
+            .join(Node, Api.file_id == Node.id)
+            .options(selectinload(Api.cases))
+            .where(
+                and_(
+                    Node.workspace_id == request.target_workspace_id,
+                    Api.is_active == True
+                )
+            )
+        )
+        apis = apis_result.scalars().all()
+        for api in apis:
+            if api.file_id not in apis_dict:
+                apis_dict[api.file_id] = []
+            apis_dict[api.file_id].append(api)
+            total_apis += 1
+            total_test_cases += len(api.cases) if api.cases else 0
+
+        # Build file tree
+        file_tree = build_file_tree(workspace.nodes, True, apis_dict) if workspace.nodes else []
+
+        data = {
+            "id": workspace.id,
+            "name": workspace.name,
+            "description": workspace.description,
+            "created_at": workspace.created_at,
+            "file_tree": file_tree,
+            "total_nodes": len(workspace.nodes) if workspace.nodes else 0,
+            "include_apis": True,
+            "total_apis": total_apis,
+            "total_test_cases": total_test_cases
+        }
+        message = f"{source_node.type.title()} moved successfully"
+        return create_response(200, data, message=message)
+
     except Exception as e:
         await db.rollback()
         ExceptionHandler(e)

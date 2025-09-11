@@ -57,6 +57,7 @@ class Workspace(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text)
     created_at: Mapped[str] = mapped_column(TIMESTAMP, default= datetime.now, server_default=func.now())
+    active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default=text('False'))
 
     user: Mapped["User"] = relationship("User", back_populates="workspaces")
     nodes: Mapped[list["Node"]] = relationship("Node", back_populates="workspace")

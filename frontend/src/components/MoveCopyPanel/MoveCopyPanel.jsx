@@ -209,35 +209,29 @@ export default function MoveCopyPanel({
           result?.response_code === 201 ||
           (result?.data && !result?.error)
         ) {
-          onMoveCopyComplete?.();
+          onMoveCopyComplete?.({ updatedWorkspaceTree: result?.data });
           onClose();
         } else {
           throw new Error(result?.message || 'copy failed');
         }
       } else {
-        // MOVE = copy + delete
-        const copyResult = await workspaceService.copyNode(
+        // MOVE: use backend move API directly, response is full workspace tree
+        result = await workspaceService.moveNode(
           node.id,
           selectedWorkspace.id,
           targetFolderId,
           finalName
         );
-
         if (
-          copyResult?.success ||
-          copyResult?.response_code === 200 ||
-          copyResult?.response_code === 201 ||
-          (copyResult?.data && !copyResult?.error)
+          result?.success ||
+          result?.response_code === 200 ||
+          result?.response_code === 201 ||
+          (result?.data && !result?.error)
         ) {
-          console.log('[MoveCopyPanel] Deleting original node:', node.id);
-          const deleteResult = await deleteNode(node.id);
-          console.log('[MoveCopyPanel] Delete response:', deleteResult);
-          onMoveCopyComplete?.();
+          onMoveCopyComplete?.({ updatedWorkspaceTree: result?.data });
           onClose();
         } else {
-          throw new Error(
-            copyResult?.message || 'Move failed during copy step'
-          );
+          throw new Error(result?.message || 'move failed');
         }
       }
     } catch (err) {
