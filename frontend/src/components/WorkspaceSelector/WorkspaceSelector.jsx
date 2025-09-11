@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useWorkspace } from '../../store/workspace';
+import GlobalLoader from '../GlobalLoader/GlobalLoader.jsx';
 import styles from './WorkspaceSelector.module.css';
 
 export default function WorkspaceSelector() {
@@ -16,6 +17,7 @@ export default function WorkspaceSelector() {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const [workspaceToDelete, setWorkspaceToDelete] = useState(null);
   const [newWorkspaceName, setNewWorkspaceName] = useState('');
   const [newWorkspaceDescription, setNewWorkspaceDescription] = useState('');
@@ -51,7 +53,7 @@ export default function WorkspaceSelector() {
 
   const handleConfirmDelete = async () => {
     if (!workspaceToDelete) return;
-
+    setDeleteLoading(true);
     try {
       await deleteWorkspace(workspaceToDelete.id);
       setIsDeleting(false);
@@ -59,6 +61,8 @@ export default function WorkspaceSelector() {
     } catch (err) {
       console.error('Failed to delete workspace:', err);
       // Handle error - could show a notification
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -205,9 +209,23 @@ export default function WorkspaceSelector() {
                   type="button"
                   className={styles.deleteButton}
                   onClick={handleConfirmDelete}
-                  disabled={loading}
+                  disabled={deleteLoading}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    minWidth: 90,
+                    minHeight: 28,
+                  }}
                 >
-                  {loading ? 'Deleting...' : 'Delete'}
+                  {deleteLoading ? (
+                    <>
+                      <GlobalLoader size={16} color="#fff" />
+                      <span style={{ marginLeft: 8 }}>Deleting...</span>
+                    </>
+                  ) : (
+                    'Delete'
+                  )}
                 </button>
               </div>
             </div>

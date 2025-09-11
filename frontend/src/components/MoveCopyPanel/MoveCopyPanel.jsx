@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { workspaceService } from '../../services/workspaceService';
 import { useNode } from '../../store/node';
 import { useWorkspace } from '../../store/workspace';
+import GlobalLoader from '../GlobalLoader/GlobalLoader.jsx';
 import styles from './MoveCopyPanel.module.css';
 
 /** ---- helpers ---- **/
@@ -74,7 +75,7 @@ export default function MoveCopyPanel({
   const [selectedWorkspace, setSelectedWorkspace] = useState(
     activeWorkspace || null
   );
-  const [localFolders, setLocalFolders] = useState([]);
+  const [localFolders, setLocalFolders] = useState(null);
   const [selectedFolder, setSelectedFolder] = useState(null);
   const [customName, setCustomName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -100,19 +101,19 @@ export default function MoveCopyPanel({
     }
   };
 
+  // Only fetch folders when panel opens or workspace changes, not when operation changes
   useEffect(() => {
     if (!isOpen) return;
 
     setSelectedWorkspace(activeWorkspace || null);
+    setLocalFolders(null); // clear before loading
 
-    // Always fetch the latest folder tree from the workspace tree API
     const fetchFolders = async () => {
       if (activeWorkspace?.id) {
         try {
           const response = await workspaceService.getWorkspaceTree(
             activeWorkspace.id
           );
-          // Only use nodes where type == 'folder'
           const raw = extractTreeFromResponse(response);
           const foldersOnly = normalizeToFolders(raw).filter(
             f => f.type === 'folder'
@@ -126,7 +127,7 @@ export default function MoveCopyPanel({
       }
     };
     fetchFolders();
-  }, [isOpen, node, operation, activeWorkspace?.id]);
+  }, [isOpen, node, activeWorkspace?.id]);
 
   useEffect(() => {
     if (Array.isArray(localFolders) && localFolders.length > 0) {
@@ -370,8 +371,20 @@ export default function MoveCopyPanel({
           <div className={styles.section}>
             <label>Target Folder:</label>
             <div className={styles.folderTree}>
-              {renderFolderTree(localFolders)}
-              {(!Array.isArray(localFolders) || localFolders.length === 0) && (
+              {localFolders === null ? (
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    minHeight: 40,
+                  }}
+                >
+                  <GlobalLoader size={24} />
+                </div>
+              ) : Array.isArray(localFolders) && localFolders.length > 0 ? (
+                renderFolderTree(localFolders)
+              ) : (
                 <div style={{ color: '#888', marginLeft: 20 }}>
                   No folders found. Create a folder in your workspace first.
                 </div>

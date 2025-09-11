@@ -187,10 +187,12 @@
 
 .deleteConfirmation {
   padding: 15px;
-  background-color: var(--background-lighter);
+  background-color: var(--header-bg, #23272f);
   border-radius: 4px;
   margin: 10px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-color, #353a40);
+  color: var(--text, #fff);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
 }
 
 .deleteWarning {
