@@ -104,9 +104,6 @@ export default function MoveCopyPanel({
     if (!isOpen) return;
 
     setSelectedWorkspace(activeWorkspace || null);
-    setCustomName(
-      node ? (operation === 'copy' ? `${node.name} (Copy)` : node.name) : ''
-    );
 
     // Always fetch the latest folder tree from the workspace tree API
     const fetchFolders = async () => {
