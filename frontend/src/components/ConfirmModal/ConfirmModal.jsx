@@ -17,23 +17,21 @@ export default function ConfirmModal({
 
   if (loading) {
     return (
-      <div className={styles['confirm-modal-overlay']}>
-        <div className={styles['confirm-modal-loader-box']}>
+      <div className={styles.overlay}>
+        <div className={styles.loaderBox}>
           <LookingLoader size={120} text={null} overlay={false} />
-          <div className={styles['confirm-modal-loader-text']}>
-            {loaderText}
-          </div>
+          <div className={styles.loaderText}>{loaderText}</div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className={styles['confirm-modal-overlay']}>
-      <div className={styles['confirm-modal-content']}>
-        <h3 className={styles['confirm-modal-title']}>{title}</h3>
-        <div className={styles['confirm-modal-message']}>{message}</div>
-        <div className={styles['confirm-modal-actions']}>
+    <div className={styles.overlay}>
+      <div className={styles.content}>
+        <h3 className={styles.title}>{title}</h3>
+        <div className={styles.message}>{message}</div>
+        <div className={styles.actions}>
           <button className="btn btn-secondary" onClick={onCancel}>
             {cancelText}
           </button>

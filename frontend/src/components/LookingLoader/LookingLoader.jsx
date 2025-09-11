@@ -11,20 +11,12 @@ export default function LookingLoader({
   ...props
 }) {
   const loaderContent = (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        ...style,
-      }}
-      {...props}
-    >
+    <>
       <img
         src={lookingGif}
         alt={text}
-        style={{ width: size, height: size, objectFit: 'contain' }}
+        style={{ width: size, height: size, objectFit: 'contain', ...style }}
+        {...props}
       />
       {text && (
         <div
@@ -39,7 +31,7 @@ export default function LookingLoader({
           {text}
         </div>
       )}
-    </div>
+    </>
   );
 
   if (overlay) {
