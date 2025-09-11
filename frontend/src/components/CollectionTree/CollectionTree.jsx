@@ -4,45 +4,8 @@ import { useWorkspace } from '../../store/workspace';
 import HeaderEditor from '../HeaderEditor/HeaderEditor';
 import MoveCopyPanel from '../MoveCopyPanel';
 import { Button } from '../common';
+// import ConfirmModal from '../common/ConfirmModal.jsx';
 import styles from './CollectionTree.module.css';
-
-// Custom Modal Component for confirmations
-const ConfirmModal = ({
-  isOpen,
-  title,
-  message,
-  onConfirm,
-  onCancel,
-  confirmText = 'Confirm',
-  cancelText = 'Cancel',
-  type = 'delete',
-}) => {
-  if (!isOpen) return null;
-
-  return (
-    <div className={styles.modalOverlay}>
-      <div className={styles.modalContent}>
-        <div className={styles.modalHeader}>
-          <h3 className={styles.modalTitle}>{title}</h3>
-        </div>
-        <div className={styles.modalBody}>
-          <p>{message}</p>
-        </div>
-        <div className={styles.modalActions}>
-          <Button variant="secondary" onClick={onCancel}>
-            {cancelText}
-          </Button>
-          <Button
-            variant={type === 'delete' ? 'danger' : 'primary'}
-            onClick={onConfirm}
-          >
-            {confirmText}
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-};
 
 // Recursive component for rendering node items (folders and files)
 const NodeItem = ({
@@ -377,6 +340,7 @@ export default function CollectionTree({ onSelectRequest }) {
     cancelText: 'Cancel',
     onConfirm: () => {},
     type: 'delete',
+    loading: false,
   });
 
   // Move/Copy panel state
@@ -436,6 +400,7 @@ export default function CollectionTree({ onSelectRequest }) {
     setNewFolderName('');
   };
 
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const handleDeleteNode = (nodeId, e) => {
     e.stopPropagation();
 
@@ -444,40 +409,10 @@ export default function CollectionTree({ onSelectRequest }) {
       name: 'this item',
     };
 
-    // Configure and show the confirmation modal
     setModalConfig({
-      title: 'Confirm Deletion',
-      message: `Are you sure you want to delete "${nodeToDelete.name}"?`,
-      confirmText: 'Delete',
-      cancelText: 'Cancel',
-      type: 'delete',
-      onConfirm: async () => {
-        // Cancel any ongoing actions
-        setIsAddingFolder(false);
-        setIsRenaming(false);
-        setIsCreatingItem(false);
-
-        // Perform the deletion and update UI from API response
-        try {
-          const { deleteNodeAndGetTree } = await import(
-            '../../services/deleteNodeAndGetTree.js'
-          );
-          const result = await deleteNodeAndGetTree(nodeId);
-          if (result?.data) {
-            if (typeof setWorkspaceTree === 'function') {
-              setWorkspaceTree(result.data);
-            }
-            setSelectedItem(null);
-          }
-        } catch (err) {
-          alert('Failed to delete node. ' + (err?.message || ''));
-        }
-
-        // Close the modal
-        setModalOpen(false);
-      },
+      nodeName: nodeToDelete.name,
+      nodeId,
     });
-
     setModalOpen(true);
   };
 
@@ -788,16 +723,64 @@ export default function CollectionTree({ onSelectRequest }) {
       </div>
 
       {/* Confirmation Modal */}
-      <ConfirmModal
-        isOpen={modalOpen}
-        title={modalConfig.title}
-        message={modalConfig.message}
-        confirmText={modalConfig.confirmText}
-        cancelText={modalConfig.cancelText}
-        type={modalConfig.type}
-        onConfirm={modalConfig.onConfirm}
-        onCancel={() => setModalOpen(false)}
-      />
+      {modalOpen && (
+        <div className={styles.modal}>
+          <div className={styles.modalContent}>
+            <div className={styles.modalHeader}>
+              <h3>Delete Item</h3>
+            </div>
+            <div className={styles.modalBody}>
+              <p>
+                Are you sure you want to delete the item{' '}
+                <strong>"{modalConfig.nodeName}"</strong>?
+              </p>
+              <p className={styles.warning}>
+                This action cannot be undone. All data in this item will be
+                permanently deleted.
+              </p>
+            </div>
+            <div className={styles.modalFooter}>
+              <Button
+                variant="secondary"
+                onClick={() => setModalOpen(false)}
+                disabled={deleteLoading}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                onClick={async () => {
+                  setDeleteLoading(true);
+                  setIsAddingFolder(false);
+                  setIsRenaming(false);
+                  setIsCreatingItem(false);
+                  try {
+                    const { deleteNodeAndGetTree } = await import(
+                      '../../services/deleteNodeAndGetTree.js'
+                    );
+                    const result = await deleteNodeAndGetTree(
+                      modalConfig.nodeId
+                    );
+                    if (result?.data) {
+                      if (typeof setWorkspaceTree === 'function') {
+                        setWorkspaceTree(result.data);
+                      }
+                      setSelectedItem(null);
+                    }
+                  } catch (err) {
+                    alert('Failed to delete node. ' + (err?.message || ''));
+                  }
+                  setDeleteLoading(false);
+                  setModalOpen(false);
+                }}
+                disabled={deleteLoading}
+              >
+                {deleteLoading ? 'Deleting...' : 'Delete Item'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Header Editor Modal */}
       {isHeaderEditorOpen && currentFolder && (

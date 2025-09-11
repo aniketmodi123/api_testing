@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { workspaceService } from '../../services/workspaceService';
 import { useNode } from '../../store/node';
 import { useWorkspace } from '../../store/workspace';
-import GlobalLoader from '../GlobalLoader/GlobalLoader.jsx';
+import ConfirmModal from '../ConfirmModal';
 import styles from './MoveCopyPanel.module.css';
 
 /** ---- helpers ---- **/
@@ -79,6 +79,7 @@ export default function MoveCopyPanel({
   const [selectedFolder, setSelectedFolder] = useState(null);
   const [customName, setCustomName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
   const [expandedFolders, setExpandedFolders] = useState([]);
 
   const requestSeq = useRef(0);
@@ -247,7 +248,7 @@ export default function MoveCopyPanel({
       }
     } catch (err) {
       console.error(`Error ${operation}ing node:`, err);
-      alert(err.message || `Failed to ${operation} ${node?.type || 'item'}`);
+      setError(err.message || `Failed to ${operation} ${node?.type || 'item'}`);
     } finally {
       setIsLoading(false);
     }
@@ -310,6 +311,28 @@ export default function MoveCopyPanel({
   };
 
   if (!isOpen) return null;
+  if (isLoading) {
+    return (
+      <ConfirmModal
+        isOpen={true}
+        loading={true}
+        loaderText={operation === 'copy' ? 'Copying...' : 'Moving...'}
+      />
+    );
+  }
+  if (error) {
+    return (
+      <ConfirmModal
+        isOpen={true}
+        title="Error"
+        message={error}
+        confirmText="OK"
+        onConfirm={() => setError(null)}
+        onCancel={() => setError(null)}
+        type="error"
+      />
+    );
+  }
 
   const isSameLocationMove =
     operation === 'move' &&
@@ -380,7 +403,11 @@ export default function MoveCopyPanel({
                     minHeight: 40,
                   }}
                 >
-                  <GlobalLoader size={24} />
+                  <ConfirmModal
+                    isOpen={true}
+                    loading={true}
+                    loaderText="Loading folders..."
+                  />
                 </div>
               ) : Array.isArray(localFolders) && localFolders.length > 0 ? (
                 renderFolderTree(localFolders)
