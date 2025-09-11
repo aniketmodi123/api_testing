@@ -246,6 +246,7 @@ export function WorkspaceProvider({ children }) {
         activeWorkspace,
         setActiveWorkspace,
         workspaceTree,
+        setWorkspaceTree, // <-- expose setter
         loading,
         error,
         createWorkspace,

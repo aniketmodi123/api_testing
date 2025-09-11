@@ -12,7 +12,8 @@ from models import Node, Api, ApiCase, Workspace
 from routers.workspace.list_workspace_tree import build_file_tree
 from utils import (
     ExceptionHandler,
-    create_response
+    create_response,
+    value_correction
 )
 
 router = APIRouter()
@@ -125,7 +126,7 @@ async def delete_node(
             "total_apis": total_apis,
             "total_test_cases": total_test_cases
         }
-        return create_response(200, data, message=message)
+        return create_response(200, value_correction(data), message=message)
 
     except Exception as e:
         await db.rollback()

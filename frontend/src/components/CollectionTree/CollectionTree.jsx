@@ -337,6 +337,7 @@ export default function CollectionTree({ onSelectRequest }) {
     workspaceTree,
     loading: workspaceLoading,
     refreshWorkspaces, // <-- add this
+    setWorkspaceTree,
   } = useWorkspace();
   const {
     nodes,
@@ -450,14 +451,27 @@ export default function CollectionTree({ onSelectRequest }) {
       confirmText: 'Delete',
       cancelText: 'Cancel',
       type: 'delete',
-      onConfirm: () => {
+      onConfirm: async () => {
         // Cancel any ongoing actions
         setIsAddingFolder(false);
         setIsRenaming(false);
         setIsCreatingItem(false);
 
-        // Perform the deletion
-        deleteNode(nodeId);
+        // Perform the deletion and update UI from API response
+        try {
+          const { deleteNodeAndGetTree } = await import(
+            '../../services/deleteNodeAndGetTree.js'
+          );
+          const result = await deleteNodeAndGetTree(nodeId);
+          if (result?.data) {
+            if (typeof setWorkspaceTree === 'function') {
+              setWorkspaceTree(result.data);
+            }
+            setSelectedItem(null);
+          }
+        } catch (err) {
+          alert('Failed to delete node. ' + (err?.message || ''));
+        }
 
         // Close the modal
         setModalOpen(false);
@@ -770,18 +784,7 @@ export default function CollectionTree({ onSelectRequest }) {
               closeAllMenus={menuUpdateTrigger}
             />
           ))
-        ) : (
-          <div className={styles.emptyState}>
-            <p>
-              {activeWorkspace ? 'No folders found' : 'No workspace selected'}
-            </p>
-            {activeWorkspace && (
-              <Button variant="primary" onClick={handleAddFolder}>
-                Create Folder
-              </Button>
-            )}
-          </div>
-        )}
+        ) : null}
       </div>
 
       {/* Confirmation Modal */}

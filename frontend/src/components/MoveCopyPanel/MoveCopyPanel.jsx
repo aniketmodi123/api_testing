@@ -245,47 +245,54 @@ export default function MoveCopyPanel({
   const renderFolderTree = (folders = [], level = 0) => {
     if (!Array.isArray(folders) || folders.length === 0) return null;
 
-    return folders.map(folder => {
-      if (!folder) return null;
-      const children = Array.isArray(folder.children) ? folder.children : [];
-      const hasSubfolders = children.some(isFolderType);
+    // Only show nodes where type is 'folder'
+    return folders
+      .filter(
+        folder =>
+          folder &&
+          (folder.type === 'folder' ||
+            (folder.type && folder.type.toLowerCase() === 'folder'))
+      )
+      .map(folder => {
+        const children = Array.isArray(folder.children) ? folder.children : [];
+        const hasSubfolders = children.some(isFolderType);
 
-      return (
-        <div
-          key={folder.id}
-          className={styles.folderItem}
-          style={{ marginLeft: `${level * 16}px` }}
-        >
+        return (
           <div
-            className={`${styles.folderHeader} ${
-              selectedFolder?.id === folder.id ? styles.selected : ''
-            }`}
-            onClick={() => handleFolderSelect(folder)}
+            key={folder.id}
+            className={styles.folderItem}
+            style={{ marginLeft: `${level * 16}px` }}
           >
-            <span
-              className={styles.expandIcon}
-              onClick={e => {
-                e.stopPropagation();
-                if (hasSubfolders) toggleFolder(folder.id);
-              }}
+            <div
+              className={`${styles.folderHeader} ${
+                selectedFolder?.id === folder.id ? styles.selected : ''
+              }`}
+              onClick={() => handleFolderSelect(folder)}
             >
-              {hasSubfolders
-                ? expandedFolders.includes(folder.id)
-                  ? '▼'
-                  : '▶'
-                : '•'}
-            </span>
-            <span className={styles.folderName}>{folder.name}</span>
-          </div>
-
-          {hasSubfolders && expandedFolders.includes(folder.id) && (
-            <div className={styles.subFolders}>
-              {renderFolderTree(children.filter(isFolderType), level + 1)}
+              <span
+                className={styles.expandIcon}
+                onClick={e => {
+                  e.stopPropagation();
+                  if (hasSubfolders) toggleFolder(folder.id);
+                }}
+              >
+                {hasSubfolders
+                  ? expandedFolders.includes(folder.id)
+                    ? '▼'
+                    : '▶'
+                  : '•'}
+              </span>
+              <span className={styles.folderName}>{folder.name}</span>
             </div>
-          )}
-        </div>
-      );
-    });
+
+            {hasSubfolders && expandedFolders.includes(folder.id) && (
+              <div className={styles.subFolders}>
+                {renderFolderTree(children.filter(isFolderType), level + 1)}
+              </div>
+            )}
+          </div>
+        );
+      });
   };
 
   if (!isOpen) return null;

@@ -94,6 +94,7 @@ class Node(Base):
 
     __table_args__ = (
         CheckConstraint("type IN ('folder', 'file')", name="check_node_type"),
+        CheckConstraint("(type = 'file' AND parent_id IS NOT NULL) OR (type = 'folder')", name="file_parent_not_null"),
     )
 
     workspace: Mapped["Workspace"] = relationship("Workspace", back_populates="nodes")

@@ -134,7 +134,7 @@ export const workspaceService = {
    * @returns {Promise} Promise with move result
    */
   async moveNode(nodeId, targetWorkspaceId, targetFolderId, newName) {
-    const response = await api.put(`/node/${nodeId}/move`, {
+    const response = await api.post(`/node/${nodeId}/move`, {
       target_workspace_id: targetWorkspaceId,
       target_folder_id: targetFolderId,
       new_name: newName,
