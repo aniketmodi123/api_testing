@@ -66,7 +66,6 @@ export default function MoveCopyPanel({
   onClose,
   node,
   onMoveCopyComplete,
-  fileTree,
 }) {
   const { workspaces, activeWorkspace } = useWorkspace();
   const { deleteNode } = useNode();
@@ -109,16 +108,27 @@ export default function MoveCopyPanel({
       node ? (operation === 'copy' ? `${node.name} (Copy)` : node.name) : ''
     );
 
-    const propHasFolders =
-      Array.isArray(fileTree) && normalizeToFolders(fileTree).length > 0;
-
-    if (propHasFolders) {
-      setLocalFolders(normalizeToFolders(fileTree));
-    } else if (activeWorkspace?.id) {
-      loadWorkspaceTree(activeWorkspace.id);
-    } else {
-      setLocalFolders([]);
-    }
+    // Always fetch the latest folder tree from the workspace tree API
+    const fetchFolders = async () => {
+      if (activeWorkspace?.id) {
+        try {
+          const response = await workspaceService.getWorkspaceTree(
+            activeWorkspace.id
+          );
+          // Only use nodes where type == 'folder'
+          const raw = extractTreeFromResponse(response);
+          const foldersOnly = normalizeToFolders(raw).filter(
+            f => f.type === 'folder'
+          );
+          setLocalFolders(foldersOnly);
+        } catch (err) {
+          setLocalFolders([]);
+        }
+      } else {
+        setLocalFolders([]);
+      }
+    };
+    fetchFolders();
   }, [isOpen, node, operation, activeWorkspace?.id]);
 
   useEffect(() => {
@@ -194,6 +204,7 @@ export default function MoveCopyPanel({
       }
 
       let result;
+      let backendError = '';
 
       if (operation === 'copy') {
         const uniqueName = generateUniqueName(finalName, existing);
@@ -203,6 +214,7 @@ export default function MoveCopyPanel({
           targetFolderId,
           uniqueName
         );
+        backendError = result?.error_message || result?.message || '';
         if (
           result?.success ||
           result?.response_code === 200 ||
@@ -212,7 +224,7 @@ export default function MoveCopyPanel({
           onMoveCopyComplete?.({ updatedWorkspaceTree: result?.data });
           onClose();
         } else {
-          throw new Error(result?.message || 'copy failed');
+          throw new Error(backendError || 'copy failed');
         }
       } else {
         // MOVE: use backend move API directly, response is full workspace tree
@@ -222,6 +234,7 @@ export default function MoveCopyPanel({
           targetFolderId,
           finalName
         );
+        backendError = result?.error_message || result?.message || '';
         if (
           result?.success ||
           result?.response_code === 200 ||
@@ -231,12 +244,12 @@ export default function MoveCopyPanel({
           onMoveCopyComplete?.({ updatedWorkspaceTree: result?.data });
           onClose();
         } else {
-          throw new Error(result?.message || 'move failed');
+          throw new Error(backendError || 'move failed');
         }
       }
     } catch (err) {
       console.error(`Error ${operation}ing node:`, err);
-      alert(`Failed to ${operation} ${node?.type || 'item'}. ${err.message}`);
+      alert(err.message || `Failed to ${operation} ${node?.type || 'item'}`);
     } finally {
       setIsLoading(false);
     }
@@ -267,7 +280,10 @@ export default function MoveCopyPanel({
               className={`${styles.folderHeader} ${
                 selectedFolder?.id === folder.id ? styles.selected : ''
               }`}
-              onClick={() => handleFolderSelect(folder)}
+              onClick={e => {
+                e.stopPropagation();
+                handleFolderSelect(folder);
+              }}
             >
               <span
                 className={styles.expandIcon}

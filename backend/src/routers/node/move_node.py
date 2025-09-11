@@ -8,7 +8,7 @@ import logging
 from sqlalchemy.orm import selectinload
 from sqlalchemy import and_
 
-from utils import ExceptionHandler, create_response, get_unique_name
+from utils import ExceptionHandler, create_response, get_unique_name, value_correction
 from routers.node.copy_node import copy_node_recursive
 from routers.workspace.list_workspace_tree import build_file_tree
 
@@ -103,7 +103,7 @@ async def move_node(
             "total_test_cases": total_test_cases
         }
         message = f"{source_node.type.title()} moved successfully"
-        return create_response(200, data, message=message)
+        return create_response(200, value_correction(data), message=message)
 
     except Exception as e:
         await db.rollback()
