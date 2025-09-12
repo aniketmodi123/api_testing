@@ -26,8 +26,8 @@ export default function BulkControls({
           disabled={isRunning}
         >
           <option value="selected">Selected Items</option>
-          <option value="folder">Current Folder</option>
-          <option value="all">All APIs & Cases</option>
+          <option value="folder">Selected Folder</option>
+          <option value="all">Folders only</option>
         </select>
       </div>
 
