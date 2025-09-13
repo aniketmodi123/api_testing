@@ -79,86 +79,197 @@ export default function BulkTestPanel({ onSelectRequest }) {
         onSelectRequest(item);
       }
 
-      // Add to bulk selection with smart merging logic
       setSelectedItems(prev => {
-        // Check if this exact item already exists
+        // Helper to get all APIs under a folder recursively
+        const getAllApisInFolder = folder => {
+          let apis = [];
+          if (folder.children) {
+            folder.children.forEach(child => {
+              if (child.type === 'api' || child.type === 'file') {
+                apis.push({
+                  id: child.id,
+                  type: 'api',
+                  name: child.name,
+                  method: child.method || 'GET',
+                  folderId: folder.id,
+                  parentFolderId: folder.id,
+                  children: child.children || [],
+                  testCasesCount: child.children ? child.children.length : 0,
+                });
+              } else if (child.type === 'folder') {
+                apis = apis.concat(getAllApisInFolder(child));
+              }
+            });
+          }
+          return apis;
+        };
+
+        // Remove logic for toggling
         const exists = prev.find(
           selected =>
             selected.id === item.id &&
             selected.type === item.type &&
-            selected.caseId === item.caseId // For test cases
+            selected.caseId === item.caseId
         );
-
         if (exists) {
-          // Item already selected - TOGGLE (remove it)
-          return prev.filter(
-            existing =>
-              !(
-                existing.id === item.id &&
-                existing.type === item.type &&
-                existing.caseId === item.caseId
-              )
-          );
+          // Toggle off: remove item and, if folder, all its APIs
+          if (item.type === 'folder') {
+            const apisInFolder = getAllApisInFolder(item);
+            return prev.filter(
+              existing =>
+                existing.id !== item.id &&
+                !apisInFolder.some(api => api.id === existing.id)
+            );
+          }
+          if (item.type === 'api') {
+            return prev.filter(existing => existing.id !== item.id);
+          }
+          if (item.type === 'case') {
+            // Remove only this case from the API's selectedCases
+            return prev
+              .map(existing => {
+                if (
+                  existing.type === 'api' &&
+                  existing.id === item.parentFileId &&
+                  existing.selectedCases
+                ) {
+                  return {
+                    ...existing,
+                    selectedCases: existing.selectedCases.filter(
+                      c => c.caseId !== item.caseId
+                    ),
+                  };
+                }
+                return existing;
+              })
+              .filter(existing => {
+                // Remove API if no selectedCases left
+                if (
+                  existing.type === 'api' &&
+                  existing.selectedCases &&
+                  existing.selectedCases.length === 0
+                ) {
+                  return false;
+                }
+                return true;
+              });
+          }
         }
 
         let newItems = [...prev];
 
         if (item.type === 'folder') {
-          // If selecting whole folder, remove any individual APIs or test cases within this folder
+          // Remove any APIs or cases from this folder
           newItems = newItems.filter(
             existing =>
-              !(
-                existing.parentFolderId === item.id ||
-                (existing.type === 'api' && existing.folderId === item.id) ||
-                (existing.type === 'case' &&
-                  existing.parentFolderId === item.id)
-              )
+              existing.parentFolderId !== item.id &&
+              !(existing.type === 'api' && existing.folderId === item.id)
           );
+          // Add all APIs in this folder
+          const apis = getAllApisInFolder(item);
+          return [
+            ...newItems,
+            ...apis.map(api => ({
+              ...api,
+              selected: true,
+              selectedCases: [],
+            })),
+          ];
         } else if (item.type === 'api') {
-          // If selecting whole API, remove any individual test cases for this API
+          // Remove any selected cases for this API
           newItems = newItems.filter(
             existing =>
-              !(existing.parentFileId === item.id && existing.type === 'case')
+              !(existing.type === 'api' && existing.id === item.id) &&
+              !(existing.type === 'case' && existing.parentFileId === item.id)
           );
-
-          // Also check if whole folder containing this API is already selected
-          const wholeFolderSelected = newItems.find(
-            existing =>
-              existing.id === item.parentFolderId && existing.type === 'folder'
-          );
-
-          if (wholeFolderSelected) {
-            // Whole folder is already selected, don't add individual API
-            return prev;
-          }
+          return [
+            ...newItems,
+            {
+              ...item,
+              selected: true,
+              selectedCases: [],
+            },
+          ];
         } else if (item.type === 'case') {
-          // If selecting individual case, check if whole API is already selected
-          const wholeApiSelected = newItems.find(
+          // If parent API is already selected, toggle this case in selectedCases
+          let foundApi = newItems.find(
             existing =>
-              existing.id === item.parentFileId && existing.type === 'api'
+              existing.type === 'api' && existing.id === item.parentFileId
           );
-
-          // Also check if whole folder is already selected
-          const wholeFolderSelected = newItems.find(
-            existing =>
-              existing.id === item.parentFolderId && existing.type === 'folder'
-          );
-
-          if (wholeApiSelected || wholeFolderSelected) {
-            // Whole API or folder is already selected, don't add individual case
-            return prev;
+          if (foundApi) {
+            const alreadySelected = (foundApi.selectedCases || []).some(
+              c => c.caseId === item.caseId
+            );
+            let updatedCases;
+            if (alreadySelected) {
+              // Remove the case
+              updatedCases = foundApi.selectedCases.filter(
+                c => c.caseId !== item.caseId
+              );
+            } else {
+              // Add the case
+              updatedCases = [
+                ...(foundApi.selectedCases || []),
+                {
+                  caseId: item.caseId,
+                  caseName: item.caseName,
+                  method: item.method,
+                  created_at: item.created_at,
+                },
+              ];
+            }
+            foundApi = {
+              ...foundApi,
+              selectedCases: updatedCases,
+            };
+            // Replace in newItems
+            newItems = newItems.map(existing =>
+              existing.type === 'api' && existing.id === item.parentFileId
+                ? foundApi
+                : existing
+            );
+            // Remove API if no selectedCases left
+            return newItems.filter(
+              existing =>
+                !(
+                  existing.type === 'api' &&
+                  existing.id === item.parentFileId &&
+                  foundApi.selectedCases.length === 0
+                )
+            );
+          } else {
+            // Add parent API with this case as selectedCases
+            return [
+              ...newItems,
+              {
+                id: item.parentFileId,
+                type: 'api',
+                name: item.parentFileName,
+                method: item.method || 'GET',
+                selected: true,
+                selectedCases: [
+                  {
+                    caseId: item.caseId,
+                    caseName: item.caseName,
+                    method: item.method,
+                    created_at: item.created_at,
+                  },
+                ],
+                testCasesCount:
+                  item.parentFileTestCasesCount ||
+                  (item.parentFileChildren
+                    ? item.parentFileChildren.length
+                    : 0),
+              },
+            ];
           }
         }
-
-        // Add the new item
+        // Default: add the item
         return [
           ...newItems,
           {
             ...item,
             selected: true,
-            // Ensure we have proper identification for both APIs and cases
-            displayName: item.caseName || item.name,
-            parentApiName: item.parentFileName || item.name,
           },
         ];
       });
@@ -322,7 +433,7 @@ export default function BulkTestPanel({ onSelectRequest }) {
         <div className={styles.tabContent}>
           {activeTab === 'selection' && (
             <BulkSelection
-              selectedItems={selectedItems}
+              selectedItems={selectedItems.filter(item => item.type === 'api')}
               onRemoveSelection={handleRemoveSelection}
               onClearSelections={handleClearSelections}
             />

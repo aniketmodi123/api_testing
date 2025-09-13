@@ -43,21 +43,19 @@ const BulkNodeItem = ({
     return (
       <div className={styles.folderItem}>
         <div className={styles.folderHeader}>
-          {/* Folder Selection checkbox/button - only show if testScope is folder */}
-          {testScope === 'folder' && (
-            <div
-              className={`${styles.folderSelector} ${isFolderSelected() ? styles.selected : ''}`}
-              onClick={e => {
-                e.stopPropagation();
-                handleFolderSelection();
-              }}
-              title="Select entire folder with all APIs and test cases"
-            >
-              <span className={styles.selectIcon}>
-                {isFolderSelected() ? '☑️' : '☐'}
-              </span>
-            </div>
-          )}
+          {/* Folder Selection checkbox/button - always show */}
+          <div
+            className={`${styles.folderSelector} ${isFolderSelected() ? styles.selected : ''}`}
+            onClick={e => {
+              e.stopPropagation();
+              handleFolderSelection();
+            }}
+            title="Select entire folder with all APIs and test cases"
+          >
+            <span className={styles.selectIcon}>
+              {isFolderSelected() ? '☑️' : '☐'}
+            </span>
+          </div>
 
           {/* Toggle expand/collapse */}
           <div
@@ -121,16 +119,24 @@ const BulkNodeItem = ({
 
     const isCaseSelected = testCase => {
       // Case is selected if:
-      // 1. Individual case is selected AND whole API is not selected
-      // 2. OR if whole API is selected (but we'll handle display differently)
+      // 1. Parent API is selected and selectedCases includes this case
+      // 2. (legacy) Individual case is selected and whole API is not selected
+      const apiItem = selectedItems.find(
+        item => item.type === 'api' && item.id === node.id
+      );
+      if (apiItem && Array.isArray(apiItem.selectedCases)) {
+        return apiItem.selectedCases.some(c => c.caseId === testCase.id);
+      }
+      // fallback: legacy individual case selection
       const individualCaseSelected = selectedItems.some(
         item => item.id === testCase.id && item.type === 'case'
       );
       const wholeApiSelected = selectedItems.some(
-        item => item.id === node.id && item.type === 'api'
+        item =>
+          item.id === node.id &&
+          item.type === 'api' &&
+          (!item.selectedCases || item.selectedCases.length === 0)
       );
-
-      // Only show case as selected if individual case is selected and whole API is NOT selected
       return individualCaseSelected && !wholeApiSelected;
     };
 

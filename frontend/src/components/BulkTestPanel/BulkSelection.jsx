@@ -47,20 +47,22 @@ export default function BulkSelection({
         };
       }
     } else if (item.type === 'api') {
-      // This is a whole API selection
+      // This is an API selection (could be whole API or partial via selectedCases)
+      const isPartial =
+        Array.isArray(item.selectedCases) && item.selectedCases.length > 0;
       if (!groupedItems[item.id]) {
         groupedItems[item.id] = {
           api: item,
           cases: [],
-          isWholeApi: true,
+          isWholeApi: !isPartial,
           type: 'api',
         };
       } else {
         // If there are individual cases and now we select whole API,
         // upgrade to whole API and clear individual cases
         groupedItems[item.id].api = item;
-        groupedItems[item.id].isWholeApi = true;
-        groupedItems[item.id].cases = []; // Clear individual cases since whole API is selected
+        groupedItems[item.id].isWholeApi = !isPartial;
+        if (!isPartial) groupedItems[item.id].cases = []; // Clear individual cases since whole API is selected
       }
     } else if (item.type === 'case') {
       // This is an individual test case
@@ -108,8 +110,41 @@ export default function BulkSelection({
   };
 
   const removeIndividualCase = (caseId, apiId) => {
-    // Remove individual test case
-    onRemoveSelection(caseId, 'case', caseId);
+    // Find the API in selectedItems
+    const apiItem = selectedItems.find(
+      item => item.type === 'api' && item.id === parseInt(apiId)
+    );
+    if (
+      apiItem &&
+      (!apiItem.selectedCases || apiItem.selectedCases.length === 0) &&
+      apiItem.children
+    ) {
+      // Whole API is selected, convert to partial selection with all cases except the one being removed
+      const remainingCases = apiItem.children
+        .filter(c => c.id !== caseId)
+        .map(c => ({
+          caseId: c.id,
+          caseName: c.name,
+          method: c.method,
+          created_at: c.created_at,
+        }));
+      // Remove the whole API and add it back as partial selection
+      onRemoveSelection(apiItem.id, 'api', null);
+      if (remainingCases.length > 0) {
+        // Add back as partial selection
+        const partialApi = {
+          ...apiItem,
+          selectedCases: remainingCases,
+        };
+        // Use a custom event to add this back (simulate selection)
+        setTimeout(() => {
+          onRemoveSelection(partialApi, 'add-partial-api', null);
+        }, 0);
+      }
+    } else {
+      // Remove individual test case (partial selection)
+      onRemoveSelection(caseId, 'case', caseId);
+    }
   };
 
   return (
@@ -163,7 +198,8 @@ export default function BulkSelection({
           }
 
           // Handle API display
-          const selectedCasesCount = group.cases?.length || 0;
+          const selectedCasesCount =
+            group.api?.selectedCases?.length || group.cases?.length || 0;
           const totalCasesCount =
             group.api?.testCasesCount || selectedCasesCount;
 
@@ -174,12 +210,8 @@ export default function BulkSelection({
                 <div
                   className={styles.apiInfo}
                   onClick={() => {
-                    // Toggle API selection when clicking on the API info
-                    if (group.isWholeApi) {
-                      removeWholeApi(itemId);
-                    } else {
-                      toggleApiExpansion(itemId);
-                    }
+                    // Always toggle expansion for APIs (even whole API selection)
+                    toggleApiExpansion(itemId);
                   }}
                 >
                   <span className={styles.itemIcon}>{getItemIcon('api')}</span>
@@ -199,13 +231,22 @@ export default function BulkSelection({
                 <button
                   className={styles.removeButton}
                   onClick={() => {
-                    if (group.isWholeApi) {
-                      removeWholeApi(apiId);
+                    if (
+                      group.isWholeApi &&
+                      (!group.api.selectedCases ||
+                        group.api.selectedCases.length === 0)
+                    ) {
+                      removeWholeApi(itemId);
                     } else {
                       // Remove all individual cases for this API
-                      group.cases.forEach(case_ => {
-                        removeIndividualCase(case_.id, apiId);
-                      });
+                      (group.api.selectedCases || group.cases).forEach(
+                        case_ => {
+                          removeIndividualCase(
+                            case_.caseId || case_.id,
+                            itemId
+                          );
+                        }
+                      );
                     }
                   }}
                   title="Remove all from this API"
@@ -214,15 +255,25 @@ export default function BulkSelection({
                 </button>
               </div>
 
-              {/* Expanded Cases List */}
-              {isExpanded && !group.isWholeApi && group.cases.length > 0 && (
+              {/* Expanded Cases List: always show all cases if whole API is selected, or only selected if partial */}
+              {isExpanded && (
                 <div className={styles.casesList}>
-                  {group.cases.map((case_, index) => (
+                  {(group.isWholeApi && group.api.children
+                    ? group.api.children.map((case_, index) => ({
+                        ...case_,
+                        caseId: case_.id,
+                        caseName: case_.name,
+                      }))
+                    : group.api.selectedCases || group.cases
+                  ).map((case_, index) => (
                     <div
-                      key={`${case_.id}-${index}`}
+                      key={`${case_.caseId || case_.id}-${index}`}
                       className={styles.caseItem}
                       onClick={() =>
-                        removeIndividualCase(case_.id, parseInt(apiId))
+                        removeIndividualCase(
+                          case_.caseId || case_.id,
+                          parseInt(itemId)
+                        )
                       }
                       style={{ cursor: 'pointer' }}
                       title="Click to remove this test case"
@@ -235,8 +286,11 @@ export default function BulkSelection({
                       <button
                         className={styles.removeCaseButton}
                         onClick={e => {
-                          e.stopPropagation(); // Prevent triggering the parent onClick
-                          removeIndividualCase(case_.id, parseInt(itemId));
+                          e.stopPropagation();
+                          removeIndividualCase(
+                            case_.caseId || case_.id,
+                            parseInt(itemId)
+                          );
                         }}
                         title="Remove this test case"
                       >
@@ -244,15 +298,6 @@ export default function BulkSelection({
                       </button>
                     </div>
                   ))}
-                </div>
-              )}
-
-              {/* Show message for whole API selection */}
-              {isExpanded && group.isWholeApi && (
-                <div className={styles.wholeApiMessage}>
-                  <span>
-                    🔗 Entire API selected - all test cases will be included
-                  </span>
                 </div>
               )}
             </div>
