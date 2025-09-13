@@ -14,6 +14,7 @@ export default function BulkTestPanel({ onSelectRequest }) {
   const [results, setResults] = useState(null);
   const [showScheduler, setShowScheduler] = useState(false);
   const [scheduledJobs, setScheduledJobs] = useState([]);
+  const [selectedApiCases, setSelectedApiCases] = useState([]);
 
   // Tab management for right panel
   const [activeTab, setActiveTab] = useState('selection'); // 'selection', 'results', 'scheduled'
@@ -67,6 +68,30 @@ export default function BulkTestPanel({ onSelectRequest }) {
     }
   }, [results, isRunning]);
 
+  // Sync selectedApiCases with selectedItems
+  useEffect(() => {
+    // Build the API-call-ready structure
+    const apiCases = selectedItems
+      .filter(item => item.type === 'api')
+      .map(api => ({
+        file_id: api.id,
+        cases:
+          api.selectedCases && api.selectedCases.length > 0
+            ? api.selectedCases.map(c => c.caseId)
+            : api.children
+              ? api.children.map(c => c.id)
+              : [],
+      }))
+      .filter(entry => entry.cases.length > 0);
+    setSelectedApiCases(apiCases);
+  }, [selectedItems]);
+
+  useEffect(() => {
+    if (selectedApiCases.length > 0) {
+      console.log('Selected API Cases (for API call):', selectedApiCases);
+    }
+  }, [selectedApiCases]);
+
   const handleResizerMouseDown = e => {
     e.preventDefault();
     setIsResizing(true);
@@ -104,12 +129,23 @@ export default function BulkTestPanel({ onSelectRequest }) {
           return apis;
         };
 
-        // Remove logic for toggling
+        // Folder deselection logic
+        if (item.type === 'folder' && item.remove) {
+          const apisInFolder = getAllApisInFolder(item);
+          return prev.filter(
+            existing =>
+              existing.id !== item.id &&
+              !apisInFolder.some(api => api.id === existing.id)
+          );
+        }
+
+        // Remove logic for toggling (existing logic for file/case/folder add/remove)
         const exists = prev.find(
           selected =>
             selected.id === item.id &&
             selected.type === item.type &&
-            selected.caseId === item.caseId
+            (selected.caseId === item.caseId ||
+              typeof selected.caseId === 'undefined')
         );
         if (exists) {
           // Toggle off: remove item and, if folder, all its APIs
@@ -165,10 +201,19 @@ export default function BulkTestPanel({ onSelectRequest }) {
               existing.parentFolderId !== item.id &&
               !(existing.type === 'api' && existing.folderId === item.id)
           );
+          // Add the folder itself to selectedItems
+          const folderObj = {
+            id: item.id,
+            type: 'folder',
+            name: item.name,
+            children: item.children || [],
+            testCasesCount: item.testCasesCount || 0,
+          };
           // Add all APIs in this folder
           const apis = getAllApisInFolder(item);
           return [
             ...newItems,
+            folderObj,
             ...apis.map(api => ({
               ...api,
               selected: true,
@@ -280,16 +325,69 @@ export default function BulkTestPanel({ onSelectRequest }) {
   // Remove item from selection
   const handleRemoveSelection = useCallback(
     (itemId, itemType, caseId = null) => {
-      setSelectedItems(prev =>
-        prev.filter(
+      setSelectedItems(prev => {
+        if (itemType === 'api') {
+          // Remove the whole API selection (all cases)
+          return prev.filter(
+            item => !(item.type === 'api' && Number(item.id) === Number(itemId))
+          );
+        }
+        if (itemType === 'case') {
+          // Remove a single test case from an API's selectedCases
+          return prev
+            .map(item => {
+              if (item.type === 'api' && Number(item.id) === Number(itemId)) {
+                if (item.selectedCases && item.selectedCases.length > 0) {
+                  // Partial selection: remove the case from selectedCases
+                  const updatedCases = item.selectedCases.filter(
+                    c => Number(c.caseId) !== Number(caseId)
+                  );
+                  if (updatedCases.length > 0) {
+                    return { ...item, selectedCases: updatedCases };
+                  } else {
+                    // No cases left, remove the API
+                    return null;
+                  }
+                } else if (item.children && item.children.length > 0) {
+                  // Whole API selected: convert to partial selection (all except the removed case)
+                  const remainingCases = item.children
+                    .filter(c => Number(c.id) !== Number(caseId))
+                    .map(c => ({
+                      caseId: c.id,
+                      caseName: c.name,
+                      method: c.method,
+                      created_at: c.created_at,
+                    }));
+                  if (remainingCases.length > 0) {
+                    return { ...item, selectedCases: remainingCases };
+                  } else {
+                    // No cases left, remove the API
+                    return null;
+                  }
+                }
+              }
+              return item;
+            })
+            .filter(Boolean);
+        }
+        if (itemType === 'folder') {
+          // Remove all APIs under this folder
+          return prev.filter(
+            item =>
+              !(item.folderId === itemId || item.parentFolderId === itemId)
+          );
+        }
+        // Default: just remove the item
+        return prev.filter(
           item =>
             !(
-              item.id === itemId &&
+              Number(item.id) === Number(itemId) &&
               item.type === itemType &&
-              item.caseId === caseId
+              (typeof caseId === 'undefined' ||
+                Number(item.caseId) === Number(caseId))
             )
-        )
-      );
+        );
+      });
     },
     []
   ); // Clear all selections

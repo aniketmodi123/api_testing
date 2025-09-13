@@ -109,42 +109,8 @@ export default function BulkSelection({
     onRemoveSelection(parseInt(folderId), 'folder', null);
   };
 
-  const removeIndividualCase = (caseId, apiId) => {
-    // Find the API in selectedItems
-    const apiItem = selectedItems.find(
-      item => item.type === 'api' && item.id === parseInt(apiId)
-    );
-    if (
-      apiItem &&
-      (!apiItem.selectedCases || apiItem.selectedCases.length === 0) &&
-      apiItem.children
-    ) {
-      // Whole API is selected, convert to partial selection with all cases except the one being removed
-      const remainingCases = apiItem.children
-        .filter(c => c.id !== caseId)
-        .map(c => ({
-          caseId: c.id,
-          caseName: c.name,
-          method: c.method,
-          created_at: c.created_at,
-        }));
-      // Remove the whole API and add it back as partial selection
-      onRemoveSelection(apiItem.id, 'api', null);
-      if (remainingCases.length > 0) {
-        // Add back as partial selection
-        const partialApi = {
-          ...apiItem,
-          selectedCases: remainingCases,
-        };
-        // Use a custom event to add this back (simulate selection)
-        setTimeout(() => {
-          onRemoveSelection(partialApi, 'add-partial-api', null);
-        }, 0);
-      }
-    } else {
-      // Remove individual test case (partial selection)
-      onRemoveSelection(caseId, 'case', caseId);
-    }
+  const removeIndividualCase = (apiId, caseId) => {
+    onRemoveSelection(apiId, 'case', caseId);
   };
 
   return (
@@ -230,25 +196,7 @@ export default function BulkSelection({
 
                 <button
                   className={styles.removeButton}
-                  onClick={() => {
-                    if (
-                      group.isWholeApi &&
-                      (!group.api.selectedCases ||
-                        group.api.selectedCases.length === 0)
-                    ) {
-                      removeWholeApi(itemId);
-                    } else {
-                      // Remove all individual cases for this API
-                      (group.api.selectedCases || group.cases).forEach(
-                        case_ => {
-                          removeIndividualCase(
-                            case_.caseId || case_.id,
-                            itemId
-                          );
-                        }
-                      );
-                    }
-                  }}
+                  onClick={() => removeWholeApi(itemId)}
                   title="Remove all from this API"
                 >
                   ❌
@@ -269,14 +217,8 @@ export default function BulkSelection({
                     <div
                       key={`${case_.caseId || case_.id}-${index}`}
                       className={styles.caseItem}
-                      onClick={() =>
-                        removeIndividualCase(
-                          case_.caseId || case_.id,
-                          parseInt(itemId)
-                        )
-                      }
-                      style={{ cursor: 'pointer' }}
-                      title="Click to remove this test case"
+                      style={{ cursor: 'default' }}
+                      title="Click the ✖️ to remove this test case"
                     >
                       <div className={styles.caseDetails}>
                         <span className={styles.caseName}>
@@ -287,10 +229,11 @@ export default function BulkSelection({
                         className={styles.removeCaseButton}
                         onClick={e => {
                           e.stopPropagation();
-                          removeIndividualCase(
-                            case_.caseId || case_.id,
-                            parseInt(itemId)
-                          );
+                          const cid =
+                            typeof case_.caseId !== 'undefined'
+                              ? case_.caseId
+                              : case_.id;
+                          removeIndividualCase(Number(itemId), Number(cid));
                         }}
                         title="Remove this test case"
                       >

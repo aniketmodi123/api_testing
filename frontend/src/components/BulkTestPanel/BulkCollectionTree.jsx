@@ -14,6 +14,7 @@ const BulkNodeItem = ({
   getMethodColor,
   level = 0,
   testScope = 'selected',
+  parentFolderIds = [],
 }) => {
   if (node.type === 'folder') {
     const handleFolderSelection = () => {
@@ -31,7 +32,19 @@ const BulkNodeItem = ({
             }, 0)
           : 0,
       };
-      onSelectRequest(folderItem);
+
+      // Check if already selected
+      const alreadySelected = selectedItems.some(
+        item => item.id === node.id && item.type === 'folder'
+      );
+
+      if (alreadySelected) {
+        // REMOVE
+        onSelectRequest({ ...folderItem, remove: true });
+      } else {
+        // ADD
+        onSelectRequest(folderItem);
+      }
     };
 
     const isFolderSelected = () => {
@@ -82,6 +95,7 @@ const BulkNodeItem = ({
                 getMethodColor={getMethodColor}
                 level={level + 1}
                 testScope={testScope}
+                parentFolderIds={[...parentFolderIds, node.id]}
               />
             ))}
           </div>
@@ -117,10 +131,20 @@ const BulkNodeItem = ({
       onSelectRequest(apiItem);
     };
 
+    // Helper to check if any ancestor folder is selected
+    const isAnyAncestorFolderSelected = () => {
+      return parentFolderIds.some(folderId =>
+        selectedItems.some(
+          item => item.type === 'folder' && item.id === folderId
+        )
+      );
+    };
+
     const isCaseSelected = testCase => {
       // Case is selected if:
       // 1. Parent API is selected and selectedCases includes this case
       // 2. (legacy) Individual case is selected and whole API is not selected
+      // 3. Any ancestor folder is selected
       const apiItem = selectedItems.find(
         item => item.type === 'api' && item.id === node.id
       );
@@ -137,13 +161,20 @@ const BulkNodeItem = ({
           item.type === 'api' &&
           (!item.selectedCases || item.selectedCases.length === 0)
       );
-      return individualCaseSelected && !wholeApiSelected;
+      // Check if any ancestor folder is selected
+      const ancestorFolderSelected = isAnyAncestorFolderSelected();
+      return (
+        (individualCaseSelected && !wholeApiSelected) || ancestorFolderSelected
+      );
     };
 
     const isApiSelected = () => {
-      return selectedItems.some(
+      // API is selected if directly selected or any ancestor folder is selected
+      const direct = selectedItems.some(
         item => item.id === node.id && item.type === 'api'
       );
+      const ancestorFolderSelected = isAnyAncestorFolderSelected();
+      return direct || ancestorFolderSelected;
     };
 
     return (
