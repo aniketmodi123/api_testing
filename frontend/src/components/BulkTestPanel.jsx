@@ -129,13 +129,43 @@ export default function BulkTestPanel({ onSelectRequest }) {
           return apis;
         };
 
+        // Helper to get all descendant folders recursively
+        const getAllFoldersInFolder = folder => {
+          let folders = [];
+          if (folder.children) {
+            folder.children.forEach(child => {
+              if (child.type === 'folder') {
+                folders.push({
+                  id: child.id,
+                  type: 'folder',
+                  name: child.name,
+                  children: child.children || [],
+                  testCasesCount: child.children
+                    ? child.children.reduce(
+                        (count, c) =>
+                          c.type === 'file'
+                            ? count + (c.children ? c.children.length : 0)
+                            : count,
+                        0
+                      )
+                    : 0,
+                });
+                folders = folders.concat(getAllFoldersInFolder(child));
+              }
+            });
+          }
+          return folders;
+        };
+
         // Folder deselection logic
         if (item.type === 'folder' && item.remove) {
           const apisInFolder = getAllApisInFolder(item);
+          const foldersInFolder = getAllFoldersInFolder(item);
           return prev.filter(
             existing =>
               existing.id !== item.id &&
-              !apisInFolder.some(api => api.id === existing.id)
+              !apisInFolder.some(api => api.id === existing.id) &&
+              !foldersInFolder.some(folder => folder.id === existing.id)
           );
         }
 
@@ -201,7 +231,7 @@ export default function BulkTestPanel({ onSelectRequest }) {
               existing.parentFolderId !== item.id &&
               !(existing.type === 'api' && existing.folderId === item.id)
           );
-          // Add the folder itself to selectedItems
+          // Add the folder itself and all descendant folders to selectedItems
           const folderObj = {
             id: item.id,
             type: 'folder',
@@ -209,11 +239,13 @@ export default function BulkTestPanel({ onSelectRequest }) {
             children: item.children || [],
             testCasesCount: item.testCasesCount || 0,
           };
+          const folders = getAllFoldersInFolder(item);
           // Add all APIs in this folder
           const apis = getAllApisInFolder(item);
           return [
             ...newItems,
             folderObj,
+            ...folders,
             ...apis.map(api => ({
               ...api,
               selected: true,
