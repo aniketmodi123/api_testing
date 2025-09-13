@@ -10,6 +10,11 @@ import LookingLoader from './LookingLoader/LookingLoader';
 export default function BulkTestPanel({ onSelectRequest }) {
   const [selectedItems, setSelectedItems] = useState([]);
   const [testScope, setTestScope] = useState('selected'); // 'selected', 'folder', 'all'
+
+  // Clear selection when testScope changes
+  useEffect(() => {
+    setSelectedItems([]);
+  }, [testScope]);
   const [isRunning, setIsRunning] = useState(false);
   const [results, setResults] = useState(null);
   const [showScheduler, setShowScheduler] = useState(false);
@@ -72,116 +77,50 @@ export default function BulkTestPanel({ onSelectRequest }) {
     setIsResizing(true);
   };
 
-  // Handle selection from collection tree (both APIs and test cases)
-  const handleTreeSelection = useCallback(
-    item => {
-      if (onSelectRequest) {
-        onSelectRequest(item);
+  // Only allow selection of APIs and folders (no test cases)
+  const handleTreeSelection = useCallback(({ action, item, files }) => {
+    if (!action) {
+      item = item || files?.[0];
+      action = 'select';
+      files = files ? files : [item];
+    }
+
+    // Only process APIs and folders
+    const filtered = (files && Array.isArray(files) ? files : [item]).filter(
+      f => f.type === 'api' || f.type === 'folder'
+    );
+    if (filtered.length === 0) return;
+
+    setSelectedItems(prev => {
+      let newItems = [...prev];
+      const getKey = i => `${i.type}:${i.id}`;
+      const prevKeys = new Set(prev.map(getKey));
+
+      if (action === 'select') {
+        filtered.forEach(f => {
+          const key = getKey(f);
+          if (!prevKeys.has(key)) {
+            newItems.push({
+              ...f,
+              selected: true,
+              displayName: f.name,
+            });
+          }
+        });
+      } else if (action === 'deselect') {
+        const removeKeys = new Set(filtered.map(getKey));
+        newItems = newItems.filter(i => !removeKeys.has(getKey(i)));
       }
+      return newItems;
+    });
+  }, []);
 
-      // Add to bulk selection with smart merging logic
-      setSelectedItems(prev => {
-        // Check if this exact item already exists
-        const exists = prev.find(
-          selected =>
-            selected.id === item.id &&
-            selected.type === item.type &&
-            selected.caseId === item.caseId // For test cases
-        );
-
-        if (exists) {
-          // Item already selected - TOGGLE (remove it)
-          return prev.filter(
-            existing =>
-              !(
-                existing.id === item.id &&
-                existing.type === item.type &&
-                existing.caseId === item.caseId
-              )
-          );
-        }
-
-        let newItems = [...prev];
-
-        if (item.type === 'folder') {
-          // If selecting whole folder, remove any individual APIs or test cases within this folder
-          newItems = newItems.filter(
-            existing =>
-              !(
-                existing.parentFolderId === item.id ||
-                (existing.type === 'api' && existing.folderId === item.id) ||
-                (existing.type === 'case' &&
-                  existing.parentFolderId === item.id)
-              )
-          );
-        } else if (item.type === 'api') {
-          // If selecting whole API, remove any individual test cases for this API
-          newItems = newItems.filter(
-            existing =>
-              !(existing.parentFileId === item.id && existing.type === 'case')
-          );
-
-          // Also check if whole folder containing this API is already selected
-          const wholeFolderSelected = newItems.find(
-            existing =>
-              existing.id === item.parentFolderId && existing.type === 'folder'
-          );
-
-          if (wholeFolderSelected) {
-            // Whole folder is already selected, don't add individual API
-            return prev;
-          }
-        } else if (item.type === 'case') {
-          // If selecting individual case, check if whole API is already selected
-          const wholeApiSelected = newItems.find(
-            existing =>
-              existing.id === item.parentFileId && existing.type === 'api'
-          );
-
-          // Also check if whole folder is already selected
-          const wholeFolderSelected = newItems.find(
-            existing =>
-              existing.id === item.parentFolderId && existing.type === 'folder'
-          );
-
-          if (wholeApiSelected || wholeFolderSelected) {
-            // Whole API or folder is already selected, don't add individual case
-            return prev;
-          }
-        }
-
-        // Add the new item
-        return [
-          ...newItems,
-          {
-            ...item,
-            selected: true,
-            // Ensure we have proper identification for both APIs and cases
-            displayName: item.caseName || item.name,
-            parentApiName: item.parentFileName || item.name,
-          },
-        ];
-      });
-    },
-    [onSelectRequest]
-  );
-
-  // Remove item from selection
-  const handleRemoveSelection = useCallback(
-    (itemId, itemType, caseId = null) => {
-      setSelectedItems(prev =>
-        prev.filter(
-          item =>
-            !(
-              item.id === itemId &&
-              item.type === itemType &&
-              item.caseId === caseId
-            )
-        )
-      );
-    },
-    []
-  ); // Clear all selections
+  // Remove item from selection (only APIs and folders)
+  const handleRemoveSelection = useCallback((itemId, itemType) => {
+    setSelectedItems(prev =>
+      prev.filter(item => !(item.id === itemId && item.type === itemType))
+    );
+  }, []);
   const handleClearSelections = useCallback(() => {
     setSelectedItems([]);
   }, []);
@@ -252,6 +191,11 @@ export default function BulkTestPanel({ onSelectRequest }) {
     [selectedItems]
   );
 
+  // Only keep selected APIs and folders
+  const filteredSelectedItems = selectedItems.filter(
+    item => item.type === 'api' || item.type === 'folder'
+  );
+
   return (
     <div className={styles.bulkTestContainer} ref={containerRef}>
       {isRunning && <LookingLoader overlay text="Running bulk tests..." />}
@@ -261,15 +205,15 @@ export default function BulkTestPanel({ onSelectRequest }) {
         style={{ width: `${leftPanelWidth}px` }}
       >
         <div className={styles.treeHeader}>
-          <h3>Select APIs & Test Cases</h3>
+          <h3>Select APIs & Folders</h3>
           <p className={styles.treeSubtitle}>
-            Click on APIs or test cases to add them to your bulk test
+            Click on APIs or folders to add them to your bulk test
           </p>
         </div>
         <div className={styles.treeContainer}>
           <BulkCollectionTree
             onSelectRequest={handleTreeSelection}
-            selectedItems={selectedItems}
+            selectedItems={filteredSelectedItems}
             testScope={testScope}
           />
         </div>
@@ -291,7 +235,7 @@ export default function BulkTestPanel({ onSelectRequest }) {
           isRunning={isRunning}
           onRunTests={handleRunTests}
           onShowScheduler={() => setShowScheduler(true)}
-          selectedCount={selectedItems.length}
+          selectedCount={filteredSelectedItems.length}
         />
 
         {/* Tabs */}
@@ -300,7 +244,7 @@ export default function BulkTestPanel({ onSelectRequest }) {
             className={`${styles.tab} ${activeTab === 'selection' ? styles.active : ''}`}
             onClick={() => setActiveTab('selection')}
           >
-            Selected Items ({selectedItems.length})
+            Selected Items ({filteredSelectedItems.length})
           </div>
           <div
             className={`${styles.tab} ${activeTab === 'results' ? styles.active : ''}`}
@@ -322,7 +266,7 @@ export default function BulkTestPanel({ onSelectRequest }) {
         <div className={styles.tabContent}>
           {activeTab === 'selection' && (
             <BulkSelection
-              selectedItems={selectedItems}
+              selectedItems={filteredSelectedItems}
               onRemoveSelection={handleRemoveSelection}
               onClearSelections={handleClearSelections}
             />
@@ -357,7 +301,7 @@ export default function BulkTestPanel({ onSelectRequest }) {
         <BulkScheduler
           onSchedule={handleScheduleTests}
           onClose={() => setShowScheduler(false)}
-          selectedItems={selectedItems}
+          selectedItems={filteredSelectedItems}
         />
       )}
     </div>

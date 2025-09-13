@@ -16,6 +16,29 @@ const BulkNodeItem = ({
   testScope = 'selected',
 }) => {
   if (node.type === 'folder') {
+    // Always show all folders, including inner folders, regardless of testScope
+
+    // Recursively collect all files under a folder
+    const collectAllFiles = folderNode => {
+      let files = [];
+      if (!folderNode.children) return files;
+      for (const child of folderNode.children) {
+        if (child.type === 'file') {
+          files.push({
+            id: child.id,
+            type: 'api',
+            name: child.name,
+            method: child.method || 'GET',
+            testCasesCount: child.children ? child.children.length : 0,
+            children: child.children || [],
+          });
+        } else if (child.type === 'folder') {
+          files = files.concat(collectAllFiles(child));
+        }
+      }
+      return files;
+    };
+
     const handleFolderSelection = () => {
       const folderItem = {
         id: node.id,
@@ -31,7 +54,20 @@ const BulkNodeItem = ({
             }, 0)
           : 0,
       };
-      onSelectRequest(folderItem);
+      const allFiles = collectAllFiles(node);
+      if (isFolderSelected()) {
+        onSelectRequest({
+          action: 'deselect',
+          item: folderItem,
+          files: allFiles,
+        });
+      } else {
+        onSelectRequest({
+          action: 'select',
+          item: folderItem,
+          files: allFiles,
+        });
+      }
     };
 
     const isFolderSelected = () => {
@@ -40,26 +76,27 @@ const BulkNodeItem = ({
       );
     };
 
+    // Folder selectable in all modes
+    const showFolderSelector =
+      testScope === 'folder' || testScope === 'all' || testScope === 'selected';
+
     return (
       <div className={styles.folderItem}>
         <div className={styles.folderHeader}>
-          {/* Folder Selection checkbox/button - only show if testScope is folder */}
-          {testScope === 'folder' && (
+          {showFolderSelector && (
             <div
               className={`${styles.folderSelector} ${isFolderSelected() ? styles.selected : ''}`}
               onClick={e => {
                 e.stopPropagation();
                 handleFolderSelection();
               }}
-              title="Select entire folder with all APIs and test cases"
+              title="Select entire folder"
             >
               <span className={styles.selectIcon}>
                 {isFolderSelected() ? '☑️' : '☐'}
               </span>
             </div>
           )}
-
-          {/* Toggle expand/collapse */}
           <div
             className={styles.folderToggle}
             onClick={() => toggleFolder(node.id)}
@@ -71,41 +108,44 @@ const BulkNodeItem = ({
           </div>
         </div>
 
+        {/* Children: always show for expanded folders, filter by testScope */}
         {node.children && expandedFolders.includes(node.id) && (
           <div className={styles.folderItems}>
-            {node.children.map(childNode => (
-              <BulkNodeItem
-                key={childNode.id}
-                node={childNode}
-                expandedFolders={expandedFolders}
-                toggleFolder={toggleFolder}
-                onSelectRequest={onSelectRequest}
-                selectedItems={selectedItems}
-                getMethodColor={getMethodColor}
-                level={level + 1}
-                testScope={testScope}
-              />
-            ))}
+            {node.children
+              .filter(childNode => {
+                if (testScope === 'all') {
+                  // Only show folders in 'Folders only' mode
+                  return childNode.type === 'folder';
+                }
+                if (testScope === 'folder') {
+                  // Show all folders and files
+                  return (
+                    childNode.type === 'folder' || childNode.type === 'file'
+                  );
+                }
+                // 'selected' shows all
+                return true;
+              })
+              .map(childNode => (
+                <BulkNodeItem
+                  key={childNode.id}
+                  node={childNode}
+                  expandedFolders={expandedFolders}
+                  toggleFolder={toggleFolder}
+                  onSelectRequest={onSelectRequest}
+                  selectedItems={selectedItems}
+                  getMethodColor={getMethodColor}
+                  level={level + 1}
+                  testScope={testScope}
+                />
+              ))}
           </div>
         )}
       </div>
     );
   } else if (node.type === 'file') {
-    // Handle file nodes that now contain test cases directly (not APIs)
-    const handleTestCaseSelection = testCase => {
-      const caseItem = {
-        id: testCase.id,
-        caseId: testCase.id,
-        caseName: testCase.name,
-        type: 'case',
-        parentFileName: node.name,
-        parentFileId: node.id,
-        method: testCase.method || 'GET',
-        name: `${node.name} - ${testCase.name}`,
-        created_at: testCase.created_at,
-      };
-      onSelectRequest(caseItem);
-    };
+    // Only show files in 'selected' and 'folder' modes
+    if (testScope === 'all') return null;
 
     const handleApiFileSelection = () => {
       const apiItem = {
@@ -116,22 +156,11 @@ const BulkNodeItem = ({
         testCasesCount: node.children ? node.children.length : 0,
         children: node.children || [],
       };
-      onSelectRequest(apiItem);
-    };
-
-    const isCaseSelected = testCase => {
-      // Case is selected if:
-      // 1. Individual case is selected AND whole API is not selected
-      // 2. OR if whole API is selected (but we'll handle display differently)
-      const individualCaseSelected = selectedItems.some(
-        item => item.id === testCase.id && item.type === 'case'
-      );
-      const wholeApiSelected = selectedItems.some(
-        item => item.id === node.id && item.type === 'api'
-      );
-
-      // Only show case as selected if individual case is selected and whole API is NOT selected
-      return individualCaseSelected && !wholeApiSelected;
+      if (isApiSelected()) {
+        onSelectRequest({ action: 'deselect', item: apiItem });
+      } else {
+        onSelectRequest({ action: 'select', item: apiItem });
+      }
     };
 
     const isApiSelected = () => {
@@ -156,8 +185,6 @@ const BulkNodeItem = ({
               {isApiSelected() ? '☑️' : '☐'}
             </span>
           </div>
-
-          {/* Toggle expand/collapse */}
           <div
             className={styles.fileToggle}
             onClick={() => toggleFolder(node.id)}
@@ -165,9 +192,7 @@ const BulkNodeItem = ({
             {node.method && (
               <span
                 className={styles.methodBadge}
-                style={{
-                  backgroundColor: getMethodColor(node.method),
-                }}
+                style={{ backgroundColor: getMethodColor(node.method) }}
               >
                 {node.method}
               </span>
@@ -176,27 +201,50 @@ const BulkNodeItem = ({
           </div>
         </div>
 
-        {node.children && expandedFolders.includes(node.id) && (
-          <div className={styles.fileItems}>
-            {node.children.map(testCase => (
-              <div
-                key={testCase.id}
-                className={`${styles.testCaseItem} ${
-                  isCaseSelected(testCase) ? styles.selected : ''
-                }`}
-                onClick={() => handleTestCaseSelection(testCase)}
-                style={{ paddingLeft: `${(level + 1) * 2}px` }}
-                title={testCase.name}
-              >
-                <span className={styles.caseName}>
-                  {testCase.name.length > 35
-                    ? `${testCase.name.substring(0, 32)}...`
-                    : testCase.name}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
+        {/* Only show cases in 'selected' mode */}
+        {testScope === 'selected' &&
+          node.children &&
+          expandedFolders.includes(node.id) && (
+            <div className={styles.fileItems}>
+              {node.children.map(testCase => {
+                const caseItem = {
+                  id: testCase.id,
+                  caseId: testCase.id,
+                  caseName: testCase.name,
+                  type: 'case',
+                  parentFileName: node.name,
+                  parentFileId: node.id,
+                  method: testCase.method || 'GET',
+                  name: `${node.name} - ${testCase.name}`,
+                  created_at: testCase.created_at,
+                };
+                const isSelected = selectedItems.some(
+                  item => item.id === testCase.id && item.type === 'case'
+                );
+                return (
+                  <div
+                    key={testCase.id}
+                    className={`${styles.testCaseItem} ${isSelected ? styles.selected : ''}`}
+                    onClick={() => {
+                      if (isSelected) {
+                        onSelectRequest({ action: 'deselect', item: caseItem });
+                      } else {
+                        onSelectRequest({ action: 'select', item: caseItem });
+                      }
+                    }}
+                    style={{ paddingLeft: `${(level + 1) * 2}px` }}
+                    title={testCase.name}
+                  >
+                    <span className={styles.caseName}>
+                      {testCase.name.length > 35
+                        ? `${testCase.name.substring(0, 32)}...`
+                        : testCase.name}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
       </div>
     );
   }
