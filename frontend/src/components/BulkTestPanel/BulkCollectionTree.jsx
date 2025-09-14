@@ -47,10 +47,9 @@ const BulkNodeItem = ({
       }
     };
 
-    // Recursively check if all descendants are selected
+    // Recursively check if all descendants are selected, but if folder is empty, just check self
     const areAllDescendantsSelected = folderNode => {
-      if (!folderNode.children || folderNode.children.length === 0)
-        return false;
+      if (!folderNode.children || folderNode.children.length === 0) return true;
       for (const child of folderNode.children) {
         if (child.type === 'folder') {
           if (
@@ -75,7 +74,7 @@ const BulkNodeItem = ({
     };
 
     const isFolderSelected = () => {
-      // Folder is selected if itself is selected AND all descendants are selected
+      // Folder is selected if itself is selected AND (all descendants are selected, or it is empty)
       const selfSelected = selectedItems.some(
         item => item.id === node.id && item.type === 'folder'
       );
