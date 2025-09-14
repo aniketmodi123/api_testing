@@ -159,14 +159,68 @@ export default function BulkTestPanel({ onSelectRequest }) {
 
         // Folder deselection logic
         if (item.type === 'folder' && item.remove) {
+          // Remove the folder, all descendant folders, all descendant APIs/files, and all ancestor folders
           const apisInFolder = getAllApisInFolder(item);
           const foldersInFolder = getAllFoldersInFolder(item);
-          return prev.filter(
-            existing =>
-              existing.id !== item.id &&
-              !apisInFolder.some(api => api.id === existing.id) &&
-              !foldersInFolder.some(folder => folder.id === existing.id)
-          );
+          // Collect all descendant API/file/folder IDs
+          let allApiIds = apisInFolder.map(api => api.id);
+          let allFolderIds = foldersInFolder.map(folder => folder.id);
+
+          // Helper to find all ancestor folder IDs (by traversing up parentFolderId)
+          function findAncestorFolderIds(folderId, allSelected) {
+            let ancestors = [];
+            let parentId = null;
+            // Find the folder in the tree
+            const folderItem = allSelected.find(
+              f => f.id === folderId && f.type === 'folder'
+            );
+            if (folderItem && folderItem.parentFolderId) {
+              parentId = folderItem.parentFolderId;
+            } else if (item.parentFolderId) {
+              parentId = item.parentFolderId;
+            }
+            while (parentId) {
+              const parent = allSelected.find(
+                f => f.id === parentId && f.type === 'folder'
+              );
+              if (parent) {
+                ancestors.push(parent.id);
+                parentId = parent.parentFolderId;
+              } else {
+                break;
+              }
+            }
+            return ancestors;
+          }
+
+          const ancestorFolderIds = findAncestorFolderIds(item.id, prev);
+
+          return prev.filter(existing => {
+            // Remove if this is the folder, or any descendant folder, or any descendant API/file, or any ancestor folder
+            if (existing.id === item.id && existing.type === 'folder')
+              return false;
+            if (
+              allFolderIds.includes(existing.id) &&
+              existing.type === 'folder'
+            )
+              return false;
+            if (
+              allApiIds.includes(existing.id) &&
+              (existing.type === 'api' || existing.type === 'file')
+            )
+              return false;
+            if (
+              allApiIds.includes(existing.parentFileId) &&
+              existing.type === 'case'
+            )
+              return false;
+            if (
+              ancestorFolderIds.includes(existing.id) &&
+              existing.type === 'folder'
+            )
+              return false;
+            return true;
+          });
         }
 
         // Remove logic for toggling (existing logic for file/case/folder add/remove)

@@ -47,10 +47,40 @@ const BulkNodeItem = ({
       }
     };
 
+    // Recursively check if all descendants are selected
+    const areAllDescendantsSelected = folderNode => {
+      if (!folderNode.children || folderNode.children.length === 0)
+        return false;
+      for (const child of folderNode.children) {
+        if (child.type === 'folder') {
+          if (
+            !selectedItems.some(
+              item => item.id === child.id && item.type === 'folder'
+            )
+          )
+            return false;
+          if (!areAllDescendantsSelected(child)) return false;
+        } else if (child.type === 'file' || child.type === 'api') {
+          if (
+            !selectedItems.some(
+              item =>
+                item.id === child.id &&
+                (item.type === 'api' || item.type === 'file')
+            )
+          )
+            return false;
+        }
+      }
+      return true;
+    };
+
     const isFolderSelected = () => {
-      return selectedItems.some(
+      // Folder is selected if itself is selected AND all descendants are selected
+      const selfSelected = selectedItems.some(
         item => item.id === node.id && item.type === 'folder'
       );
+      if (!selfSelected) return false;
+      return areAllDescendantsSelected(node);
     };
 
     return (
@@ -131,20 +161,75 @@ const BulkNodeItem = ({
       onSelectRequest(apiItem);
     };
 
-    // Helper to check if any ancestor folder is selected
-    const isAnyAncestorFolderSelected = () => {
-      return parentFolderIds.some(folderId =>
-        selectedItems.some(
+    // Helper to check if all ancestor folders are fully selected (recursively)
+    const isAllAncestorsFullySelected = () => {
+      if (!parentFolderIds.length) return false;
+      // For each ancestor, check if it is in selectedItems and is fully selected
+      for (let i = 0; i < parentFolderIds.length; i++) {
+        const folderId = parentFolderIds[i];
+        // Find the folder node in the tree (by traversing up from current node)
+        const folderNode = findFolderNodeById(folderId);
+        if (!folderNode) return false;
+        // Is this folder in selectedItems and fully selected?
+        const folderSelected = selectedItems.some(
           item => item.type === 'folder' && item.id === folderId
-        )
-      );
+        );
+        if (!folderSelected) return false;
+        if (!isFolderSelectedByNode(folderNode)) return false;
+      }
+      return true;
     };
+
+    // Helper to find a folder node by id (searches up the parent chain)
+    function findFolderNodeById(folderId) {
+      // Start from current node and walk up parentFolderIds
+      let current = node;
+      for (let i = parentFolderIds.length - 1; i >= 0; i--) {
+        if (parentFolderIds[i] === folderId) {
+          return current;
+        }
+        // Find parent in parentFolderIds
+        // This assumes the parentFolderIds are ordered from root to immediate parent
+      }
+      return null;
+    }
+
+    // Helper to check if a folder node is fully selected (same as isFolderSelected, but for any node)
+    function isFolderSelectedByNode(folderNode) {
+      const selfSelected = selectedItems.some(
+        item => item.id === folderNode.id && item.type === 'folder'
+      );
+      if (!selfSelected) return false;
+      if (!folderNode.children || folderNode.children.length === 0)
+        return false;
+      for (const child of folderNode.children) {
+        if (child.type === 'folder') {
+          if (
+            !selectedItems.some(
+              item => item.id === child.id && item.type === 'folder'
+            )
+          )
+            return false;
+          if (!isFolderSelectedByNode(child)) return false;
+        } else if (child.type === 'file' || child.type === 'api') {
+          if (
+            !selectedItems.some(
+              item =>
+                item.id === child.id &&
+                (item.type === 'api' || item.type === 'file')
+            )
+          )
+            return false;
+        }
+      }
+      return true;
+    }
 
     const isCaseSelected = testCase => {
       // Case is selected if:
       // 1. Parent API is selected and selectedCases includes this case
       // 2. (legacy) Individual case is selected and whole API is not selected
-      // 3. Any ancestor folder is selected
+      // 3. All ancestor folders are fully selected
       const apiItem = selectedItems.find(
         item => item.type === 'api' && item.id === node.id
       );
@@ -161,20 +246,20 @@ const BulkNodeItem = ({
           item.type === 'api' &&
           (!item.selectedCases || item.selectedCases.length === 0)
       );
-      // Check if any ancestor folder is selected
-      const ancestorFolderSelected = isAnyAncestorFolderSelected();
+      // Check if all ancestor folders are fully selected
+      const allAncestorsSelected = isAllAncestorsFullySelected();
       return (
-        (individualCaseSelected && !wholeApiSelected) || ancestorFolderSelected
+        (individualCaseSelected && !wholeApiSelected) || allAncestorsSelected
       );
     };
 
     const isApiSelected = () => {
-      // API is selected if directly selected or any ancestor folder is selected
+      // API is selected if directly selected or all ancestor folders are fully selected
       const direct = selectedItems.some(
         item => item.id === node.id && item.type === 'api'
       );
-      const ancestorFolderSelected = isAnyAncestorFolderSelected();
-      return direct || ancestorFolderSelected;
+      const allAncestorsSelected = isAllAncestorsFullySelected();
+      return direct || allAncestorsSelected;
     };
 
     return (

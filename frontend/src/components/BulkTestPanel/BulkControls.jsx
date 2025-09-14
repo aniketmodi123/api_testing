@@ -59,15 +59,6 @@ export default function BulkControls({
           📅 Schedule Tests
         </button>
       </div>
-
-      {testScope === 'selected' && selectedCount === 0 && (
-        <div
-          className={styles.selectedInfo}
-          style={{ color: 'var(--warning)', marginTop: '8px' }}
-        >
-          Please select APIs or test cases from the tree to run bulk tests
-        </div>
-      )}
     </div>
   );
 }
