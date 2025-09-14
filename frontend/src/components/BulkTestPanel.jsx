@@ -617,8 +617,7 @@ export default function BulkTestPanel({ onSelectRequest }) {
         <div className={styles.tabContent}>
           {activeTab === 'selection' && (
             <BulkSelection
-              selectedItems={selectedItems}
-              testScope={testScope}
+              selectedItems={selectedItems.filter(item => item.type === 'api')}
               onRemoveSelection={handleRemoveSelection}
               onClearSelections={handleClearSelections}
             />

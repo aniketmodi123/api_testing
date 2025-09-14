@@ -132,8 +132,6 @@ const BulkNodeItem = ({
       </div>
     );
   } else if (node.type === 'file') {
-    // If testScope is 'folder', do not render files/APIs
-    if (testScope === 'folder') return null;
     // Handle file nodes that now contain test cases directly (not APIs)
     const handleTestCaseSelection = testCase => {
       const caseItem = {
@@ -448,11 +446,9 @@ export default function BulkCollectionTree({
     );
   }
 
-  // If testScope is 'folder', only show folders (no files/APIs)
-  function renderFolderOnlyTree(nodes) {
-    return nodes
-      .filter(node => node.type === 'folder')
-      .map(node => (
+  return (
+    <div className={styles.treeContainer}>
+      {bulkTreeData.map(node => (
         <BulkNodeItem
           key={node.id}
           node={node}
@@ -463,25 +459,7 @@ export default function BulkCollectionTree({
           getMethodColor={getMethodColor}
           testScope={testScope}
         />
-      ));
-  }
-
-  return (
-    <div className={styles.treeContainer}>
-      {testScope === 'folder'
-        ? renderFolderOnlyTree(bulkTreeData)
-        : bulkTreeData.map(node => (
-            <BulkNodeItem
-              key={node.id}
-              node={node}
-              expandedFolders={expandedFolders}
-              toggleFolder={toggleFolder}
-              onSelectRequest={handleSelectRequest}
-              selectedItems={selectedItems}
-              getMethodColor={getMethodColor}
-              testScope={testScope}
-            />
-          ))}
+      ))}
     </div>
   );
 }
