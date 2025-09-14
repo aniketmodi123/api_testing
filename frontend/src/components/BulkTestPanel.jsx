@@ -68,23 +68,31 @@ export default function BulkTestPanel({ onSelectRequest }) {
     }
   }, [results, isRunning]);
 
-  // Sync selectedApiCases with selectedItems
+  // Sync selectedApiCases with selectedItems and testScope
   useEffect(() => {
-    // Build the API-call-ready structure
-    const apiCases = selectedItems
-      .filter(item => item.type === 'api')
-      .map(api => ({
-        file_id: api.id,
-        cases:
-          api.selectedCases && api.selectedCases.length > 0
-            ? api.selectedCases.map(c => c.caseId)
-            : api.children
-              ? api.children.map(c => c.id)
-              : [],
-      }))
-      .filter(entry => entry.cases.length > 0);
-    setSelectedApiCases(apiCases);
-  }, [selectedItems]);
+    if (testScope === 'api') {
+      // Only API/file IDs, no cases
+      const apiIds = selectedItems
+        .filter(item => item.type === 'api')
+        .map(api => api.id);
+      setSelectedApiCases(apiIds);
+    } else {
+      // Build the API-call-ready structure (default)
+      const apiCases = selectedItems
+        .filter(item => item.type === 'api')
+        .map(api => ({
+          file_id: api.id,
+          cases:
+            api.selectedCases && api.selectedCases.length > 0
+              ? api.selectedCases.map(c => c.caseId)
+              : api.children
+                ? api.children.map(c => c.id)
+                : [],
+        }))
+        .filter(entry => entry.cases.length > 0);
+      setSelectedApiCases(apiCases);
+    }
+  }, [selectedItems, testScope]);
 
   useEffect(() => {
     if (selectedApiCases.length > 0) {
@@ -617,7 +625,11 @@ export default function BulkTestPanel({ onSelectRequest }) {
         <div className={styles.tabContent}>
           {activeTab === 'selection' && (
             <BulkSelection
-              selectedItems={selectedItems.filter(item => item.type === 'api')}
+              selectedItems={
+                testScope === 'api'
+                  ? selectedItems.filter(item => item.type === 'api')
+                  : selectedItems.filter(item => item.type === 'api')
+              }
               onRemoveSelection={handleRemoveSelection}
               onClearSelections={handleClearSelections}
             />

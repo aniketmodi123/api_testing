@@ -297,7 +297,8 @@ const BulkNodeItem = ({
           </div>
         </div>
 
-        {node.children && expandedFolders.includes(node.id) && (
+        {/* Hide test cases if testScope is 'api' */}
+        {testScope !== 'api' && node.children && expandedFolders.includes(node.id) && (
           <div className={styles.fileItems}>
             {node.children.map(testCase => (
               <div
