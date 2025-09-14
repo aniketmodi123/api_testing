@@ -298,27 +298,29 @@ const BulkNodeItem = ({
         </div>
 
         {/* Hide test cases if testScope is 'api' */}
-        {testScope !== 'api' && node.children && expandedFolders.includes(node.id) && (
-          <div className={styles.fileItems}>
-            {node.children.map(testCase => (
-              <div
-                key={testCase.id}
-                className={`${styles.testCaseItem} ${
-                  isCaseSelected(testCase) ? styles.selected : ''
-                }`}
-                onClick={() => handleTestCaseSelection(testCase)}
-                style={{ paddingLeft: `${(level + 1) * 2}px` }}
-                title={testCase.name}
-              >
-                <span className={styles.caseName}>
-                  {testCase.name.length > 35
-                    ? `${testCase.name.substring(0, 32)}...`
-                    : testCase.name}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
+        {testScope !== 'api' &&
+          node.children &&
+          expandedFolders.includes(node.id) && (
+            <div className={styles.fileItems}>
+              {node.children.map(testCase => (
+                <div
+                  key={testCase.id}
+                  className={`${styles.testCaseItem} ${
+                    isCaseSelected(testCase) ? styles.selected : ''
+                  }`}
+                  onClick={() => handleTestCaseSelection(testCase)}
+                  style={{ paddingLeft: `${(level + 1) * 2}px` }}
+                  title={testCase.name}
+                >
+                  <span className={styles.caseName}>
+                    {testCase.name.length > 35
+                      ? `${testCase.name.substring(0, 32)}...`
+                      : testCase.name}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
       </div>
     );
   }
