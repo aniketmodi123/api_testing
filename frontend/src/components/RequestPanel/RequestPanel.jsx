@@ -24,9 +24,6 @@ const addNgrokHeadersIfNeeded = (url, existingHeaders = {}) => {
       ...existingHeaders, // Keep user's headers last to allow overrides
     };
 
-    console.log('🔗 Enhanced headers for ngrok URL:', url);
-    console.log('📝 Headers being used:', enhancedHeaders);
-
     return enhancedHeaders;
   }
 
@@ -191,7 +188,6 @@ export default function RequestPanel({ activeRequest }) {
     updateApi,
     saveApi,
     saveTestCase,
-    duplicateApi,
     deleteTestCase,
   } = useApi();
 

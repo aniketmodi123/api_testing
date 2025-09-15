@@ -1,0 +1,468 @@
+import { useEffect, useState } from 'react';
+import { workspaceService } from '../../services/workspaceService';
+import { useWorkspace } from '../../store/workspace';
+import LookingLoader from '../LookingLoader/LookingLoader';
+import styles from './BulkCollectionTree.module.css';
+
+// Enhanced Node Item component with bulk selection support
+const BulkNodeItem = ({
+  node,
+  expandedFolders,
+  toggleFolder,
+  onSelectRequest,
+  selectedItems,
+  getMethodColor,
+  level = 0,
+  testScope = 'selected',
+  parentFolderIds = [],
+}) => {
+  if (node.type === 'folder') {
+    const handleFolderSelection = () => {
+      const folderItem = {
+        id: node.id,
+        type: 'folder',
+        name: node.name,
+        children: node.children || [],
+        testCasesCount: node.children
+          ? node.children.reduce((count, child) => {
+              if (child.type === 'file') {
+                return count + (child.children ? child.children.length : 0);
+              }
+              return count;
+            }, 0)
+          : 0,
+      };
+
+      // Check if already selected
+      const alreadySelected = selectedItems.some(
+        item => item.id === node.id && item.type === 'folder'
+      );
+
+      if (alreadySelected) {
+        // REMOVE
+        onSelectRequest({ ...folderItem, remove: true });
+      } else {
+        // ADD
+        onSelectRequest(folderItem);
+      }
+    };
+
+    // Recursively check if all descendants are selected, but if folder is empty, just check self
+    const areAllDescendantsSelected = folderNode => {
+      if (!folderNode.children || folderNode.children.length === 0) return true;
+      for (const child of folderNode.children) {
+        if (child.type === 'folder') {
+          if (
+            !selectedItems.some(
+              item => item.id === child.id && item.type === 'folder'
+            )
+          )
+            return false;
+          if (!areAllDescendantsSelected(child)) return false;
+        } else if (child.type === 'file' || child.type === 'api') {
+          if (
+            !selectedItems.some(
+              item =>
+                item.id === child.id &&
+                (item.type === 'api' || item.type === 'file')
+            )
+          )
+            return false;
+        }
+      }
+      return true;
+    };
+
+    const isFolderSelected = () => {
+      // Folder is selected if itself is selected AND (all descendants are selected, or it is empty)
+      const selfSelected = selectedItems.some(
+        item => item.id === node.id && item.type === 'folder'
+      );
+      if (!selfSelected) return false;
+      return areAllDescendantsSelected(node);
+    };
+
+    return (
+      <div className={styles.folderItem}>
+        <div className={styles.folderHeader}>
+          {/* Folder Selection checkbox/button - always show */}
+          <div
+            className={`${styles.folderSelector} ${isFolderSelected() ? styles.selected : ''}`}
+            onClick={e => {
+              e.stopPropagation();
+              handleFolderSelection();
+            }}
+            title="Select entire folder with all APIs and test cases"
+          >
+            <span className={styles.selectIcon}>
+              {isFolderSelected() ? '☑️' : '☐'}
+            </span>
+          </div>
+
+          {/* Toggle expand/collapse */}
+          <div
+            className={styles.folderToggle}
+            onClick={() => toggleFolder(node.id)}
+          >
+            <span className={styles.folderIcon}>
+              {expandedFolders.includes(node.id) ? '📂' : '📁'}
+            </span>
+            <span className={styles.folderName}>{node.name}</span>
+          </div>
+        </div>
+
+        {node.children && expandedFolders.includes(node.id) && (
+          <div className={styles.folderItems}>
+            {node.children.map(childNode => (
+              <BulkNodeItem
+                key={childNode.id}
+                node={childNode}
+                expandedFolders={expandedFolders}
+                toggleFolder={toggleFolder}
+                onSelectRequest={onSelectRequest}
+                selectedItems={selectedItems}
+                getMethodColor={getMethodColor}
+                level={level + 1}
+                testScope={testScope}
+                parentFolderIds={[...parentFolderIds, node.id]}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  } else if (node.type === 'file') {
+    // Handle file nodes that now contain test cases directly (not APIs)
+    const handleTestCaseSelection = testCase => {
+      const caseItem = {
+        id: testCase.id,
+        caseId: testCase.id,
+        caseName: testCase.name,
+        type: 'case',
+        parentFileName: node.name,
+        parentFileId: node.id,
+        method: testCase.method || 'GET',
+        name: `${node.name} - ${testCase.name}`,
+        created_at: testCase.created_at,
+      };
+      onSelectRequest(caseItem);
+    };
+
+    const handleApiFileSelection = () => {
+      const apiItem = {
+        id: node.id,
+        type: 'api',
+        name: node.name,
+        method: node.method || 'GET',
+        testCasesCount: node.children ? node.children.length : 0,
+        children: node.children || [],
+      };
+      onSelectRequest(apiItem);
+    };
+
+    // Helper to check if all ancestor folders are fully selected (recursively)
+    const isAllAncestorsFullySelected = () => {
+      if (!parentFolderIds.length) return false;
+      // For each ancestor, check if it is in selectedItems and is fully selected
+      for (let i = 0; i < parentFolderIds.length; i++) {
+        const folderId = parentFolderIds[i];
+        // Find the folder node in the tree (by traversing up from current node)
+        const folderNode = findFolderNodeById(folderId);
+        if (!folderNode) return false;
+        // Is this folder in selectedItems and fully selected?
+        const folderSelected = selectedItems.some(
+          item => item.type === 'folder' && item.id === folderId
+        );
+        if (!folderSelected) return false;
+        if (!isFolderSelectedByNode(folderNode)) return false;
+      }
+      return true;
+    };
+
+    // Helper to find a folder node by id (searches up the parent chain)
+    function findFolderNodeById(folderId) {
+      // Start from current node and walk up parentFolderIds
+      let current = node;
+      for (let i = parentFolderIds.length - 1; i >= 0; i--) {
+        if (parentFolderIds[i] === folderId) {
+          return current;
+        }
+        // Find parent in parentFolderIds
+        // This assumes the parentFolderIds are ordered from root to immediate parent
+      }
+      return null;
+    }
+
+    // Helper to check if a folder node is fully selected (same as isFolderSelected, but for any node)
+    function isFolderSelectedByNode(folderNode) {
+      const selfSelected = selectedItems.some(
+        item => item.id === folderNode.id && item.type === 'folder'
+      );
+      if (!selfSelected) return false;
+      if (!folderNode.children || folderNode.children.length === 0)
+        return false;
+      for (const child of folderNode.children) {
+        if (child.type === 'folder') {
+          if (
+            !selectedItems.some(
+              item => item.id === child.id && item.type === 'folder'
+            )
+          )
+            return false;
+          if (!isFolderSelectedByNode(child)) return false;
+        } else if (child.type === 'file' || child.type === 'api') {
+          if (
+            !selectedItems.some(
+              item =>
+                item.id === child.id &&
+                (item.type === 'api' || item.type === 'file')
+            )
+          )
+            return false;
+        }
+      }
+      return true;
+    }
+
+    const isCaseSelected = testCase => {
+      // Case is selected if:
+      // 1. Parent API is selected and selectedCases includes this case
+      // 2. (legacy) Individual case is selected and whole API is not selected
+      // 3. All ancestor folders are fully selected
+      const apiItem = selectedItems.find(
+        item => item.type === 'api' && item.id === node.id
+      );
+      if (apiItem && Array.isArray(apiItem.selectedCases)) {
+        return apiItem.selectedCases.some(c => c.caseId === testCase.id);
+      }
+      // fallback: legacy individual case selection
+      const individualCaseSelected = selectedItems.some(
+        item => item.id === testCase.id && item.type === 'case'
+      );
+      const wholeApiSelected = selectedItems.some(
+        item =>
+          item.id === node.id &&
+          item.type === 'api' &&
+          (!item.selectedCases || item.selectedCases.length === 0)
+      );
+      // Check if all ancestor folders are fully selected
+      const allAncestorsSelected = isAllAncestorsFullySelected();
+      return (
+        (individualCaseSelected && !wholeApiSelected) || allAncestorsSelected
+      );
+    };
+
+    const isApiSelected = () => {
+      // API is selected if directly selected or all ancestor folders are fully selected
+      const direct = selectedItems.some(
+        item => item.id === node.id && item.type === 'api'
+      );
+      const allAncestorsSelected = isAllAncestorsFullySelected();
+      return direct || allAncestorsSelected;
+    };
+
+    return (
+      <div
+        className={styles.fileItem}
+        style={{ paddingLeft: `${level * 2}px` }}
+      >
+        <div className={styles.fileHeader}>
+          {/* API Selection checkbox/button */}
+          <div
+            className={`${styles.apiSelector} ${isApiSelected() ? styles.selected : ''}`}
+            onClick={handleApiFileSelection}
+            title="Select entire API with all test cases"
+          >
+            <span className={styles.selectIcon}>
+              {isApiSelected() ? '☑️' : '☐'}
+            </span>
+          </div>
+
+          {/* Toggle expand/collapse */}
+          <div
+            className={styles.fileToggle}
+            onClick={() => toggleFolder(node.id)}
+          >
+            {node.method && (
+              <span
+                className={styles.methodBadge}
+                style={{
+                  backgroundColor: getMethodColor(node.method),
+                }}
+              >
+                {node.method}
+              </span>
+            )}
+            <span className={styles.fileName}>{node.name}</span>
+          </div>
+        </div>
+
+        {/* Hide test cases if testScope is 'api' */}
+        {testScope !== 'api' &&
+          node.children &&
+          expandedFolders.includes(node.id) && (
+            <div className={styles.fileItems}>
+              {node.children.map(testCase => (
+                <div
+                  key={testCase.id}
+                  className={`${styles.testCaseItem} ${
+                    isCaseSelected(testCase) ? styles.selected : ''
+                  }`}
+                  onClick={() => handleTestCaseSelection(testCase)}
+                  style={{ paddingLeft: `${(level + 1) * 2}px` }}
+                  title={testCase.name}
+                >
+                  <span className={styles.caseName}>
+                    {testCase.name.length > 35
+                      ? `${testCase.name.substring(0, 32)}...`
+                      : testCase.name}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+      </div>
+    );
+  }
+};
+
+export default function BulkCollectionTree({
+  onSelectRequest,
+  selectedItems = [],
+  testScope = 'selected',
+}) {
+  const { activeWorkspace } = useWorkspace();
+  const [bulkTreeData, setBulkTreeData] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [expandedFolders, setExpandedFolders] = useState([]);
+  const [hasLoaded, setHasLoaded] = useState(false); // Track if data has been loaded
+
+  // Load workspace tree with APIs and test cases
+  useEffect(() => {
+    let isMounted = true; // Prevent state updates if component unmounts
+
+    if (activeWorkspace?.id && !hasLoaded) {
+      loadBulkTestingTree(isMounted);
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activeWorkspace?.id, hasLoaded]); // Add hasLoaded to dependencies
+
+  const loadBulkTestingTree = async (isMounted = true) => {
+    if (!activeWorkspace?.id || loading) return; // Prevent duplicate calls
+
+    console.log('Loading bulk testing tree for workspace:', activeWorkspace.id);
+    setLoading(true);
+    try {
+      const response = await workspaceService.getBulkTestingTree(
+        activeWorkspace.id
+      );
+
+      if (!isMounted) return; // Don't update state if component unmounted
+
+      if (response.data && response.data.file_tree) {
+        setBulkTreeData(response.data.file_tree);
+        setHasLoaded(true); // Mark as loaded
+
+        // Don't auto-expand - let user click to expand
+        // Only auto-expand folders (but not files)
+        const expandedIds = [];
+        const traverseAndExpand = nodes => {
+          nodes.forEach(node => {
+            if (
+              node.type === 'folder' &&
+              node.children &&
+              node.children.length > 0
+            ) {
+              // Only auto-expand folders, not files
+              expandedIds.push(node.id);
+              traverseAndExpand(node.children);
+            }
+          });
+        };
+
+        traverseAndExpand(response.data.file_tree);
+        setExpandedFolders(expandedIds);
+
+        console.log('Loaded bulk testing tree:', response.data);
+        console.log('Total APIs:', response.data.total_apis);
+        console.log('Total test cases:', response.data.total_test_cases);
+        console.log('Auto-expanded folders:', expandedIds);
+      }
+    } catch (error) {
+      console.error('Failed to load bulk testing tree:', error);
+      if (isMounted) {
+        setBulkTreeData([]);
+      }
+    } finally {
+      if (isMounted) {
+        setLoading(false);
+      }
+    }
+  };
+
+  const toggleFolder = folderId => {
+    setExpandedFolders(prev =>
+      prev.includes(folderId)
+        ? prev.filter(id => id !== folderId)
+        : [...prev, folderId]
+    );
+  };
+
+  const getMethodColor = method => {
+    const colors = {
+      GET: '#28a745',
+      POST: '#007bff',
+      PUT: '#ffc107',
+      DELETE: '#dc3545',
+      PATCH: '#17a2b8',
+      OPTIONS: '#6c757d',
+      HEAD: '#6f42c1',
+    };
+    return colors[method?.toUpperCase()] || colors.GET;
+  };
+
+  const handleSelectRequest = item => {
+    // Just call parent callback - don't maintain internal state
+    onSelectRequest(item);
+  };
+
+  if (loading) {
+    return <LookingLoader overlay text="Loading ..." />;
+  }
+
+  if (!activeWorkspace) {
+    return (
+      <div className={styles.emptyState}>
+        <p>No workspace selected</p>
+      </div>
+    );
+  }
+
+  if (!bulkTreeData || bulkTreeData.length === 0) {
+    return (
+      <div className={styles.emptyState}>
+        <p>No APIs found for bulk testing</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.treeContainer}>
+      {bulkTreeData.map(node => (
+        <BulkNodeItem
+          key={node.id}
+          node={node}
+          expandedFolders={expandedFolders}
+          toggleFolder={toggleFolder}
+          onSelectRequest={handleSelectRequest}
+          selectedItems={selectedItems}
+          getMethodColor={getMethodColor}
+          testScope={testScope}
+        />
+      ))}
+    </div>
+  );
+}

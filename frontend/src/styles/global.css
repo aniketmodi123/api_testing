@@ -1,3 +1,54 @@
+/* Button Styles */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  padding: 10px 16px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 14px;
+  transition:
+    background 0.2s ease,
+    opacity 0.2s ease;
+}
+
+/* Primary */
+.btn-primary {
+  background: var(--primary);
+  color: var(--primary-text);
+}
+.btn-primary:hover {
+  background: var(--primary-dark);
+}
+
+/* Secondary */
+.btn-secondary {
+  background: var(--background-lighter);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.btn-secondary:hover {
+  background: var(--hover-background);
+}
+
+/* Danger */
+.btn-danger {
+  background: #dc2626; /* red-600 */
+  color: #fff;
+}
+.btn-danger:hover {
+  background: #b91c1c; /* red-700 */
+}
+
+/* Disabled state */
+.btn:disabled,
+.btn[disabled] {
+  background: var(--disabled);
+  color: var(--text-muted);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
 * {
   box-sizing: border-box;
   margin: 0;
@@ -13,6 +64,7 @@
   --input-background: #1e293b;
   --text: #e5e7eb;
   --text-muted: #9aa0a6;
+  --text-warn: #dc2626;
   --border: rgba(255, 255, 255, 0.1);
   --primary: #3b82f6;
   --primary-dark: #2563eb;
@@ -40,6 +92,7 @@
   --input-background: #f1f5f9;
   --text: #0f172a;
   --text-muted: #64748b;
+  --text-warn: #dc2626;
   --border: #e2e8f0;
   --primary: #3b82f6;
   --primary-dark: #2563eb;

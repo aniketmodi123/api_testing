@@ -3,11 +3,12 @@ import { useAuth } from '../store/session.jsx';
 import { forceLogout, isTokenExpired } from '../utils/authUtils';
 
 export default function AuthGuard() {
-  const { token } = useAuth();
+  const auth = useAuth();
+  const token = auth?.token;
   const loc = useLocation();
 
-  // If no token exists, simply redirect to sign-in
-  if (!token) {
+  // If auth context is missing or no token exists, redirect to sign-in
+  if (!auth || !token) {
     return <Navigate to="/sign-in" replace state={{ from: loc.pathname }} />;
   }
 

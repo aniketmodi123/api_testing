@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
+import BulkTestPanel from '../../components/BulkTestPanel.jsx';
 import CollectionTree from '../../components/CollectionTree/CollectionTree';
 import { EnvironmentManager } from '../../components/EnvironmentManager';
 import EnvironmentDetail from '../../components/EnvironmentManager/EnvironmentDetail';
 import EnvironmentForm from '../../components/EnvironmentManager/EnvironmentForm';
 import VariableModal from '../../components/EnvironmentManager/VariableModal';
+import LookingLoader from '../../components/LookingLoader/LookingLoader';
 import RequestPanel from '../../components/RequestPanel/RequestPanel';
 import Sidebar from '../../components/Sidebar/Sidebar';
 import { useEnvironment } from '../../store/environment';
@@ -28,10 +30,14 @@ export default function Home() {
   const [sidePanelWidth, setSidePanelWidth] = useState(250);
   const [isResizing, setIsResizing] = useState(false);
 
-  // Use the workspace context instead of local state
-  const { activeWorkspace, workspaceTree, setShouldLoadWorkspaces } =
-    useWorkspace(); // Use node context for managing nodes/folders
-  const { selectedNode, setSelectedNode } = useNode();
+  // Initial loading state
+  const {
+    activeWorkspace,
+    workspaceTree,
+    setShouldLoadWorkspaces,
+    loading: workspaceLoading,
+  } = useWorkspace(); // Use node context for managing nodes/folders
+  const { selectedNode, setSelectedNode, loading: nodeLoading } = useNode();
 
   // Use environment context for environment management
   const {
@@ -45,11 +51,11 @@ export default function Home() {
     createEnvironmentWithDefaults,
   } = useEnvironment();
 
-  // Enable workspace loading when home component mounts
+  // Block UI until both workspace and node data are loaded
+  const initialLoading = workspaceLoading || nodeLoading;
+
   useEffect(() => {
     setShouldLoadWorkspaces(true);
-
-    // Disable workspace loading when component unmounts
     return () => setShouldLoadWorkspaces(false);
   }, [setShouldLoadWorkspaces]);
 
@@ -192,6 +198,10 @@ export default function Home() {
     };
   }, [isResizing]);
 
+  if (initialLoading) {
+    return <LookingLoader overlay text="Loading..." />;
+  }
+
   return (
     <div className={styles.homeContainer}>
       <div className={styles.mainContent}>
@@ -199,32 +209,36 @@ export default function Home() {
         <Sidebar onTabChange={handleTabChange} />
 
         {/* Collection or Environment Panel based on active tab */}
-        <div
-          className={styles.sidePanel}
-          style={{ width: `${sidePanelWidth}px` }}
-        >
-          {activeTab === 'collections' ? (
-            <CollectionTree onSelectRequest={handleSelectRequest} />
-          ) : (
-            <EnvironmentManager
-              onEnvironmentSelect={handleEnvironmentSelect}
-              onCreateEnvironment={handleCreateEnvironment}
-              onEditEnvironment={handleEditEnvironment}
-            />
-          )}
-        </div>
+        {activeTab !== 'bulkTest' && (
+          <div
+            className={styles.sidePanel}
+            style={{ width: `${sidePanelWidth}px` }}
+          >
+            {activeTab === 'collections' ? (
+              <CollectionTree onSelectRequest={handleSelectRequest} />
+            ) : (
+              <EnvironmentManager
+                onEnvironmentSelect={handleEnvironmentSelect}
+                onCreateEnvironment={handleCreateEnvironment}
+                onEditEnvironment={handleEditEnvironment}
+              />
+            )}
+          </div>
+        )}
 
         {/* Resize Handle */}
-        <div
-          className={styles.resizeHandle}
-          onMouseDown={handleMouseDown}
-        ></div>
+        {activeTab !== 'bulkTest' && (
+          <div
+            className={styles.resizeHandle}
+            onMouseDown={handleMouseDown}
+          ></div>
+        )}
 
         {/* Main Content Area */}
         <div className={styles.contentPanel}>
           {activeTab === 'collections' ? (
             <RequestPanel activeRequest={activeRequest} />
-          ) : (
+          ) : activeTab === 'environments' ? (
             /* Show variable management or environment form when in environments tab */
             <div className={styles.variableManagementPanel}>
               {showEnvironmentForm ? (
@@ -262,6 +276,9 @@ export default function Home() {
                 </div>
               )}
             </div>
+          ) : (
+            // Bulk Test tab: render new BulkTestPanel
+            <BulkTestPanel onSelectRequest={handleSelectRequest} />
           )}
         </div>
       </div>

@@ -101,12 +101,61 @@ export const workspaceService = {
   },
 
   /**
+   * Get workspace tree with APIs and test cases for bulk testing
+   * @param {number} workspaceId - Workspace ID
+   * @returns {Promise} Promise with workspace tree data including APIs and test cases
+   */
+  async getBulkTestingTree(workspaceId) {
+    const response = await api.get(
+      `/workspace/${workspaceId}?include_apis=true`
+    );
+
+    // Return the response directly without transformation to avoid multiple calls
+    // and preserve the exact structure from backend
+    return response.data;
+  },
+
+  /**
    * Delete a workspace
    * @param {number} workspaceId - Workspace ID
    * @returns {Promise} Promise with deletion result
    */
   async deleteWorkspace(workspaceId) {
     const response = await api.delete(`/workspace/${workspaceId}`);
+    return response.data;
+  },
+
+  /**
+   * Move a file or folder to a different location
+   * @param {number} nodeId - ID of the node to move
+   * @param {number} targetWorkspaceId - Target workspace ID
+   * @param {number|null} targetFolderId - Target folder ID (null for root)
+   * @param {string} newName - New name for the moved item
+   * @returns {Promise} Promise with move result
+   */
+  async moveNode(nodeId, targetWorkspaceId, targetFolderId, newName) {
+    const response = await api.post(`/node/${nodeId}/move`, {
+      target_workspace_id: targetWorkspaceId,
+      target_folder_id: targetFolderId,
+      new_name: newName,
+    });
+    return response.data;
+  },
+
+  /**
+   * Copy a file or folder to a different location
+   * @param {number} nodeId - ID of the node to copy
+   * @param {number} targetWorkspaceId - Target workspace ID
+   * @param {number|null} targetFolderId - Target folder ID (null for root)
+   * @param {string} newName - New name for the copied item
+   * @returns {Promise} Promise with copy result
+   */
+  async copyNode(nodeId, targetWorkspaceId, targetFolderId, newName) {
+    const response = await api.post(`/node/${nodeId}/copy`, {
+      target_workspace_id: targetWorkspaceId,
+      target_folder_id: targetFolderId,
+      new_name: newName,
+    });
     return response.data;
   },
 };

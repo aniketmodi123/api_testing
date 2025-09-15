@@ -208,29 +208,6 @@ export const useApi = create((set, get) => ({
   },
 
   /**
-   * Duplicate an API to a new file
-   * @param {number} fileId - File ID
-   * @param {string} newApiName - Optional name for the new API
-   * @param {boolean} includeCases - Whether to include test cases
-   */
-  duplicateApi: async (fileId, newApiName = null, includeCases = true) => {
-    try {
-      set({ isLoading: true, error: null });
-      const result = await apiService.duplicateApi(
-        fileId,
-        newApiName,
-        includeCases
-      );
-      return result;
-    } catch (error) {
-      set({ error: error.message || 'Failed to duplicate API' });
-      throw error;
-    } finally {
-      set({ isLoading: false });
-    }
-  },
-
-  /**
    * Create a new test case
    * @param {number} fileId - File ID
    * @param {Object} testCaseData - Test case data

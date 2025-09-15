@@ -5,6 +5,9 @@ export const API_BASE =
   import.meta.env.VITE_API_BASE || 'https://api-testing-2vjt.onrender.com';
 export const api = axios.create({ baseURL: API_BASE });
 
+// By default we don't send cookies; enable if your backend uses cookie-based sessions
+// api.defaults.withCredentials = true;
+
 // Add request interceptor to automatically add auth headers
 api.interceptors.request.use(config => {
   // Always add these headers
@@ -39,6 +42,20 @@ api.interceptors.request.use(config => {
         : `Bearer ${token}`;
   }
 
+  // Debug: log whether we will send auth for this request
+  try {
+    // Avoid spamming prod logs; keep as debug
+    console.debug('[api] Request:', config.method?.toUpperCase(), config.url, {
+      hasAuthorization: !!config.headers['Authorization'],
+      usernameHeader: !!config.headers['username'],
+      baseURL: config.baseURL,
+      withCredentials:
+        config.withCredentials || api.defaults.withCredentials || false,
+    });
+  } catch (e) {
+    /* ignore */
+  }
+
   if (userObj?.email && !('username' in config.headers)) {
     config.headers['username'] = userObj.email;
   }
@@ -56,26 +73,26 @@ api.interceptors.response.use(
   error => {
     // Handle 401 errors - check for specific backend session expiry message
     if (error.response && error.response.status === 401) {
-      // Check if this is our backend's session expiry message
-      const errorMessage = error.response?.data?.error_message;
-      const isBackendSessionExpired =
-        errorMessage ===
-        'Authentication required again since your session has expired';
+      // Log the full response body to help debugging
+      try {
+        console.debug('[api] 401 response body:', error.response.data);
+      } catch (e) {
+        /* ignore */
+      }
 
-      if (isBackendSessionExpired) {
-        // Only avoid redirect if we're already on sign-in page
-        if (window.location.pathname === '/sign-in') {
-          // Already on sign-in page, not redirecting
-        } else {
-          // This is a backend session expiry, trigger logout and redirect
-          console.log('🔒 Backend session expired - redirecting to sign-in');
-          forceLogout();
-        }
-      } else {
-        // This is an external API 401 or different 401, just log it
+      // If the request explicitly opts out of auth refresh handling, don't redirect
+      const requestConfig = error.config || {};
+      const skipAuthRefresh = requestConfig._skipAuthRefresh === true;
+
+      // If already on sign-in page, no need to redirect
+      const alreadyOnSignIn = window.location.pathname === '/sign-in';
+
+      if (!skipAuthRefresh && !alreadyOnSignIn) {
+        console.log('🔒 401 Unauthorized - redirecting to sign-in');
+        forceLogout();
+      } else if (skipAuthRefresh) {
         console.log(
-          '🔒 401 Unauthorized (external API or different auth error):',
-          errorMessage || 'No error message'
+          '[api] 401 received but _skipAuthRefresh is set; not redirecting'
         );
       }
 

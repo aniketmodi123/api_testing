@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import lookingGif from '../../assets/looking.gif';
 import { useWorkspace } from '../../store/workspace';
 import styles from './WorkspaceSelector.module.css';
 
@@ -12,9 +13,11 @@ export default function WorkspaceSelector() {
     loading,
     shouldLoadWorkspaces,
   } = useWorkspace();
+
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const [workspaceToDelete, setWorkspaceToDelete] = useState(null);
   const [newWorkspaceName, setNewWorkspaceName] = useState('');
   const [newWorkspaceDescription, setNewWorkspaceDescription] = useState('');
@@ -49,14 +52,19 @@ export default function WorkspaceSelector() {
   };
 
   const handleConfirmDelete = async () => {
-    if (!workspaceToDelete) return;
-
+    if (!workspaceToDelete || deleteLoading) return;
+    setDeleteLoading(true);
     try {
       await deleteWorkspace(workspaceToDelete.id);
-      setIsDeleting(false);
-      setWorkspaceToDelete(null);
+      // Always show loader for at least 500ms for user feedback
+      setTimeout(() => {
+        setIsDeleting(false);
+        setWorkspaceToDelete(null);
+        setDeleteLoading(false);
+      }, 500);
     } catch (err) {
       console.error('Failed to delete workspace:', err);
+      setDeleteLoading(false);
       // Handle error - could show a notification
     }
   };
@@ -186,31 +194,67 @@ export default function WorkspaceSelector() {
             </form>
           )}
 
-          {isDeleting && workspaceToDelete && (
-            <div className={styles.deleteConfirmation}>
-              <p>Are you sure you want to delete "{workspaceToDelete.name}"?</p>
-              <p className={styles.deleteWarning}>
-                This action cannot be undone.
-              </p>
-              <div className={styles.deleteActions}>
-                <button
-                  type="button"
-                  className={styles.cancelButton}
-                  onClick={handleCancelDelete}
+          {isDeleting &&
+            workspaceToDelete &&
+            (deleteLoading ? (
+              <div
+                style={{
+                  position: 'fixed',
+                  top: 0,
+                  left: 0,
+                  width: '100vw',
+                  height: '100vh',
+                  background: 'rgba(0,0,0,0.4)',
+                  zIndex: 9999,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <img
+                  src={lookingGif}
+                  alt="Processing..."
+                  style={{ width: 120, height: 120, objectFit: 'contain' }}
+                />
+                <div
+                  style={{
+                    color: '#fff',
+                    fontSize: 20,
+                    marginTop: 16,
+                    fontWeight: 500,
+                  }}
                 >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className={styles.deleteButton}
-                  onClick={handleConfirmDelete}
-                  disabled={loading}
-                >
-                  {loading ? 'Deleting...' : 'Delete'}
-                </button>
+                  Processing...
+                </div>
               </div>
-            </div>
-          )}
+            ) : (
+              <div className={styles.deleteConfirmation}>
+                <p>
+                  Are you sure you want to delete "{workspaceToDelete.name}"?
+                </p>
+                <p className={styles.deleteWarning}>
+                  This action cannot be undone.
+                </p>
+                <div className={styles.deleteActions}>
+                  <button
+                    type="button"
+                    className={styles.cancelButton}
+                    onClick={handleCancelDelete}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.deleteButton}
+                    onClick={handleConfirmDelete}
+                    disabled={deleteLoading}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))}
 
           <div className={styles.workspaceList}>
             {loading && !workspaces.length ? (

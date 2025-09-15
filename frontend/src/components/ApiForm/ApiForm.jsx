@@ -18,8 +18,6 @@ const addNgrokHeadersIfNeeded = (url, existingHeaders = {}) => {
     };
 
     // Debug logging
-    console.log('🔗 Enhanced headers for ngrok URL:', url);
-    console.log('📝 Headers being saved:', enhancedHeaders);
 
     return enhancedHeaders;
   }
@@ -452,7 +450,6 @@ const ApiForm = ({
         setTimeout(async () => {
           try {
             await saveApiDefinition();
-            console.log('📝 API definition saved successfully');
           } catch (err) {
             console.log(
               '⚠️ Could not save API definition (backend auth issue):',

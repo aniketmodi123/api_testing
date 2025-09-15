@@ -57,6 +57,7 @@ class Workspace(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text)
     created_at: Mapped[str] = mapped_column(TIMESTAMP, default= datetime.now, server_default=func.now())
+    active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default=text('False'))
 
     user: Mapped["User"] = relationship("User", back_populates="workspaces")
     nodes: Mapped[list["Node"]] = relationship("Node", back_populates="workspace")
@@ -93,6 +94,7 @@ class Node(Base):
 
     __table_args__ = (
         CheckConstraint("type IN ('folder', 'file')", name="check_node_type"),
+        CheckConstraint("(type = 'file' AND parent_id IS NOT NULL) OR (type = 'folder')", name="file_parent_not_null"),
     )
 
     workspace: Mapped["Workspace"] = relationship("Workspace", back_populates="nodes")

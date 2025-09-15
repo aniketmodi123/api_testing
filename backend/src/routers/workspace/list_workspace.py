@@ -27,7 +27,9 @@ async def list_workspaces(
 
         # Get user's workspaces
         result = await db.execute(
-            select(Workspace).where(Workspace.user_id == user.id).order_by(Workspace.created_at.desc())
+            select(Workspace)
+            .where(Workspace.user_id == user.id)
+            .order_by(Workspace.active.desc(), Workspace.created_at.desc())
         )
         workspaces = result.scalars().all()
 
@@ -37,7 +39,8 @@ async def list_workspaces(
                 "id": workspace.id,
                 "name": workspace.name,
                 "description": workspace.description,
-                "created_at": workspace.created_at
+                "created_at": workspace.created_at,
+                "active": workspace.active
             })
 
         return create_response(200, value_correction(workspace_list))

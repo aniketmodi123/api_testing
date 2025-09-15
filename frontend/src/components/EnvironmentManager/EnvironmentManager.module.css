@@ -249,7 +249,7 @@
 }
 
 .warning {
-  color: #dc2626 !important;
+  color: var(--text-warn) !important;
   font-size: 14px;
 }
 
