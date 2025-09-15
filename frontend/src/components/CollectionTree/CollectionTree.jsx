@@ -4,6 +4,7 @@ import { useWorkspace } from '../../store/workspace';
 import { Button } from '../common';
 import ConfirmModal from '../ConfirmModal/ConfirmModal';
 import HeaderEditor from '../HeaderEditor/HeaderEditor';
+import LookingLoader from '../LookingLoader/LookingLoader';
 import MoveCopyPanel from '../MoveCopyPanel';
 import styles from './CollectionTree.module.css';
 
@@ -242,6 +243,8 @@ const NodeItem = ({
 };
 
 export default function CollectionTree({ onSelectRequest }) {
+  // Local loading state for API calls
+  const [apiLoading, setApiLoading] = useState(false);
   const {
     activeWorkspace,
     workspaceTree,
@@ -327,18 +330,21 @@ export default function CollectionTree({ onSelectRequest }) {
     setIsCreatingItem(false);
   };
 
-  const handleCreateFolder = () => {
+  const handleCreateFolder = async () => {
     if (newFolderName.trim() && activeWorkspace) {
       const folderName = newFolderName.trim();
-
-      // Directly create the folder without confirmation
-      createFolder({
-        name: folderName,
-        workspace_id: activeWorkspace.id,
-        parent_id: null, // Root level folder - use snake_case for API
-      });
-      setNewFolderName('');
-      setIsAddingFolder(false);
+      setApiLoading(true);
+      try {
+        await createFolder({
+          name: folderName,
+          workspace_id: activeWorkspace.id,
+          parent_id: null, // Root level folder - use snake_case for API
+        });
+        setNewFolderName('');
+        setIsAddingFolder(false);
+      } finally {
+        setApiLoading(false);
+      }
     }
   };
 
@@ -380,17 +386,27 @@ export default function CollectionTree({ onSelectRequest }) {
 
     closeAllMenus();
   }; // Handle rename submit
-  const handleRename = () => {
+  const handleRename = async () => {
     if (newName.trim() && nodeToRename) {
       const newNameValue = newName.trim();
-
-      // Directly rename without confirmation
-      updateNode(nodeToRename.id, {
-        name: newNameValue,
-      });
-      setIsRenaming(false);
-      setNodeToRename(null);
-      setNewName('');
+      setApiLoading(true);
+      try {
+        const result = await updateNode(nodeToRename.id, {
+          name: newNameValue,
+        });
+        // If the API returns the updated tree, update it here
+        if (result?.data?.file_tree && typeof setWorkspaceTree === 'function') {
+          setWorkspaceTree({ ...result.data });
+        } else if (typeof refreshWorkspaces === 'function') {
+          // Fallback: force refresh if available
+          await refreshWorkspaces();
+        }
+        setIsRenaming(false);
+        setNodeToRename(null);
+        setNewName('');
+      } finally {
+        setApiLoading(false);
+      }
     }
   };
 
@@ -419,16 +435,14 @@ export default function CollectionTree({ onSelectRequest }) {
 
     closeAllMenus();
   }; // Handle creating the new item
-  const handleCreateItem = () => {
+  const handleCreateItem = async () => {
     if (newItemName.trim() && activeWorkspace) {
       const itemName = newItemName.trim();
-
+      setApiLoading(true);
       // Helper to update tree from API response and preserve expanded state
       const handleApiResponse = result => {
         if (result?.data?.file_tree && typeof setWorkspaceTree === 'function') {
           setWorkspaceTree({ ...result.data });
-
-          // ✅ preserve all expanded folders AND keep parent open
           setExpandedFolders(prev => {
             const expanded = new Set(prev);
             if (parentFolderId) {
@@ -437,26 +451,30 @@ export default function CollectionTree({ onSelectRequest }) {
             return [...expanded];
           });
         }
-
         setNewItemName('');
         setIsCreatingItem(false);
         setParentFolderId(null);
       };
-
-      if (isCreatingFolder) {
-        createFolder({
-          name: itemName,
-          workspace_id: activeWorkspace.id,
-          parent_id: parentFolderId,
-        }).then(handleApiResponse);
-      } else {
-        createFile({
-          name: itemName,
-          workspace_id: activeWorkspace.id,
-          parent_id: parentFolderId,
-          method: newApiMethod,
-          url: '',
-        }).then(handleApiResponse);
+      try {
+        if (isCreatingFolder) {
+          const result = await createFolder({
+            name: itemName,
+            workspace_id: activeWorkspace.id,
+            parent_id: parentFolderId,
+          });
+          handleApiResponse(result);
+        } else {
+          const result = await createFile({
+            name: itemName,
+            workspace_id: activeWorkspace.id,
+            parent_id: parentFolderId,
+            method: newApiMethod,
+            url: '',
+          });
+          handleApiResponse(result);
+        }
+      } finally {
+        setApiLoading(false);
       }
     }
   };
@@ -550,12 +568,40 @@ export default function CollectionTree({ onSelectRequest }) {
               onChange={e => setNewFolderName(e.target.value)}
               autoFocus
               className={styles.newFolderInput}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleCreateFolder();
+                } else if (e.key === 'Escape') {
+                  e.preventDefault();
+                  handleCancelAddFolder();
+                } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+                  // Focus the first button (Create)
+                  const form = e.target.closest('div');
+                  const btns = form?.querySelectorAll('button');
+                  if (btns && btns.length > 0) btns[0].focus();
+                }
+              }}
             />
             <div className={styles.newFolderActions}>
               <Button
                 variant="primary"
                 size="small"
                 onClick={handleCreateFolder}
+                tabIndex={0}
+                onKeyDown={e => {
+                  if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+                    // Focus Cancel
+                    e.preventDefault();
+                    e.target.parentNode.querySelectorAll('button')[1].focus();
+                  } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleCreateFolder();
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    handleCancelAddFolder();
+                  }
+                }}
               >
                 Create
               </Button>
@@ -563,6 +609,20 @@ export default function CollectionTree({ onSelectRequest }) {
                 variant="secondary"
                 size="small"
                 onClick={handleCancelAddFolder}
+                tabIndex={0}
+                onKeyDown={e => {
+                  if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+                    // Focus Create
+                    e.preventDefault();
+                    e.target.parentNode.querySelectorAll('button')[0].focus();
+                  } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleCancelAddFolder();
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    handleCancelAddFolder();
+                  }
+                }}
               >
                 Cancel
               </Button>
@@ -579,15 +639,61 @@ export default function CollectionTree({ onSelectRequest }) {
               onChange={e => setNewName(e.target.value)}
               autoFocus
               className={styles.newFolderInput}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleRename();
+                } else if (e.key === 'Escape') {
+                  e.preventDefault();
+                  handleCancelRename();
+                } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+                  // Focus the first button (Rename)
+                  const form = e.target.closest('div');
+                  const btns = form?.querySelectorAll('button');
+                  if (btns && btns.length > 0) btns[0].focus();
+                }
+              }}
             />
             <div className={styles.newFolderActions}>
-              <Button variant="primary" size="small" onClick={handleRename}>
+              <Button
+                variant="primary"
+                size="small"
+                onClick={handleRename}
+                tabIndex={0}
+                onKeyDown={e => {
+                  if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+                    // Focus Cancel
+                    e.preventDefault();
+                    e.target.parentNode.querySelectorAll('button')[1].focus();
+                  } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleRename();
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    handleCancelRename();
+                  }
+                }}
+              >
                 Rename
               </Button>
               <Button
                 variant="secondary"
                 size="small"
                 onClick={handleCancelRename}
+                tabIndex={0}
+                onKeyDown={e => {
+                  if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+                    // Focus Rename
+                    e.preventDefault();
+                    e.target.parentNode.querySelectorAll('button')[0].focus();
+                  } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleCancelRename();
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    handleCancelRename();
+                  }
+                }}
               >
                 Cancel
               </Button>
@@ -621,6 +727,20 @@ export default function CollectionTree({ onSelectRequest }) {
               onChange={e => setNewItemName(e.target.value)}
               autoFocus
               className={styles.newFolderInput}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleCreateItem();
+                } else if (e.key === 'Escape') {
+                  e.preventDefault();
+                  handleCancelCreateItem();
+                } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+                  // Focus the first button (Create)
+                  const form = e.target.closest('div');
+                  const btns = form?.querySelectorAll('button');
+                  if (btns && btns.length > 0) btns[0].focus();
+                }
+              }}
             />
 
             {!isCreatingFolder && (
@@ -642,13 +762,45 @@ export default function CollectionTree({ onSelectRequest }) {
             )}
 
             <div className={styles.newFolderActions}>
-              <Button variant="primary" size="small" onClick={handleCreateItem}>
+              <Button
+                variant="primary"
+                size="small"
+                onClick={handleCreateItem}
+                tabIndex={0}
+                onKeyDown={e => {
+                  if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+                    // Focus Cancel
+                    e.preventDefault();
+                    e.target.parentNode.querySelectorAll('button')[1].focus();
+                  } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleCreateItem();
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    handleCancelCreateItem();
+                  }
+                }}
+              >
                 Create
               </Button>
               <Button
                 variant="secondary"
                 size="small"
                 onClick={handleCancelCreateItem}
+                tabIndex={0}
+                onKeyDown={e => {
+                  if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+                    // Focus Create
+                    e.preventDefault();
+                    e.target.parentNode.querySelectorAll('button')[0].focus();
+                  } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleCancelCreateItem();
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    handleCancelCreateItem();
+                  }
+                }}
               >
                 Cancel
               </Button>
@@ -695,6 +847,7 @@ export default function CollectionTree({ onSelectRequest }) {
         onCancel={() => setModalOpen(false)}
         onConfirm={async () => {
           setDeleteLoading(true);
+          setApiLoading(true);
           setIsAddingFolder(false);
           setIsRenaming(false);
           setIsCreatingItem(false);
@@ -713,9 +866,16 @@ export default function CollectionTree({ onSelectRequest }) {
             alert('Failed to delete node. ' + (err?.message || ''));
           }
           setDeleteLoading(false);
+          setApiLoading(false);
           setModalOpen(false);
         }}
       />
+      {/* API Loader Overlay */}
+      {apiLoading && (
+        <div style={{ position: 'fixed', zIndex: 9999, inset: 0 }}>
+          <LookingLoader overlay text="Loading..." />
+        </div>
+      )}
 
       {/* Header Editor Modal */}
       {isHeaderEditorOpen && currentFolder && (

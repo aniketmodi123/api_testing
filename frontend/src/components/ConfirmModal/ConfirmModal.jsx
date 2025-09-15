@@ -1,5 +1,5 @@
+import { useEffect } from 'react';
 import { Button } from '../common';
-import LookingLoader from '../LookingLoader/LookingLoader.jsx';
 import styles from './ConfirmModal.module.css';
 
 export default function ConfirmModal({
@@ -15,19 +15,22 @@ export default function ConfirmModal({
   loading = false,
   loaderText = 'Processing...',
 }) {
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        onConfirm && onConfirm();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        onCancel && onCancel();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onConfirm, onCancel]);
+
   if (!isOpen) return null;
-
-  if (loading) {
-    return (
-      <div className={styles.modal}>
-        <div className={styles.loaderBox}>
-          <LookingLoader size={120} text={null} overlay={false} />
-          <div className={styles.loaderText}>{loaderText}</div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className={styles.modal}>
       <div className={styles.modalContent}>
