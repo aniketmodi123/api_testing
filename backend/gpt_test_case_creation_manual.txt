@@ -1,0 +1,91 @@
+Got it ✅ — here’s a **super-compact machine-oriented cheat sheet**.
+This version drops all human explanations and keeps only the structure + keywords that I (or a validator) need when generating/validating test cases.
+
+---
+
+# ⚡ Minimal `expected` Spec Cheat Sheet
+
+```json
+{
+  "status": 200,                  // or: "status_in": [400,422]
+  "text_contains": "string|[...]",
+  "text_contains_any": ["..."],
+  "text_regex": "regex",
+
+  "headers": { "k": "v" },
+  "headers_regex": { "k": "regex" },
+
+  "json": {
+    "checks": [
+      { "path": "a.b", "equals": 1 },
+      { "path": "a.b", "present": true },
+      { "path": "a.b", "absent": true },
+      { "path": "a.b", "type": "string|number|boolean|object|array|null" },
+      { "path": "a.b", "regex": "^foo" },
+      { "path": "a.b", "contains": "substr|{sub}|[sub]" },
+      { "path": "a.b", "length": 3 },
+      { "path": "a.b", "gt": 0 }, { "path": "a.b", "gte": 1 },
+      { "path": "a.b", "lt": 10 }, { "path": "a.b", "lte": 9 }
+    ],
+    "either": [
+      { "checks": [ { "path": "x", "present": true } ] },
+      { "checks": [ { "path": "y", "present": true } ] }
+    ]
+  },
+
+  "_mirror_http_status": true,
+  "_require_content_for_error": true
+}
+```
+
+---
+
+## Templates
+
+* **Create/Update success**
+
+```json
+{ "status": 201, "json": { "checks": [ { "path": "response_code", "equals": 201 }, { "path": "errors", "absent": true } ] } }
+```
+
+* **Validation error**
+
+```json
+{ "status_in": [400,422], "text_contains": "must be 0", "json": { "either": [ { "checks":[{"path":"error_message","present":true}] }, { "checks":[{"path":"detail","present":true}] } ] } }
+```
+
+* **GET list**
+
+```json
+{ "status": 200, "json": { "checks": [ { "path": "response_code", "equals": 200 }, { "path": "errors", "absent": true }, { "path": "data", "present": true } ] } }
+```
+
+* **GET by id**
+
+```json
+{ "status": 200, "json": { "checks": [ { "path": "data", "length": 1 }, { "path": "data[0].id", "equals": 1 } ] } }
+```
+
+* **Not found**
+
+```json
+{ "status": 206, "text_contains": "No Data Found.", "json": { "checks": [ { "path": "response_code", "equals": 206 }, { "path": "error_message", "equals": "No Data Found." }, { "path": "data", "absent": true } ] } }
+```
+
+* **Invalid query**
+
+```json
+{ "status": 422, "json": { "checks": [ { "path": "response_code", "equals": 422 }, { "path": "errors", "present": true }, { "path": "errors[0].field", "equals": "query.id" } ] } }
+```
+
+---
+
+⚡ With this cheat sheet:
+
+* Always choose `status` or `status_in`.
+* Add at least one `text_contains` or `json.checks`.
+* Mirror `response_code` to HTTP unless disabled.
+
+---
+
+Would you like me to also compress this further into a **starter JSON skeleton file** (empty but with all keys), so your team can just copy it and fill values?

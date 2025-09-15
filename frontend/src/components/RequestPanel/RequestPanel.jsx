@@ -425,25 +425,32 @@ export default function RequestPanel({ activeRequest }) {
   const [selectedTestCases, setSelectedTestCases] = useState([]);
   const [defaultValidationSchema, setDefaultValidationSchema] = useState({
     status: 200,
-    text_contains: 'success',
-    headers_regex: {
-      'content-type': '^application/json',
-    },
+    text_contains: '',
+    text_contains_any: [],
+    text_regex: '',
+    headers: {},
+    headers_regex: {},
     json: {
       checks: [
-        { path: 'response_code', equals: 200 },
-        { path: 'error_message', absent: true },
-        { path: 'data', present: true },
+        { path: '', equals: null },
+        { path: '', present: true },
+        { path: '', absent: true },
+        { path: '', type: 'string' },
+        { path: '', regex: '' },
+        { path: '', contains: '' },
+        { path: '', length: 0 },
+        { path: '', gt: 0 },
+        { path: '', gte: 0 },
+        { path: '', lt: 0 },
+        { path: '', lte: 0 },
       ],
       either: [
-        {
-          checks: [{ path: 'errors', present: true }],
-        },
-        {
-          checks: [{ path: 'detail', present: true }],
-        },
+        { checks: [{ path: '', present: true }] },
+        { checks: [{ path: '', present: true }] },
       ],
     },
+    _mirror_http_status: true,
+    _require_content_for_error: true,
   });
 
   const handleTestCaseSelection = testCaseId => {

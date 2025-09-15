@@ -1,0 +1,258 @@
+Perfect 👍
+Here’s a **ready-to-paste doc** that contains both:
+
+1. The **detailed manual** (reference).
+2. The **cheat sheet with good vs bad examples** (day-to-day quick use).
+
+---
+
+# 📖 Manual for Writing `expected` JSON Test Specs
+
+Each test case should have an `expected` block describing what must be true about the API response.
+
+---
+
+## 1. The Overall Shape
+
+Pick **either** `status` (exact match) **or** `status_in` (acceptable set):
+
+```json
+{
+  "status": 201,                          // exact match
+  "status_in": [400, 422],                 // OR any of these
+
+  "text_contains": "string or [strings]",  // must appear in body text
+  "text_contains_any": ["one", "of"],      // at least one must appear
+  "text_regex": "optional-regex",
+
+  "headers": { "content-type": "application/json" },         // exact header match
+  "headers_regex": { "content-type": "^application/json" },  // regex header match
+
+  "json": {
+    "checks": [ /* assertions */ ],
+    "either": [ /* alternate sets of assertions */ ]
+  },
+
+  "_mirror_http_status": true,     // default true → enforce response_code == HTTP
+  "_require_content_for_error": true // default true → force content checks for 4xx/5xx
+}
+```
+
+---
+
+## 2. JSON Path Syntax
+
+* Object: `a.b.c`
+* Array element: `a.items[0].id`
+* Root `$` is optional: `$.a.b[1].c`
+* Missing paths don’t crash — validator reports them.
+
+---
+
+## 3. Predicates (per `checks[*]`)
+
+Each `check` = `{ "path": "...", <predicate> }`
+
+* Presence: `"present": true | "absent": true`
+* Equality: `"equals": <value>`
+* Type: `"type": "string" | "number" | "boolean" | "object" | "array" | "null"` (or list)
+* Regex (string only): `"regex": "^foo"`
+* Contains: `"contains": "substr" | {subset} | [subset]`
+* Length: `"length": 3`
+* Numbers: `"gt" | "gte" | "lt" | "lte": <number>`
+
+---
+
+## 4. Templates to Copy
+
+### ✅ Create/Update success
+
+```json
+{
+  "status": 201,
+  "text_contains": "Tariff created successfully",
+  "json": {
+    "checks": [
+      { "path": "response_code", "equals": 201 },
+      { "path": "errors", "absent": true }
+    ]
+  }
+}
+```
+
+### ❌ Validation error
+
+```json
+{
+  "status_in": [400, 422],
+  "text_contains": "first row 'start' must be 0",
+  "json": {
+    "either": [
+      { "checks": [ { "path": "error_message", "present": true } ] },
+      { "checks": [ { "path": "detail", "present": true } ] }
+    ]
+  }
+}
+```
+
+### 📋 GET list
+
+```json
+{
+  "status": 200,
+  "json": {
+    "checks": [
+      { "path": "response_code", "equals": 200 },
+      { "path": "errors", "absent": true },
+      { "path": "data", "present": true }
+    ]
+  }
+}
+```
+
+### 🔍 GET by id (success)
+
+```json
+{
+  "status": 200,
+  "json": {
+    "checks": [
+      { "path": "response_code", "equals": 200 },
+      { "path": "errors", "absent": true },
+      { "path": "data", "length": 1 },
+      { "path": "data[0].id", "equals": 1 },
+      { "path": "data[0].tariff_type", "equals": "SLAB" },
+      { "path": "data[0].tariff[0].rate", "gt": 0 }
+    ]
+  }
+}
+```
+
+### 🚫 GET by id not found
+
+```json
+{
+  "status": 206,
+  "text_contains": "No Data Found.",
+  "json": {
+    "checks": [
+      { "path": "response_code", "equals": 206 },
+      { "path": "error_message", "equals": "No Data Found." },
+      { "path": "data", "absent": true }
+    ]
+  }
+}
+```
+
+### ❌ Invalid query schema
+
+```json
+{
+  "status": 422,
+  "json": {
+    "checks": [
+      { "path": "response_code", "equals": 422 },
+      { "path": "error_message", "regex": "(?i)^validation error$" },
+      { "path": "errors", "present": true },
+      { "path": "errors[0].field", "equals": "query.id" }
+    ]
+  }
+}
+```
+
+---
+
+## 5. Step by Step Workflow
+
+1. Pick `status` or `status_in`.
+2. Add **at least one content check** (`text_contains` or JSON).
+3. Mirror envelope → `response_code` == HTTP status.
+4. Ensure `errors` absent for success, present for failure.
+5. Add field checks (equals, type, gt/gte/lt/lte, length, contains).
+6. If API varies → use `json.either`.
+7. Add headers if needed.
+
+---
+
+## 6. Common Mistakes
+
+* ❌ Only checking status → must check body too.
+* ❌ Wrong path → confirm array indexes.
+* ❌ Numbers vs strings → use `"type": "number"`.
+* ❌ Arrays in any order → use `"contains"`, not `equals`.
+* ❌ Exact headers when not stable → prefer `headers_regex`.
+
+---
+
+# 📝 Cheat Sheet (Quick Use)
+
+### ✅ Do
+
+* Always check **status + body**.
+* Assert `response_code == HTTP status`.
+* Use `"errors": absent` on success, `"errors": present` on failure.
+* Use `either` for multiple possible error formats.
+
+### ❌ Don’t
+
+* Don’t stop at `"status": 200`.
+* Don’t assume numbers are strings.
+* Don’t expect arrays in fixed order unless guaranteed.
+
+---
+
+### ✔️ Good vs ❌ Bad Examples
+
+✔️ **Good**
+
+```json
+{ "status": 200, "json": { "checks": [ { "path": "data", "present": true } ] } }
+```
+
+❌ **Bad**
+
+```json
+{ "status": 200 }
+```
+
+(only status, no body check)
+
+---
+
+✔️ **Good**
+
+```json
+{ "status": 422, "json": { "checks": [ { "path": "errors[0].field", "equals": "query.id" } ] } }
+```
+
+❌ **Bad**
+
+```json
+{ "status": 422, "text_contains": "error" }
+```
+
+(vague, doesn’t confirm structure)
+
+---
+
+✔️ **Good**
+
+```json
+{ "status": 201, "json": { "checks": [ { "path": "response_code", "equals": 201 } ] } }
+```
+
+❌ **Bad**
+
+```json
+{ "status": 201, "json": { "checks": [ { "path": "response_code", "equals": "201" } ] } }
+```
+
+(string `"201"` instead of number)
+
+---
+
+✅ Use the **manual** when in doubt, the **cheat sheet** when writing fast.
+
+---
+
+Would you like me to also generate a **starter template file** (like a blank `expected.json` with comments) that your team can copy for each new test?
