@@ -7,6 +7,7 @@ import pytz
 from fastapi import FastAPI, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from config import check_db_connection, engine
+from exception_handler import unified_exception_handler
 from models import Base
 from datetime import datetime
 from routers.runner import run_case, execute_direct
@@ -108,58 +109,13 @@ async def add_process_time_header(request: Request, call_next):
     return response
 
 
-@app.exception_handler(Exception)
-async def unified_exception_handler(request: Request, exc: Exception):
-    if isinstance(exc, ValidationError):
-        return JSONResponse(
-            content={
-                "response_code": 422,
-                "error_message": "Validation failed",
-                "errors": exc.errors(),
-            },
-            status_code=422
-        )
-
-    elif isinstance(exc, IntegrityError):  # Replace with other DB errors as needed
-        return JSONResponse(
-            content={
-                "response_code": 400,
-                "error_message": "A database integrity error occurred",
-                "details": str(exc),
-            },
-            status_code=400
-        )
-    elif isinstance(exc, HTTPException):  # Replace with other DB errors as needed
-        return JSONResponse(
-            content= {
-                "response_code": exc.status_code,
-                "error_message": exc.detail},
-                status_code= exc.status_code
-        )
-
-    elif isinstance(exc, RequestValidationError):  # Replace with other DB errors as needed
-        errors = [{"field": ".".join(map(str, error['loc'])), "message": error['msg']} for error in exc.errors()]
-        return JSONResponse(
-            content= {
-                "response_code": status.HTTP_422_UNPROCESSABLE_ENTITY,
-                "error_message": "validation error",
-                "errors": errors},
-                status_code= 422)
-
-
-    else:
-        return JSONResponse(
-            content={
-                "response_code":  status.HTTP_409_CONFLICT,
-                "error_message": "something went wrong",
-            },
-            status_code=409
-        )
-
 
 @app.get("/")
 def welcome():
     return "welcome"
+
+app.add_exception_handler(Exception, unified_exception_handler)
+
 
 # sso
 app.include_router(create_user.router, prefix="", tags=["sso"])

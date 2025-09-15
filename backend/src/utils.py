@@ -1,3 +1,5 @@
+from sqlalchemy import select, and_
+from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import SQLAlchemyError
 from psycopg2.errors import UndefinedTable, IntegrityError
 from decimal import Decimal
@@ -13,10 +15,9 @@ from jose import jwt
 import pandas as pd
 from passlib.context import CryptContext
 from pydantic import BaseModel, TypeAdapter, ValidationError
-from sqlalchemy import select
 
 from config import JWT_ALGORITHM, JWT_SECRET_KEY, SessionLocal
-from models import Cache, Node
+from models import Cache, Node, Workspace, Api
 from schema import PaginationRes
 
 # Get the base directory
@@ -739,3 +740,112 @@ async def get_unique_name(base_name: str, target_workspace_id: int, target_folde
             name = f"{base} copy {n}" if n > 1 else f"{base} copy"
         else:
             name = f"{base_name} copy"
+
+
+
+def build_file_tree(nodes: List[Node], include_apis: bool = False, apis_dict: Optional[dict] = None) -> List[dict]:
+    """Build hierarchical file tree from flat node list, optionally including APIs and test cases"""
+    node_dict = {node.id: {
+        "id": node.id,
+        "name": node.name,
+        "type": node.type,
+        "method": None,
+        "parent_id": node.parent_id,
+        "created_at": node.created_at,
+        "children": []
+    } for node in nodes}
+
+    # Add APIs as children to their respective file nodes if requested
+    if include_apis and apis_dict:
+        for node_data in node_dict.values():
+            if node_data["type"] == "file":
+                file_apis = apis_dict.get(node_data["id"], [])
+                for api in file_apis:
+                    node_data["method"] = api.method
+                    if api.cases:
+                        for case in api.cases:
+                            node_data["children"].append(
+                                {
+                                    "id": case.id,
+                                    "name": case.name,
+                                    "created_at": case.created_at.strftime("%Y-%m-%d %H:%M:%S")
+                                }
+                            )
+
+    root_nodes = []
+    for node_data in node_dict.values():
+        if node_data["parent_id"] is None:
+            root_nodes.append(node_data)
+        else:
+            parent = node_dict.get(node_data["parent_id"])
+            if parent:
+                parent["children"].append(node_data)
+
+    # Sort children: files first, then folders, for every node recursively
+    def sort_children(node):
+        if node["children"]:
+            # Only sort children that have a 'type' key (i.e., nodes, not API cases)
+            node_children_with_type = [c for c in node["children"] if "type" in c]
+            node_children_without_type = [c for c in node["children"] if "type" not in c]
+            node_children_with_type.sort(key=lambda x: x["type"] == "folder")
+            node["children"] = node_children_with_type + node_children_without_type
+            for child in node_children_with_type:
+                sort_children(child)
+    for root in root_nodes:
+        sort_children(root)
+
+    return root_nodes
+
+
+async def get_workspace_tree_response(db, workspace_id, include_apis=True):
+    """
+    Fetch workspace, nodes, apis, and build the tree response dict (for create, delete, move, copy, etc).
+    Returns (data, message) tuple.
+    """
+    result = await db.execute(
+        select(Workspace)
+        .options(selectinload(Workspace.nodes))
+        .where(Workspace.id == workspace_id)
+    )
+    workspace = result.scalar_one_or_none()
+    if not workspace:
+        return None, "Workspace not found."
+
+    apis_dict = {}
+    total_apis = 0
+    total_test_cases = 0
+
+    if include_apis:
+        apis_result = await db.execute(
+            select(Api)
+            .join(Node, Api.file_id == Node.id)
+            .options(selectinload(Api.cases))
+            .where(
+                and_(
+                    Node.workspace_id == workspace_id,
+                    Api.is_active == True
+                )
+            )
+        )
+        apis = apis_result.scalars().all()
+        for api in apis:
+            if api.file_id not in apis_dict:
+                apis_dict[api.file_id] = []
+            apis_dict[api.file_id].append(api)
+            total_apis += 1
+            total_test_cases += len(api.cases) if api.cases else 0
+
+    file_tree = build_file_tree(workspace.nodes, include_apis, apis_dict) if workspace.nodes else []
+
+    data = {
+        "id": workspace.id,
+        "name": workspace.name,
+        "description": workspace.description,
+        "created_at": workspace.created_at,
+        "file_tree": file_tree,
+        "total_nodes": len(workspace.nodes) if workspace.nodes else 0,
+        "include_apis": include_apis,
+        "total_apis": total_apis,
+        "total_test_cases": total_test_cases
+    }
+    return data, None

@@ -15,7 +15,8 @@ from schema import (
 from utils import (
     ExceptionHandler,
     create_response,
-    value_correction
+    value_correction,
+    get_workspace_tree_response
 )
 
 router = APIRouter()
@@ -65,17 +66,13 @@ async def create_node(
         db.add(new_node)
         await db.commit()
         await db.refresh(new_node)
-        data = {
-            "id": new_node.id,
-            "workspace_id": new_node.workspace_id,
-            "name": new_node.name,
-            "type": new_node.type,
-            "parent_id": new_node.parent_id,
-            "created_at": str(new_node.created_at),
-            "children": []
-        }
 
-        return create_response(201, value_correction(data))
+        # Use shared workspace tree response function
+        data, err = await get_workspace_tree_response(db, new_node.workspace_id, include_apis=True)
+        if not data:
+            return create_response(206, error_message=err or "Workspace not found after create.")
+        message = f"{new_node.type.title()} created successfully"
+        return create_response(201, value_correction(data), message=message)
     except Exception as e:
         await db.rollback()
         ExceptionHandler(e)

@@ -1,0 +1,183 @@
+import traceback
+from fastapi import status, HTTPException, Request
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from pydantic import ValidationError
+from sqlalchemy.exc import (
+    SQLAlchemyError,
+    IntegrityError,
+    OperationalError,
+    ProgrammingError,
+    DataError,
+    DisconnectionError,
+)
+from psycopg2.errors import UndefinedTable
+
+
+def parse_integrity_error(exc: IntegrityError) -> str:
+    orig = getattr(exc, "orig", None)
+    pgcode = getattr(orig, "pgcode", None)
+    diag = getattr(orig, "diag", None)
+
+    if pgcode == "23505":  # unique_violation
+        col = getattr(diag, "constraint_name", None)
+        detail = getattr(diag, "message_detail", str(orig))
+        value = None
+        if "=" in detail:
+            try:
+                value = detail.split("=")[-1].split(")")[0].strip()
+            except Exception:
+                pass
+        if col and value:
+            return f"Duplicate entry: {col} with value '{value}' already exists."
+        elif col:
+            return f"Duplicate entry on field '{col}'."
+        return "Duplicate entry – this value already exists."
+
+    elif pgcode == "23503":  # foreign_key_violation
+        col = getattr(diag, "constraint_name", None)
+        return (
+            f"Invalid reference – related record required by '{col}' not found."
+            if col
+            else "Invalid reference – related record not found."
+        )
+
+    elif pgcode == "23502":  # not_null_violation
+        col = getattr(diag, "column_name", None)
+        return f"Missing required field: '{col}'." if col else "Missing required field."
+
+    elif pgcode == "23514":  # check_violation
+        col = getattr(diag, "column_name", None)
+        return f"Check constraint violated on '{col}'." if col else "Check constraint violated."
+
+    elif pgcode == "23P01":  # exclusion_violation
+        return "Exclusion constraint violated – conflicting values."
+
+    elif pgcode == "42703":  # undefined_column
+        return "Undefined column in query."
+
+    elif pgcode == "42P01":  # undefined_table
+        return "Undefined table referenced in query."
+
+    return "Integrity constraint violated."
+
+
+def handle_exception(exc: Exception) -> JSONResponse:
+    """Core exception handler that can be used anywhere (middleware or try/except)."""
+
+    # print full traceback for debugging
+    print("Exception occurred:", traceback.format_exc())
+
+    response_code = status.HTTP_409_CONFLICT
+    error_message = "Something went wrong"
+
+    if isinstance(exc, HTTPException):
+        response_code = exc.status_code
+        error_message = exc.detail
+    elif isinstance(exc, ValueError):
+        response_code = 400
+        error_message = f"Invalid value provided: {str(exc)}"
+    elif isinstance(exc, AttributeError):
+        response_code = 400
+        error_message = f"AttributeError: {str(exc)}"
+    elif isinstance(exc, TypeError):
+        response_code = 400
+        error_message = f"Operation not supported for the type: {str(exc)}"
+    elif isinstance(exc, KeyError):
+        response_code = 400
+        error_message = f"Key not found in the dictionary: {str(exc)}"
+    elif isinstance(exc, IndexError):
+        response_code = 400
+        error_message = f"Index out of range: {str(exc)}"
+    elif isinstance(exc, NameError):
+        response_code = 400
+        error_message = f"error: {str(exc)}"
+    elif isinstance(exc, FileNotFoundError):
+        response_code = 404
+        error_message = f"File not found: {str(exc)}"
+    elif isinstance(exc, PermissionError):
+        response_code = 403
+        error_message = f"Permission denied: {str(exc)}"
+
+    # Database errors
+    elif isinstance(exc, IntegrityError):
+        response_code = 409
+        error_message = parse_integrity_error(exc)
+    elif isinstance(exc, UndefinedTable):
+        response_code = 409
+        error_message = f"Undefined table: {str(exc)}"
+    elif isinstance(exc, OperationalError):
+        response_code = 408
+        error_message = "Database operation timed out or failed to complete."
+    elif isinstance(exc, ProgrammingError):
+        response_code = 400
+        error_message = "Invalid database query or parameters."
+    elif isinstance(exc, DataError):
+        response_code = 400
+        error_message = "Invalid or out-of-range data provided."
+    elif isinstance(exc, DisconnectionError):
+        response_code = 408
+        error_message = "Database connection was lost."
+    elif isinstance(exc, SQLAlchemyError):
+        response_code = 409
+        error_message = f"Database error: {str(exc)}"
+
+    # Python runtime
+    elif isinstance(exc, SyntaxError):
+        response_code = 400
+        error_message = f"Syntax error: {str(exc)}"
+    elif isinstance(exc, ZeroDivisionError):
+        response_code = 400
+        error_message = "Division by zero is not allowed."
+    elif isinstance(exc, OverflowError):
+        response_code = 400
+        error_message = "Numeric value too large to handle."
+    elif isinstance(exc, RecursionError):
+        response_code = 400
+        error_message = "Too many recursive calls – maximum depth exceeded."
+    elif isinstance(exc, MemoryError):
+        response_code = 429
+        error_message = "Operation could not complete due to resource limits."
+    elif isinstance(exc, TimeoutError):
+        response_code = 408
+        error_message = "The operation timed out."
+    elif isinstance(exc, ConnectionError):
+        response_code = 408
+        error_message = "Failed to connect to the server."
+    elif isinstance(exc, BrokenPipeError):
+        response_code = 409
+        error_message = "Connection was broken during the operation."
+
+    # Validation
+    elif isinstance(exc, ValidationError):
+        return JSONResponse(
+            content={
+                "response_code": 422,
+                "error_message": "Validation failed",
+                "errors": exc.errors(),
+            },
+            status_code=422,
+        )
+    elif isinstance(exc, RequestValidationError):
+        errors = [
+            {"field": ".".join(map(str, err.get("loc", []))), "message": err.get("msg")}
+            for err in exc.errors()
+        ]
+        return JSONResponse(
+            content={
+                "response_code": status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "error_message": "validation error",
+                "errors": errors,
+            },
+            status_code=422,
+        )
+
+    return JSONResponse(
+        status_code=response_code,
+        content={"response_code": response_code, "error_message": error_message},
+    )
+
+
+async def unified_exception_handler(request: Request, exc: Exception):
+    """FastAPI middleware entrypoint."""
+    return handle_exception(exc)
