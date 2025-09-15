@@ -241,59 +241,6 @@ const NodeItem = ({
   }
 };
 
-// Fallback sample data if workspace tree is not available
-const sampleCollections = [
-  {
-    id: 1,
-    name: 'API Testing',
-    type: 'folder',
-    children: [
-      {
-        id: 'folder-1',
-        type: 'folder',
-        name: 'Users API',
-        children: [
-          {
-            id: 'req-1',
-            type: 'file',
-            method: 'GET',
-            name: 'Get All Users',
-            url: 'https://api.example.com/users',
-          },
-          {
-            id: 'req-2',
-            type: 'file',
-            method: 'POST',
-            name: 'Create User',
-            url: 'https://api.example.com/users',
-          },
-        ],
-      },
-      {
-        id: 'folder-2',
-        type: 'folder',
-        name: 'Products API',
-        children: [
-          {
-            id: 'req-3',
-            type: 'file',
-            method: 'GET',
-            name: 'Get All Products',
-            url: 'https://api.example.com/products',
-          },
-        ],
-      },
-      {
-        id: 'req-4',
-        type: 'file',
-        method: 'GET',
-        name: 'Health Check',
-        url: 'https://api.example.com/health',
-      },
-    ],
-  },
-];
-
 export default function CollectionTree({ onSelectRequest }) {
   const {
     activeWorkspace,
@@ -353,7 +300,7 @@ export default function CollectionTree({ onSelectRequest }) {
   // Use workspace tree data (file_tree) if available, otherwise fallback to nodes or sample data
   const rootNodes =
     workspaceTree?.file_tree ||
-    (nodes.length > 0 ? nodes : activeWorkspace ? [] : sampleCollections);
+    (nodes.length > 0 ? nodes : activeWorkspace ? [] : []);
 
   const toggleFolder = folderId => {
     setExpandedFolders(prev =>
@@ -476,13 +423,32 @@ export default function CollectionTree({ onSelectRequest }) {
     if (newItemName.trim() && activeWorkspace) {
       const itemName = newItemName.trim();
 
-      // Directly create the item without confirmation
+      // Helper to update tree from API response and preserve expanded state
+      const handleApiResponse = result => {
+        if (result?.data?.file_tree && typeof setWorkspaceTree === 'function') {
+          setWorkspaceTree({ ...result.data });
+
+          // ✅ preserve all expanded folders AND keep parent open
+          setExpandedFolders(prev => {
+            const expanded = new Set(prev);
+            if (parentFolderId) {
+              expanded.add(parentFolderId);
+            }
+            return [...expanded];
+          });
+        }
+
+        setNewItemName('');
+        setIsCreatingItem(false);
+        setParentFolderId(null);
+      };
+
       if (isCreatingFolder) {
         createFolder({
           name: itemName,
           workspace_id: activeWorkspace.id,
           parent_id: parentFolderId,
-        });
+        }).then(handleApiResponse);
       } else {
         createFile({
           name: itemName,
@@ -490,11 +456,8 @@ export default function CollectionTree({ onSelectRequest }) {
           parent_id: parentFolderId,
           method: newApiMethod,
           url: '',
-        });
+        }).then(handleApiResponse);
       }
-      setNewItemName('');
-      setIsCreatingItem(false);
-      setParentFolderId(null);
     }
   };
 
@@ -553,12 +516,8 @@ export default function CollectionTree({ onSelectRequest }) {
 
   // Helper to force refresh and wait before closing Move/Copy panel
   const refreshAndWait = async () => {
-    if (activeWorkspace) {
-      await refreshWorkspaces();
-      await fetchNodesByWorkspaceId(activeWorkspace.id);
-      // Optionally, add a small delay to ensure UI updates
-      await new Promise(res => setTimeout(res, 200));
-    }
+    // No longer needed: tree is updated from API response after create/move/copy/delete
+    return Promise.resolve();
   };
 
   return (
@@ -697,29 +656,25 @@ export default function CollectionTree({ onSelectRequest }) {
           </div>
         )}
 
-        {(nodeLoading || workspaceLoading) && !rootNodes.length ? (
-          <div className={styles.loadingState}>
-            <p>Loading folders...</p>
-          </div>
-        ) : filteredNodes.length > 0 ? (
-          filteredNodes.map(node => (
-            <NodeItem
-              key={node.id}
-              node={node}
-              expandedFolders={expandedFolders}
-              toggleFolder={toggleFolder}
-              handleDeleteNode={handleDeleteNode}
-              handleSelectRequest={handleSelectRequest}
-              selectedItem={selectedItem}
-              getMethodColor={getMethodColor}
-              handleRenameAction={handleRenameAction}
-              handleMoveCopyAction={handleMoveCopyAction}
-              handleCreateNewItem={handleCreateNewItem}
-              handleEditHeaders={handleEditHeaders}
-              closeAllMenus={menuUpdateTrigger}
-            />
-          ))
-        ) : null}
+        {filteredNodes.length > 0
+          ? filteredNodes.map(node => (
+              <NodeItem
+                key={node.id}
+                node={node}
+                expandedFolders={expandedFolders}
+                toggleFolder={toggleFolder}
+                handleDeleteNode={handleDeleteNode}
+                handleSelectRequest={handleSelectRequest}
+                selectedItem={selectedItem}
+                getMethodColor={getMethodColor}
+                handleRenameAction={handleRenameAction}
+                handleMoveCopyAction={handleMoveCopyAction}
+                handleCreateNewItem={handleCreateNewItem}
+                handleEditHeaders={handleEditHeaders}
+                closeAllMenus={menuUpdateTrigger}
+              />
+            ))
+          : null}
       </div>
 
       {/* Confirmation Modal */}
