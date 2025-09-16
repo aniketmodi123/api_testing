@@ -486,7 +486,6 @@ class HeaderInheritancePreviewResponse(BaseModel):
         from_attributes = True
 
 
-
 # Pydantic schemas for API management
 class ApiCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255, description="API name")
@@ -773,3 +772,15 @@ class NodeCopyRequest(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class ApiExecuteRequest(BaseModel):
+    file_id: int = Field(..., description="File ID containing the API")
+    environment_id: Optional[int] = Field(None, description="Environment ID for variable resolution")
+    method: str = Field("GET", description="HTTP method")
+    url: str = Field(..., description="API endpoint URL")
+    headers: Dict[str, Any] = Field(default_factory=dict, description="Request headers")
+    params: Dict[str, Any] = Field(default_factory=dict, description="Query parameters")
+    body: Any = Field(None, description="Request body")
+    options: Dict[str, Any] = Field(default_factory=dict, description="Additional options")
+    expected: Optional[Dict[str, Any]] = Field(None, description="Expected response criteria for validation")
