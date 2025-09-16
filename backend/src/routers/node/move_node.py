@@ -1,16 +1,13 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
-from models import Node, Workspace, Api
+from models import Node
 from config import get_db
 from schema import NodeCopyRequest
 import logging
-from sqlalchemy.orm import selectinload
-from sqlalchemy import and_
 
-from utils import ExceptionHandler, create_response, get_unique_name, value_correction
+from utils import ExceptionHandler, create_response, get_unique_name, value_correction, get_workspace_tree_response
 from routers.node.copy_node import copy_node_recursive
-from routers.workspace.list_workspace_tree import build_file_tree
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -54,54 +51,10 @@ async def move_node(
         await db.execute(delete(Node).where(Node.id == node_id))
         await db.commit()
 
-        # 5. Fetch the updated workspace and nodes
-        result = await db.execute(
-            select(Workspace)
-            .options(selectinload(Workspace.nodes))
-            .where(Workspace.id == request.target_workspace_id)
-        )
-        workspace = result.scalar_one_or_none()
-        if not workspace:
-            return create_response(206, error_message="Workspace not found after move.")
-
-        apis_dict = {}
-        total_apis = 0
-        total_test_cases = 0
-
-        # Fetch all APIs with test cases for this workspace
-        apis_result = await db.execute(
-            select(Api)
-            .join(Node, Api.file_id == Node.id)
-            .options(selectinload(Api.cases))
-            .where(
-                and_(
-                    Node.workspace_id == request.target_workspace_id,
-                    Api.is_active == True
-                )
-            )
-        )
-        apis = apis_result.scalars().all()
-        for api in apis:
-            if api.file_id not in apis_dict:
-                apis_dict[api.file_id] = []
-            apis_dict[api.file_id].append(api)
-            total_apis += 1
-            total_test_cases += len(api.cases) if api.cases else 0
-
-        # Build file tree
-        file_tree = build_file_tree(workspace.nodes, True, apis_dict) if workspace.nodes else []
-
-        data = {
-            "id": workspace.id,
-            "name": workspace.name,
-            "description": workspace.description,
-            "created_at": workspace.created_at,
-            "file_tree": file_tree,
-            "total_nodes": len(workspace.nodes) if workspace.nodes else 0,
-            "include_apis": True,
-            "total_apis": total_apis,
-            "total_test_cases": total_test_cases
-        }
+        # Use shared workspace tree response function
+        data, err = await get_workspace_tree_response(db, request.target_workspace_id, include_apis=True)
+        if not data:
+            return create_response(206, error_message=err or "Workspace not found after move.")
         message = f"{source_node.type.title()} moved successfully"
         return create_response(200, value_correction(data), message=message)
 

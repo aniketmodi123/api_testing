@@ -208,6 +208,9 @@ export default function RequestPanel({ activeRequest }) {
   // Local cache for folder headers to avoid repeated backend calls
   const [folderHeadersCache, setFolderHeadersCache] = useState(new Map());
 
+  // State for parameters
+  const [params, setParams] = useState([]);
+
   // Function to get folder headers with caching
   const getFolderHeaders = async headerNodeId => {
     if (!headerNodeId) return {};
@@ -354,6 +357,22 @@ export default function RequestPanel({ activeRequest }) {
       } else {
         setValidationSchema(JSON.stringify(defaultValidationSchema, null, 2));
       }
+
+      // Initialize params from activeApi
+      const apiParams = extractValue(activeApi, 'params', {});
+      if (Array.isArray(apiParams)) {
+        setParams(apiParams);
+      } else if (typeof apiParams === 'object') {
+        setParams(
+          Object.entries(apiParams).map(([key, value]) => ({
+            key,
+            value,
+            description: '',
+          }))
+        );
+      } else {
+        setParams([]);
+      }
     } else {
       // No active API, set defaults
       setBodyType('none');
@@ -425,25 +444,32 @@ export default function RequestPanel({ activeRequest }) {
   const [selectedTestCases, setSelectedTestCases] = useState([]);
   const [defaultValidationSchema, setDefaultValidationSchema] = useState({
     status: 200,
-    text_contains: 'success',
-    headers_regex: {
-      'content-type': '^application/json',
-    },
+    text_contains: '',
+    text_contains_any: [],
+    text_regex: '',
+    headers: {},
+    headers_regex: {},
     json: {
       checks: [
-        { path: 'response_code', equals: 200 },
-        { path: 'error_message', absent: true },
-        { path: 'data', present: true },
+        { path: '', equals: null },
+        { path: '', present: true },
+        { path: '', absent: true },
+        { path: '', type: 'string' },
+        { path: '', regex: '' },
+        { path: '', contains: '' },
+        { path: '', length: 0 },
+        { path: '', gt: 0 },
+        { path: '', gte: 0 },
+        { path: '', lt: 0 },
+        { path: '', lte: 0 },
       ],
       either: [
-        {
-          checks: [{ path: 'errors', present: true }],
-        },
-        {
-          checks: [{ path: 'detail', present: true }],
-        },
+        { checks: [{ path: '', present: true }] },
+        { checks: [{ path: '', present: true }] },
       ],
     },
+    _mirror_http_status: true,
+    _require_content_for_error: true,
   });
 
   const handleTestCaseSelection = testCaseId => {
@@ -505,22 +531,19 @@ export default function RequestPanel({ activeRequest }) {
   // Function to directly call the API with current parameters
   const handleDirectApiCall = async () => {
     setIsSending(true);
-
     try {
-      console.log('🚀 Making API call via backend service:', {
-        fileId: selectedNode?.id,
-        environmentId: activeEnvironment?.id,
-        method: method,
-        url: url,
+      // Prepare params from state
+      const paramsObj = {};
+      params.forEach(p => {
+        if (p.key) paramsObj[p.key] = p.value;
       });
-
       const response = await BackendApiCallService.executeApiCall({
         fileId: selectedNode?.id,
         environmentId: activeEnvironment?.id,
         method: method,
         url: url,
         headers: extractValue(activeApi, 'headers', {}),
-        params: extractValue(activeApi, 'params', {}),
+        params: paramsObj,
         body: method !== 'GET' ? normalizeBody(bodyContent, bodyType) : null,
       });
 
@@ -572,8 +595,13 @@ export default function RequestPanel({ activeRequest }) {
   // Function to validate the API using backend validation endpoint
   const handleValidateApi = async () => {
     setIsSending(true);
-
     try {
+      // Prepare params from state
+      const paramsObj = {};
+      params.forEach(p => {
+        if (p.key) paramsObj[p.key] = p.value;
+      });
+
       if (!selectedNode?.id) {
         throw new Error(
           'No API selected. Please select or create an API first.'
@@ -598,7 +626,7 @@ export default function RequestPanel({ activeRequest }) {
           method: method,
           url: url,
           headers: extractValue(activeApi, 'headers', {}),
-          params: extractValue(activeApi, 'params', {}),
+          params: paramsObj,
           body: method !== 'GET' ? normalizeBody(bodyContent, bodyType) : null,
           expected: validationSchema,
         });
@@ -1011,6 +1039,10 @@ export default function RequestPanel({ activeRequest }) {
                 }
 
                 // Prepare data for saving API (works for both create and update)
+                const paramsObj = {};
+                params.forEach(p => {
+                  if (p.key) paramsObj[p.key] = p.value;
+                });
                 const apiData = activeApi
                   ? {
                       // Update existing API
@@ -1018,11 +1050,14 @@ export default function RequestPanel({ activeRequest }) {
                       method: method,
                       endpoint: url,
                       headers: extractValue(activeApi, 'headers', {}),
-                      params: extractValue(activeApi, 'params', {}),
+                      params: paramsObj,
                       body: normalizeBody(bodyContent, bodyType),
                       bodyType: bodyType,
                       extra_meta: {
                         ...extractValue(activeApi, 'extra_meta', {}),
+                        headers: extractValue(activeApi, 'headers', {}),
+                        params: paramsObj,
+                        body: normalizeBody(bodyContent, bodyType),
                         expected: validationSchemaData, // Add validation schema to extra_meta
                       },
                     }
@@ -1034,10 +1069,13 @@ export default function RequestPanel({ activeRequest }) {
                       description: '',
                       is_active: true,
                       headers: {},
-                      params: {},
+                      params: paramsObj,
                       body: normalizeBody(bodyContent, bodyType),
                       bodyType: bodyType,
                       extra_meta: {
+                        headers: {},
+                        params: paramsObj,
+                        body: normalizeBody(bodyContent, bodyType),
                         expected: validationSchemaData, // Add validation schema to extra_meta
                       },
                     };
@@ -1421,35 +1459,85 @@ export default function RequestPanel({ activeRequest }) {
                 <div className={styles.paramValue}>VALUE</div>
                 <div className={styles.paramDescription}>DESCRIPTION</div>
               </div>
-
-              <div className={styles.paramRow}>
-                <div className={styles.paramCheckbox}>
-                  <input type="checkbox" />
+              {params.map((param, idx) => (
+                <div className={styles.paramRow} key={idx}>
+                  <div className={styles.paramCheckbox}>
+                    <input type="checkbox" defaultChecked />
+                  </div>
+                  <div className={styles.paramKey}>
+                    <input
+                      type="text"
+                      value={param.key}
+                      onChange={e => {
+                        const newParams = [...params];
+                        newParams[idx].key = e.target.value;
+                        setParams(newParams);
+                      }}
+                      placeholder="Key"
+                    />
+                  </div>
+                  <div className={styles.paramValue}>
+                    <input
+                      type="text"
+                      value={param.value}
+                      onChange={e => {
+                        const newParams = [...params];
+                        newParams[idx].value = e.target.value;
+                        setParams(newParams);
+                      }}
+                      placeholder="Value"
+                    />
+                  </div>
+                  <div className={styles.paramDescription}>
+                    <input
+                      type="text"
+                      value={param.description}
+                      onChange={e => {
+                        const newParams = [...params];
+                        newParams[idx].description = e.target.value;
+                        setParams(newParams);
+                      }}
+                      placeholder="Description"
+                    />
+                  </div>
                 </div>
-                <div className={styles.paramKey}>
-                  <input type="text" placeholder="Key" />
-                </div>
-                <div className={styles.paramValue}>
-                  <input type="text" placeholder="Value" />
-                </div>
-                <div className={styles.paramDescription}>
-                  <input type="text" placeholder="Description" />
-                </div>
-              </div>
-
-              {/* Empty row for new param */}
+              ))}
+              {/* Empty row for adding new param */}
               <div className={styles.paramRow}>
                 <div className={styles.paramCheckbox}>
                   <input type="checkbox" disabled />
                 </div>
                 <div className={styles.paramKey}>
-                  <input type="text" placeholder="Key" />
+                  <input
+                    type="text"
+                    defaultValue={''}
+                    onBlur={e => {
+                      if (e.target.value) {
+                        setParams([
+                          ...params,
+                          { key: e.target.value, value: '', description: '' },
+                        ]);
+                        e.target.value = '';
+                      }
+                    }}
+                    placeholder="Key"
+                  />
                 </div>
                 <div className={styles.paramValue}>
-                  <input type="text" placeholder="Value" />
+                  <input
+                    type="text"
+                    defaultValue={''}
+                    disabled
+                    placeholder="Value"
+                  />
                 </div>
                 <div className={styles.paramDescription}>
-                  <input type="text" placeholder="Description" />
+                  <input
+                    type="text"
+                    defaultValue={''}
+                    disabled
+                    placeholder="Description"
+                  />
                 </div>
               </div>
             </div>

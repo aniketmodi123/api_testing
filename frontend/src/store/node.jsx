@@ -246,14 +246,14 @@ export function NodeProvider({ children }) {
 
       const result = await nodeService.createFolder(snakeCaseData);
 
-      // Clear the workspace cache to force a refresh on next load
+      // Clear the workspace cache to force a refresh on next load (optional, can keep for consistency)
       const workspaceId = snakeCaseData.workspace_id;
       if (workspaceId) {
         const cacheKey = `workspace_nodes_${workspaceId}`;
         sessionStorage.removeItem(cacheKey);
       }
 
-      setRefreshTrigger(prev => prev + 1); // Trigger refresh
+      // Do NOT trigger refresh here; rely on API response for UI update
       return result;
     } catch (err) {
       console.error('Error creating folder:', err);
@@ -283,14 +283,14 @@ export function NodeProvider({ children }) {
 
       const result = await nodeService.createFile(snakeCaseData);
 
-      // Clear the workspace cache to force a refresh on next load
+      // Clear the workspace cache to force a refresh on next load (optional, can keep for consistency)
       const workspaceId = snakeCaseData.workspace_id;
       if (workspaceId) {
         const cacheKey = `workspace_nodes_${workspaceId}`;
         sessionStorage.removeItem(cacheKey);
       }
 
-      setRefreshTrigger(prev => prev + 1); // Trigger refresh
+      // Do NOT trigger refresh here; rely on API response for UI update
       return result;
     } catch (err) {
       console.error('Error creating file:', err);

@@ -5,7 +5,6 @@ import { EnvironmentManager } from '../../components/EnvironmentManager';
 import EnvironmentDetail from '../../components/EnvironmentManager/EnvironmentDetail';
 import EnvironmentForm from '../../components/EnvironmentManager/EnvironmentForm';
 import VariableModal from '../../components/EnvironmentManager/VariableModal';
-import LookingLoader from '../../components/LookingLoader/LookingLoader';
 import RequestPanel from '../../components/RequestPanel/RequestPanel';
 import Sidebar from '../../components/Sidebar/Sidebar';
 import { useEnvironment } from '../../store/environment';
@@ -50,9 +49,6 @@ export default function Home() {
     createEnvironmentFromTemplate,
     createEnvironmentWithDefaults,
   } = useEnvironment();
-
-  // Block UI until both workspace and node data are loaded
-  const initialLoading = workspaceLoading || nodeLoading;
 
   useEffect(() => {
     setShouldLoadWorkspaces(true);
@@ -197,10 +193,6 @@ export default function Home() {
       document.body.style.userSelect = '';
     };
   }, [isResizing]);
-
-  if (initialLoading) {
-    return <LookingLoader overlay text="Loading..." />;
-  }
 
   return (
     <div className={styles.homeContainer}>

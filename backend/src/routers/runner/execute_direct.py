@@ -5,6 +5,7 @@ import httpx
 import time
 import json
 
+from schema import ApiExecuteRequest
 from validator import evaluate_expect
 
 from utils import (
@@ -97,44 +98,6 @@ async def test_url_connectivity(
         return handle_http_error(e, url=url, method="GET", headers={})
 
 
-class ApiExecuteRequest(BaseModel):
-    file_id: int = Field(..., description="File ID containing the API")
-    environment_id: Optional[int] = Field(None, description="Environment ID for variable resolution")
-    method: str = Field("GET", description="HTTP method")
-    url: str = Field(..., description="API endpoint URL")
-    headers: Dict[str, Any] = Field(default_factory=dict, description="Request headers")
-    params: Dict[str, Any] = Field(default_factory=dict, description="Query parameters")
-    body: Any = Field(None, description="Request body")
-    options: Dict[str, Any] = Field(default_factory=dict, description="Additional options")
-    expected: Optional[Dict[str, Any]] = Field(None, description="Expected response criteria for validation")
-
-
-async def get_folder_headers(db: AsyncSession, node_id: int) -> Dict[str, str]:
-    """Get headers from folder hierarchy"""
-    try:
-        # Get the node (file or folder)
-        node_query = select(Node).where(Node.id == node_id)
-        node_result = await db.execute(node_query)
-        node = node_result.scalar_one_or_none()
-
-        if not node:
-            return {}
-
-        # If it's a file, get the parent folder ID
-        folder_id = node.parent_id if node.parent_id else node_id
-
-        # Get folder headers from Header table
-        header_query = select(Header).where(Header.folder_id == folder_id)
-        header_result = await db.execute(header_query)
-        header_record = header_result.scalar_one_or_none()
-
-        if header_record and header_record.content:
-            return header_record.content
-
-        return {}
-    except Exception as e:
-        print(f"Error getting folder headers: {e}")
-        return {}
 
 
 @router.post("/execute-direct")
@@ -188,12 +151,15 @@ async def execute_api_direct(
             if active_environment:
                 env_variables = await get_environment_variables(active_environment.id)
 
-        # 2. Get folder headers
-        folder_headers = await get_folder_headers(db, request.file_id)
+        # 2. Get merged headers using get_headers (includes parent folders and file)
+        from config import get_headers
+        folder_path, folder_ids, headers_map, merge_result = await get_headers(db, request.file_id)
+        merged_headers = merge_result.get("merged_headers", {})
+
 
         # 3. Resolve variables in all request parts
         resolved_url = replace_variables_in_text(request.url, env_variables)
-        resolved_headers = replace_variables_in_dict(request.headers, env_variables)
+        resolved_headers = replace_variables_in_dict(merged_headers, env_variables)
         resolved_params = replace_variables_in_dict(request.params, env_variables)
         resolved_body = None
 
@@ -207,12 +173,13 @@ async def execute_api_direct(
             else:
                 resolved_body = request.body
 
-        # 4. Merge headers (folder + request + defaults)
+        # 4. Merge headers (merged + request + defaults)
+        # Use replace_variables_in_dict from utils for request.headers
         final_headers = {
             'Content-Type': 'application/json',
             'User-Agent': 'API-Testing-Tool/1.0',
-            **folder_headers,  # Folder headers (lowest priority)
-            **resolved_headers,  # Request headers (highest priority)
+            **resolved_headers,  # Merged headers from get_headers (lowest priority)
+            **replace_variables_in_dict(request.headers, env_variables),  # Request headers (highest priority)
         }
 
         # Add ngrok headers if needed
@@ -287,7 +254,7 @@ async def execute_api_direct(
                 "resolved_url": final_url,
                 "resolved_headers": final_headers,
                 "variables_used": env_variables,
-                "folder_headers": folder_headers,
+                # "folder_headers": folder_headers,  # Removed: not defined, merged headers are in resolved_headers
                 "request_details": {
                     "method": request.method.upper(),
                     "original_url": request.url,
@@ -305,7 +272,6 @@ async def execute_api_direct(
             method=request.method.upper(),
             headers=final_headers if 'final_headers' in locals() else request.headers
         )
-
     except Exception as e:
         print(f"Error executing API: {e}")
         return ExceptionHandler(e)

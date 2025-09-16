@@ -16,7 +16,8 @@ from schema import (
 from utils import (
     ExceptionHandler,
     create_response,
-    value_correction
+    value_correction,
+    get_workspace_tree_response
 )
 
 router = APIRouter()
@@ -75,17 +76,13 @@ async def update_node(
 
         await db.commit()
         await db.refresh(node)
-        data = {
-            "id": node.id,
-            "workspace_id": node.workspace_id,
-            "name": node.name,
-            "type": node.type,
-            "parent_id": node.parent_id,
-            "created_at": str(node.created_at),
-            "children": []
-        }
 
-        return create_response(200, value_correction(data))
+        # Use shared workspace tree response function
+        data, err = await get_workspace_tree_response(db, node.workspace_id, include_apis=True)
+        if not data:
+            return create_response(206, error_message=err or "Workspace not found after update.")
+        message = f"{node.type.title()} renamed/updated successfully"
+        return create_response(200, value_correction(data), message=message)
 
     except Exception as e:
         await db.rollback()
