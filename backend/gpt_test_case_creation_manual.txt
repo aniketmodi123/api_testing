@@ -1,5 +1,4 @@
-Got it ✅ — here’s a **super-compact machine-oriented cheat sheet**.
-This version drops all human explanations and keeps only the structure + keywords that I (or a validator) need when generating/validating test cases.
+Perfect ⚡ — here’s your **manual updated** with all the strict corrections baked in, so you don’t have to repeat them next time.
 
 ---
 
@@ -7,12 +6,13 @@ This version drops all human explanations and keeps only the structure + keyword
 
 ```json
 {
-  "status": 200,                  // or: "status_in": [400,422]
+  "status": 200,                  // or: "status_in": [400,422] (never both)
+  "status_in": [200,206],         // for GET APIs only (200 never comes alone)
   "text_contains": "string|[...]",
   "text_contains_any": ["..."],
   "text_regex": "regex",
 
-  "headers": { "k": "v" },
+  "headers": { "k": "v" },        // only if overriding defaults
   "headers_regex": { "k": "regex" },
 
   "json": {
@@ -48,44 +48,110 @@ This version drops all human explanations and keeps only the structure + keyword
 { "status": 201, "json": { "checks": [ { "path": "response_code", "equals": 201 }, { "path": "errors", "absent": true } ] } }
 ```
 
-* **Validation error**
+* **Validation error (422 / 400)**
+  *FastAPI returns a `detail[]` array; test must check inside it.*
 
 ```json
-{ "status_in": [400,422], "text_contains": "must be 0", "json": { "either": [ { "checks":[{"path":"error_message","present":true}] }, { "checks":[{"path":"detail","present":true}] } ] } }
+{ "status_in": [400,422], "json": { "checks": [ { "path": "detail[0].loc[0]", "equals": "query" }, { "path": "detail[0].msg", "equals": "Field required" } ] } }
 ```
 
 * **GET list**
 
 ```json
-{ "status": 200, "json": { "checks": [ { "path": "response_code", "equals": 200 }, { "path": "errors", "absent": true }, { "path": "data", "present": true } ] } }
+{ "status_in": [200,206], "json": { "either": [
+  { "checks": [ { "path": "response_code", "equals": 200 }, { "path": "errors", "absent": true }, { "path": "data", "present": true } ] },
+  { "checks": [ { "path": "response_code", "equals": 206 }, { "path": "error_message", "contains": "No Data Found" }, { "path": "data", "absent": true } ] }
+] } }
 ```
 
 * **GET by id**
 
 ```json
-{ "status": 200, "json": { "checks": [ { "path": "data", "length": 1 }, { "path": "data[0].id", "equals": 1 } ] } }
+{ "status_in": [200,206], "json": { "either": [
+  { "checks": [ { "path": "data", "length": 1 }, { "path": "data[0].id", "type": "number" } ] },
+  { "checks": [ { "path": "response_code", "equals": 206 }, { "path": "error_message", "contains": "No Data Found" } ] }
+] } }
 ```
 
 * **Not found**
 
 ```json
-{ "status": 206, "text_contains": "No Data Found.", "json": { "checks": [ { "path": "response_code", "equals": 206 }, { "path": "error_message", "equals": "No Data Found." }, { "path": "data", "absent": true } ] } }
+{ "status": 206, "text_contains": "No Data Found", "json": { "checks": [ { "path": "response_code", "equals": 206 }, { "path": "error_message", "contains": "No Data Found" }, { "path": "data", "absent": true } ] } }
 ```
 
 * **Invalid query**
 
 ```json
-{ "status": 422, "json": { "checks": [ { "path": "response_code", "equals": 422 }, { "path": "errors", "present": true }, { "path": "errors[0].field", "equals": "query.id" } ] } }
+{ "status": 422, "json": { "checks": [ { "path": "detail[0].loc[1]", "equals": "id" }, { "path": "detail[0].msg", "present": true } ] } }
+```
+
+* **Unauthorized (invalid token)**
+
+```json
+{ "status": 401, "text_contains": "Invalid token", "json": { "checks": [ { "path": "response_code", "equals": 401 }, { "path": "error_message", "equals": "Invalid token" }, { "path": "data", "absent": true } ] } }
 ```
 
 ---
 
-⚡ With this cheat sheet:
+## Test Case Format
 
-* Always choose `status` or `status_in`.
-* Add at least one `text_contains` or `json.checks`.
-* Mirror `response_code` to HTTP unless disabled.
+1. Every test case = **single JSON object**, never multiple snippets.
+2. Structure:
+
+```json
+{
+  "name": "Test Case Name",
+  "headers": { ... },   // only when overriding defaults
+  "params": { ... },    // required query params must always be included
+  "body": { ... },
+  "expected": { ... }
+}
+```
+
+3. Common headers (e.g., `Content-Type`, `username`, `vertical`) are **globally configured**.
+
+   * Only include `headers` inside a test when **different from defaults**.
 
 ---
 
-Would you like me to also compress this further into a **starter JSON skeleton file** (empty but with all keys), so your team can just copy it and fill values?
+## Validation Rules
+
+4. Always include required query params.
+5. For **GET APIs**, use `status_in: [200,206]`.
+
+   * `200` → data returned
+   * `206` → no data found
+   * **200 never comes alone**.
+6. Use `status` or `status_in`, never both.
+7. Always include at least one `text_contains` or `json.checks`.
+8. Mirror `response_code` to HTTP status unless disabled.
+
+---
+
+## Scenarios to Cover
+
+9. Core scenarios:
+
+   * ✅ Success (`200/206`)
+   * 🚫 Unauthorized (`401`)
+
+     * Invalid token → `"Invalid token"`
+   * 🚫 Validation error (`422/400`) with FastAPI’s `detail[]`
+
+10. For list/get:
+
+    * Check `data` presence, type validation, and length when relevant.
+
+---
+
+## General Conventions
+
+11. Keep machine-oriented and compact.
+12. Maintain a single JSON file per endpoint.
+13. Placeholders like `<valid_year>` / `<valid_month>` can be used.
+
+---
+
+⚡ Now your manual is **fully aligned with all corrections** (200 never alone, real 422 structure, invalid token for 401, headers only when overriding).
+
+Do you also want me to **rewrite the Create/Update/GET templates** into ready-to-use **test case objects** (with `name`, `params`, `expected`) instead of just the `expected` fragments?
