@@ -41,7 +41,7 @@ createRoot(document.getElementById('root')).render(
                 >
                   <Routes>
                     <Route
-                      path="/sign-in"
+                      path="sign-in"
                       element={
                         <App>
                           <SignIn />
@@ -49,7 +49,7 @@ createRoot(document.getElementById('root')).render(
                       }
                     />
                     <Route
-                      path="/sign-up"
+                      path="sign-up"
                       element={
                         <App>
                           <SignUp />
@@ -57,16 +57,17 @@ createRoot(document.getElementById('root')).render(
                       }
                     />
                     <Route
-                      path="/forgot-password"
+                      path="forgot-password"
                       element={
                         <App>
                           <ForgotPassword />
                         </App>
                       }
                     />
+
                     <Route element={<AuthGuard />}>
                       <Route
-                        path="/"
+                        path=""
                         element={
                           <App>
                             <Home />
@@ -74,7 +75,7 @@ createRoot(document.getElementById('root')).render(
                         }
                       />
                       <Route
-                        path="/profile"
+                        path="profile"
                         element={
                           <App>
                             <SimpleUserProfile />
@@ -82,7 +83,7 @@ createRoot(document.getElementById('root')).render(
                         }
                       />
                       <Route
-                        path="/change-password"
+                        path="change-password"
                         element={
                           <App>
                             <ChangePassword />
@@ -90,7 +91,7 @@ createRoot(document.getElementById('root')).render(
                         }
                       />
                       <Route
-                        path="/delete-account"
+                        path="delete-account"
                         element={
                           <App>
                             <DeleteAccount />
@@ -98,7 +99,7 @@ createRoot(document.getElementById('root')).render(
                         }
                       />
                       <Route
-                        path="/update-profile"
+                        path="update-profile"
                         element={
                           <App>
                             <UpdateProfile />
