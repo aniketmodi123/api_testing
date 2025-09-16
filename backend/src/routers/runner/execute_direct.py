@@ -1,6 +1,5 @@
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 from fastapi import APIRouter, Depends, Header as FastAPIHeader, HTTPException
-from pydantic import BaseModel, Field
 import httpx
 import time
 import json
@@ -25,7 +24,7 @@ from config import (
     get_user_by_username,
     verify_node_ownership
 )
-from models import Environment, Node, Header
+from models import Environment, Node
 
 def resolve_docker_url(url: str) -> str:
     """
