@@ -385,11 +385,6 @@ export default function BulkCollectionTree({
 
         traverseAndExpand(response.data.file_tree);
         setExpandedFolders(expandedIds);
-
-        console.log('Loaded bulk testing tree:', response.data);
-        console.log('Total APIs:', response.data.total_apis);
-        console.log('Total test cases:', response.data.total_test_cases);
-        console.log('Auto-expanded folders:', expandedIds);
       }
     } catch (error) {
       console.error('Failed to load bulk testing tree:', error);

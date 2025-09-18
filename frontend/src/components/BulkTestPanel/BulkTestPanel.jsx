@@ -1,15 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import BulkCollectionTree from './BulkTestPanel/BulkCollectionTree.jsx';
-import BulkControls from './BulkTestPanel/BulkControls.jsx';
-import BulkResults from './BulkTestPanel/BulkResults.jsx';
-import BulkScheduler from './BulkTestPanel/BulkScheduler.jsx';
-import BulkSelection from './BulkTestPanel/BulkSelection.jsx';
-import styles from './BulkTestPanel/BulkTestPanel.module.css';
-import LookingLoader from './LookingLoader/LookingLoader';
+import { apiService } from '../../services/apiService.js';
+import { useAuth } from '../../store/session.jsx';
+import LookingLoader from '../LookingLoader/LookingLoader.jsx';
+import BulkCollectionTree from './BulkCollectionTree.jsx';
+import BulkControls from './BulkControls.jsx';
+import BulkResults from './BulkResults.jsx';
+import BulkScheduler from './BulkScheduler.jsx';
+import BulkSelection from './BulkSelection.jsx';
+import styles from './BulkTestPanel.module.css';
 
 export default function BulkTestPanel({ onSelectRequest }) {
   const [selectedItems, setSelectedItems] = useState([]);
   const [testScope, setTestScope] = useState('selected'); // 'selected', 'folder', 'all'
+  // Removed selectedType, use testScope for API type
   const [isRunning, setIsRunning] = useState(false);
   const [results, setResults] = useState(null);
   const [showScheduler, setShowScheduler] = useState(false);
@@ -490,6 +493,7 @@ export default function BulkTestPanel({ onSelectRequest }) {
   }, []);
 
   // Run bulk tests
+  const auth = useAuth();
   const handleRunTests = useCallback(async () => {
     if (selectedItems.length === 0 && testScope === 'selected') {
       alert('Please select APIs or test cases to run');
@@ -500,38 +504,20 @@ export default function BulkTestPanel({ onSelectRequest }) {
     setResults(null);
 
     try {
-      // TODO: Replace with actual API call to backend
-      const mockResults = {
-        summary: {
-          total: selectedItems.length * 2,
-          passed: Math.floor(selectedItems.length * 1.7),
-          failed: Math.ceil(selectedItems.length * 0.3),
-          pass_rate: 85,
-          duration: '2.3s',
-        },
-        details: selectedItems.map((item, index) => ({
-          id: `${item.id}_${index}`,
-          name: item.name,
-          status: Math.random() > 0.3 ? 'passed' : 'failed',
-          duration: `${Math.floor(Math.random() * 500)}ms`,
-          response: {
-            status: Math.random() > 0.3 ? 200 : 500,
-            data: { message: 'Mock response' },
-          },
-        })),
-      };
-
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      setResults(mockResults);
+      const username = auth?.username || '';
+      const response = await apiService.bulkRunCases(
+        testScope,
+        selectedApiCases,
+        username
+      );
+      setResults(response.data || response);
     } catch (error) {
       console.error('Bulk test failed:', error);
       alert('Failed to run bulk tests');
     } finally {
       setIsRunning(false);
     }
-  }, [selectedItems, testScope]);
+  }, [selectedApiCases, testScope, auth]);
 
   // Schedule tests
   const handleScheduleTests = useCallback(

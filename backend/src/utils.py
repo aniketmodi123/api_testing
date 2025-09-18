@@ -849,3 +849,53 @@ async def get_workspace_tree_response(db, workspace_id, include_apis=True):
         "total_test_cases": total_test_cases
     }
     return data, None
+
+
+def resolve_variables_in_text(text: str, variables: dict) -> str:
+    """Replace {{variable_name}} patterns with actual values"""
+    if not text or not variables:
+        return text
+
+    def replace_variable(match):
+        var_name = match.group(1)
+        return str(variables.get(var_name, match.group(0)))  # Keep original if not found
+
+    pattern = r'\{\{([a-zA-Z_][a-zA-Z0-9_\-]*)\}\}'
+    return re.sub(pattern, replace_variable, str(text))
+
+
+def resolve_variables_in_dict(data: dict, variables: dict) -> dict:
+    """Recursively resolve variables in dictionary values"""
+    if not data or not variables:
+        return data
+
+    resolved_data = {}
+    for key, value in data.items():
+        if isinstance(value, str):
+            resolved_data[key] = resolve_variables_in_text(value, variables)
+        elif isinstance(value, dict):
+            resolved_data[key] = resolve_variables_in_dict(value, variables)
+        elif isinstance(value, list):
+            resolved_data[key] = resolve_variables_in_list(value, variables)
+        else:
+            resolved_data[key] = value
+    return resolved_data
+
+
+def resolve_variables_in_list(data: list, variables: dict) -> list:
+    """Recursively resolve variables in list items"""
+    if not data or not variables:
+        return data
+
+    resolved_data = []
+    for item in data:
+        if isinstance(item, str):
+            resolved_data.append(resolve_variables_in_text(item, variables))
+        elif isinstance(item, dict):
+            resolved_data.append(resolve_variables_in_dict(item, variables))
+        elif isinstance(item, list):
+            resolved_data.append(resolve_variables_in_list(item, variables))
+        else:
+            resolved_data.append(item)
+    return resolved_data
+

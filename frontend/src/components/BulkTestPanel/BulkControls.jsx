@@ -1,4 +1,5 @@
 import styles from './BulkTestPanel.module.css';
+import CustomSelect from './CustomSelect';
 
 export default function BulkControls({
   testScope,
@@ -13,21 +14,22 @@ export default function BulkControls({
       <div className={styles.controlsHeader}>
         <h3>🧪 Bulk Test Controls</h3>
         <div className={styles.selectedInfo}>
-          {selectedCount} item{selectedCount !== 1 ? 's' : ''} selected
+          {/* Only count selected files (APIs), not folders */}
+          {selectedCount} API{selectedCount !== 1 ? 's' : ''} selected
         </div>
       </div>
 
       <div className={styles.scopeControls}>
         <label htmlFor="testScope">Test Scope:</label>
-        <select
-          id="testScope"
+        <CustomSelect
+          options={[
+            { value: 'selected', label: 'Selected Items' },
+            { value: 'api', label: 'Selected Api' },
+          ]}
           value={testScope}
-          onChange={e => onScopeChange(e.target.value)}
+          onChange={onScopeChange}
           disabled={isRunning}
-        >
-          <option value="selected">Selected Items</option>
-          <option value="api">Selected Api</option>
-        </select>
+        />
       </div>
 
       <div className={styles.actionButtons}>

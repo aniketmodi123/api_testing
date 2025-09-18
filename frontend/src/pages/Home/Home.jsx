@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import BulkTestPanel from '../../components/BulkTestPanel.jsx';
+import BulkTestPanel from '../../components/BulkTestPanel/BulkTestPanel.jsx';
 import CollectionTree from '../../components/CollectionTree/CollectionTree';
 import { EnvironmentManager } from '../../components/EnvironmentManager';
 import EnvironmentDetail from '../../components/EnvironmentManager/EnvironmentDetail';

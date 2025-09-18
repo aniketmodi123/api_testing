@@ -764,4 +764,42 @@ export const apiService = {
       data: Object.values(buckets),
     };
   },
+
+  /**
+   * Run bulk test cases using backend bulk_run_cases API
+   * @param {Array} apis - Array of API/case objects (see backend BulkRunnerReq)
+   * @param {string} username - Username for header
+   * @returns {Promise} Promise with bulk test results
+   */
+  async bulkRunCases(type, apis, username) {
+    try {
+      const response = await api.post(
+        '/bulk_run_cases',
+        { type, apis },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            username: username,
+          },
+        }
+      );
+      // Consistent response handling like runTest
+      const payload = response?.data;
+      if (Array.isArray(payload)) {
+        return {
+          data: payload,
+          status: 200,
+          message: 'Bulk test executed',
+        };
+      }
+      return {
+        data: payload?.data ?? [],
+        status: payload?.response_code ?? 200,
+        message: payload?.message || 'Bulk test executed successfully',
+      };
+    } catch (error) {
+      console.error('Error running bulk test cases:', error);
+      throw error;
+    }
+  },
 };

@@ -166,12 +166,32 @@
 }
 
 .scopeControls select {
-  padding: 3px 6px;
+  padding: 8px 16px;
   border: 1px solid var(--border);
-  border-radius: 3px;
+  border-radius: 8px;
   background-color: var(--background);
   color: var(--text);
-  font-size: 12px;
+  font-size: 15px;
+  font-weight: 500;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
+}
+
+.scopeControls select:focus {
+  border-color: var(--primary);
+  outline: none;
+  box-shadow: 0 0 0 2px var(--primaryShadow);
+}
+
+.scopeControls select option {
+  background-color: var(--background);
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 500;
+  padding: 8px 16px;
+  border: none;
 }
 
 .actionButtons {
@@ -673,6 +693,74 @@
   font-size: 12px;
   font-style: italic;
   text-align: center;
+}
+
+/* Custom Select Styles */
+.customSelectWrapper {
+  position: relative;
+  display: inline-block;
+  min-width: 120px;
+}
+
+.customSelectButton {
+  width: 100%;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background-color: var(--background);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
+}
+
+.customSelectButton:focus {
+  border-color: var(--primary);
+  outline: none;
+  box-shadow: 0 0 0 2px var(--primaryShadow);
+}
+
+.customSelectArrow {
+  margin-left: 8px;
+  font-size: 12px;
+}
+
+.customSelectDropdown {
+  position: absolute;
+  top: 110%;
+  left: 0;
+  right: 0;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  z-index: 100;
+  padding: 4px 0;
+}
+
+.customSelectOption {
+  padding: 6px 12px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.customSelectOption:hover {
+  background: var(--primary);
+  color: #fff;
+}
+
+.customSelectOption.selected {
+  background: var(--primary);
+  color: #fff;
 }
 
 /* Responsive */

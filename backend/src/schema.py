@@ -1,7 +1,6 @@
-# schemas.py
-from pydantic import BaseModel, Field, validator, EmailStr
-from typing import Optional, Dict, Any
-
+from pydantic import BaseModel, Field, validator, EmailStr, root_validator, ValidationError
+from typing import Optional, List, Dict, Any, Literal
+from enum import Enum
 
 class PaginationRes(BaseModel):
     page: int
@@ -53,8 +52,6 @@ class ResetPasswordRequest(BaseModel):
     otp_code: str = Field(..., min_length=6, max_length=6, description="6-digit OTP code")
     new_password: str = Field(..., min_length=8, description="New password (minimum 8 characters)")
 
-from pydantic import BaseModel, Field, validator
-from typing import Optional, List, Any
 
 
 # Request schemas
@@ -141,8 +138,6 @@ class ApiResponse(BaseModel):
 
 # Node Management Schemas - Add these to your existing schemas.py
 
-from pydantic import BaseModel, Field, validator
-from typing import Optional, List, Any, Literal
 
 
 # Node Request Schemas
@@ -243,7 +238,7 @@ class NodeWithPathResponse(BaseModel):
     type: str
     parent_id: Optional[int] = None
     created_at: Any
-    path: List[NodePathResponse] = []  # Breadcrumb path from root to current node
+    path: List[NodePathResponse] = []
     children: List[NodeBasicResponse] = []
 
     class Config:
@@ -252,8 +247,7 @@ class NodeWithPathResponse(BaseModel):
 
 # Header Management Schemas - Add these to your existing schemas.py
 
-from pydantic import BaseModel, Field, validator
-from typing import Optional, List, Any, Dict
+
 
 
 # ===========================================
@@ -402,8 +396,6 @@ class HeaderSearchRequest(BaseModel):
 
 # Add these schemas to your existing schemas.py
 
-from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
 
 
 # ===========================================
@@ -784,3 +776,30 @@ class ApiExecuteRequest(BaseModel):
     body: Any = Field(None, description="Request body")
     options: Dict[str, Any] = Field(default_factory=dict, description="Additional options")
     expected: Optional[Dict[str, Any]] = Field(None, description="Expected response criteria for validation")
+
+
+class RunType(str, Enum):
+    selected = "selected"
+    api = "api"
+
+class BulkRunnerReq(BaseModel):
+    type: RunType
+    apis: list
+
+    @root_validator(pre=True)
+    def validate_bulk_req(cls, values):
+        apis = values.get('apis')
+        if not isinstance(apis, list) or not apis:
+            raise ValidationError('apis must be a non-empty list')
+        # Check if all are dicts with file_id (and optional cases)
+        if all(isinstance(a, dict) and 'file_id' in a for a in apis):
+            for a in apis:
+                if not isinstance(a['file_id'], int):
+                    raise ValidationError('file_id must be int')
+                if 'cases' in a and not (isinstance(a['cases'], list) or a['cases'] is None):
+                    raise ValidationError('cases must be a list or None')
+            return values
+        # Or all are ints
+        if all(isinstance(a, int) for a in apis):
+            return values
+        raise ValidationError('apis must be a list of dicts with file_id (and optional cases) or a list of ints')

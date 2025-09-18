@@ -1,16 +1,13 @@
-from sqlalchemy.exc import IntegrityError
 import time
-from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from pydantic import ValidationError
 import pytz
-from fastapi import FastAPI, HTTPException, Request, Response, status
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from config import check_db_connection, engine
 from exception_handler import unified_exception_handler
 from models import Base
 from datetime import datetime
-from routers.runner import run_case, execute_direct
+from routers.runner import run_case, execute_direct, bulk_run_cases
 from routers.workspace import list_workspace_tree
 from routers.sso import create_user, forget_password, login, logout, otp_generation, update_user, delete_user, user_profile
 from routers.workspace import create_workspace, update_workspace, list_workspace, list_workspace_tree,delete_workspace
@@ -174,3 +171,4 @@ app.include_router(delete_variables.router, prefix="/environment", tags=["Variab
 #runner
 app.include_router(run_case.router, tags=["Runner"])
 app.include_router(execute_direct.router, prefix="/api", tags=["API Execution"])
+app.include_router(bulk_run_cases.router, tags=["Runner"])
