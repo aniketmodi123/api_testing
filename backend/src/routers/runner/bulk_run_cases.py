@@ -4,18 +4,19 @@ import asyncio
 from typing import Union
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+
 from config import get_db, get_user_by_username, get_headers
 from models import Api, Workspace, Node
 from routers.runner.runner import resolve_variables, run_from_list_api
 from schema import BulkRunnerApi, BulkRunnerSelected
-from utils import build_file_tree, create_response, ExceptionHandler, get_workspace_variables, value_correction
-from sqlalchemy import select
-from sqlalchemy.orm import selectinload
+from utils import create_response, ExceptionHandler, get_workspace_variables, value_correction
 
 router = APIRouter()
 
 
-async def verify_nodes(db: AsyncSession, node_id: list, user_id: int):
+async def verify_nodes(db: AsyncSession, node_id: list[int], user_id: int):
     result = await db.execute(
         select(Node)
         .join(Workspace, Node.workspace_id == Workspace.id)
@@ -29,137 +30,129 @@ async def bulk_run_cases(
     req: Union[BulkRunnerApi, BulkRunnerSelected],
     username: str = Header(...),
     workspace_id: int = Header(...),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     try:
+        # ---- Verify User ----
         user = await get_user_by_username(db, username)
         if not user:
             return create_response(400, error_message="User not found")
 
-        file_ids = []
-        api_requests = {}
-
+        # ---- Collect File IDs ----
+        file_ids, api_requests = [], {}
         if req.type == "api":
             file_ids = req.apis
-            for file_id in req.apis:
-                api_requests[file_id] = None
+            api_requests = {fid: None for fid in req.apis}
         elif req.type == "selected":
-            file_ids = [api.file_id for api in req.apis] # type: ignore
-            for api in req.apis:
-                api_requests[api.file_id] = getattr(api, "cases", None) # type: ignore
+            file_ids = [api.file_id for api in req.apis]  # type: ignore
+            api_requests = {api.file_id: api.cases for api in req.apis}  # type: ignore
 
-        file_node = await verify_nodes(db, file_ids, user.id)
-        if not file_node:
+        file_nodes = await verify_nodes(db, file_ids, user.id)
+        if not file_nodes:
             return create_response(206, error_message="File not found or access denied")
 
+        # ---- Batch Query APIs for all files ----
+        query = select(Api).where(Api.file_id.in_(file_ids)).options(selectinload(Api.cases))
+        apis = (await db.execute(query)).scalars().all()
+        apis_by_file = {api.file_id: api for api in apis}
+
+        # ---- Build Run Records ----
         record = {}
-        for file in file_node:
-            cases = api_requests.get(file.id, None)
+        for file in file_nodes:
             if file.type != "file":
                 continue
 
-            query = select(Api).where(Api.file_id == file.id).options(selectinload(Api.cases))
-            result = await db.execute(query)
-            api = result.scalar_one_or_none()
+            api = apis_by_file.get(file.id)
             if not api:
-                return create_response(206, error_message="No API found in this file")
+                continue
 
             folder_path, folder_ids, headers_map, merge_result = await get_headers(db, api.file_id)
             if not folder_path:
-                return create_response(206, error_message="Folder not found")
+                continue
 
             workspace_variables = await get_workspace_variables(db, file.workspace_id)
-
             resolved_endpoint = resolve_variables(api.endpoint, workspace_variables)
             resolved_headers = merge_result.get("merged_headers", {})
             resolved_extra_meta = resolve_variables(api.extra_meta or {}, workspace_variables)
 
-            data = {
-                "id": api.id,
-                "file_id": api.file_id,
-                "name": api.name,
-                "method": api.method,
-                "endpoint": resolved_endpoint,
-                "headers": resolved_headers,
-                "description": api.description,
-                "is_active": api.is_active,
-                "extra_meta": resolved_extra_meta,
-            }
-
             cases_data = []
+            selected_cases = api_requests.get(file.id)
             for case in api.cases:
-                if cases and case.id not in cases:
+                if selected_cases and case.id not in selected_cases:
                     continue
 
-                case_headers = case.headers or {}
-                merged_headers = {**resolved_headers, **case_headers}
-
-                resolved_case_headers = resolve_variables(merged_headers, workspace_variables)
-                resolved_params = resolve_variables(case.params or {}, workspace_variables)
-                resolved_body = resolve_variables(case.body, workspace_variables)
-
+                merged_headers = {**resolved_headers, **(case.headers or {})}
                 cases_data.append({
                     "id": case.id,
                     "name": case.name,
-                    "headers": resolved_case_headers,
-                    "params": resolved_params,
-                    "body": resolved_body,
+                    "headers": resolve_variables(merged_headers, workspace_variables),
+                    "params": resolve_variables(case.params or {}, workspace_variables),
+                    "body": resolve_variables(case.body, workspace_variables),
                     "expected": case.expected,
                     "created_at": case.created_at
                 })
 
-            if not cases_data:
-                return create_response(206, error_message="No test cases found")
+            if cases_data:
+                record[file.id] = {
+                    "id": api.id,
+                    "file_id": api.file_id,
+                    "name": api.name,
+                    "method": api.method,
+                    "endpoint": resolved_endpoint,
+                    "headers": resolved_headers,
+                    "description": api.description,
+                    "is_active": api.is_active,
+                    "extra_meta": resolved_extra_meta,
+                    "test_cases": cases_data,
+                    "total_cases": len(cases_data),
+                }
 
-            data["test_cases"] = cases_data
-            data["total_cases"] = len(cases_data)
-            record[file.id] = data
-
+        # ---- Run APIs concurrently ----
         async def run_api(file_id, data):
-            result = await run_from_list_api(data)
-            return file_id, result
+            return file_id, await run_from_list_api(data)
 
-        tasks = [run_api(file_id, data) for file_id, data in record.items()]
-        results = await asyncio.gather(*tasks)
-        results_dict = {file_id: result for file_id, result in results}
+        results = await asyncio.gather(*[run_api(fid, data) for fid, data in record.items()])
+        results_dict = {fid: result for fid, result in results}
 
-
+        # ---- Fetch Workspace and Nodes ----
         result = await db.execute(
-            select(Workspace)
-            .options(selectinload(Workspace.nodes))
-            .where(Workspace.id == workspace_id)
+            select(Workspace).options(selectinload(Workspace.nodes)).where(Workspace.id == workspace_id)
         )
         workspace = result.scalar_one_or_none()
         if not workspace:
-            return None, "Workspace not found."
+            return create_response(206, error_message="Workspace not found")
 
-        apis_dict = {}
+        node_dict = {
+            node.id: {
+                "id": node.id,
+                "name": node.name,
+                "type": node.type,
+                "parent_id": node.parent_id,
+                "created_at": node.created_at,
+            }
+            for node in workspace.nodes
+        }
 
-        node_dict = {node.id: {
-            "id": node.id,
-            "name": node.name,
-            "type": node.type,
-            "parent_id": node.parent_id,
-            "created_at": node.created_at,
-            "children": []
-        } for node in workspace.nodes}
+        # ---- Build Tree with Inline Pruning ----
+        def build_tree(node_id: int):
+            node = node_dict[node_id]
+            children = [build_tree(cid) for cid in node_dict if node_dict[cid]["parent_id"] == node_id]
+            children = [c for c in children if c]
 
-
-        root_nodes = []
-        for node_data in node_dict.values():
-            if node_data["parent_id"] is None:
-                root_nodes.append(node_data)
+            if node["type"] == "file":
+                run_data = results_dict.get(node_id)
+                if run_data:
+                    return {"file_id": node_id, **run_data}
+                return None
             else:
-                parent = node_dict.get(node_data["parent_id"])
-                if parent:
-                    if node_data["type"] == "file":
-                        parent['children'].append({
-                            'file_id': node_data["id"],
-                            **results_dict.get(node_data["id"], {})
-                        })
-                    else:
-                        parent["children"].append(node_data)
+                if children:
+                    return {**node, "children": children}
+                return None
 
+        root_nodes = [build_tree(nid) for nid, n in node_dict.items() if n["parent_id"] is None]
+        root_nodes = [n for n in root_nodes if n]
+
+        # ---- Response ----
         data = {
             "created_at": datetime.now(),
             "file_tree": root_nodes,
