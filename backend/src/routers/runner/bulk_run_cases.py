@@ -1,3 +1,4 @@
+from datetime import datetime
 from operator import and_
 import asyncio
 from typing import Union
@@ -7,7 +8,7 @@ from config import get_db, get_user_by_username, get_headers
 from models import Api, Workspace, Node
 from routers.runner.runner import resolve_variables, run_from_list_api
 from schema import BulkRunnerApi, BulkRunnerSelected
-from utils import create_response, ExceptionHandler, get_workspace_variables, value_correction
+from utils import build_file_tree, create_response, ExceptionHandler, get_workspace_variables, value_correction
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
@@ -27,6 +28,7 @@ async def verify_nodes(db: AsyncSession, node_id: list, user_id: int):
 async def bulk_run_cases(
     req: Union[BulkRunnerApi, BulkRunnerSelected],
     username: str = Header(...),
+    workspace_id: int = Header(...),
     db: AsyncSession = Depends(get_db)
 ):
     try:
@@ -121,7 +123,49 @@ async def bulk_run_cases(
         results = await asyncio.gather(*tasks)
         results_dict = {file_id: result for file_id, result in results}
 
-        return create_response(200, value_correction(results_dict))
+
+        result = await db.execute(
+            select(Workspace)
+            .options(selectinload(Workspace.nodes))
+            .where(Workspace.id == workspace_id)
+        )
+        workspace = result.scalar_one_or_none()
+        if not workspace:
+            return None, "Workspace not found."
+
+        apis_dict = {}
+
+        node_dict = {node.id: {
+            "id": node.id,
+            "name": node.name,
+            "type": node.type,
+            "parent_id": node.parent_id,
+            "created_at": node.created_at,
+            "children": []
+        } for node in workspace.nodes}
+
+
+        root_nodes = []
+        for node_data in node_dict.values():
+            if node_data["parent_id"] is None:
+                root_nodes.append(node_data)
+            else:
+                parent = node_dict.get(node_data["parent_id"])
+                if parent:
+                    if node_data["type"] == "file":
+                        parent['children'].append({
+                            'file_id': node_data["id"],
+                            **results_dict.get(node_data["id"], {})
+                        })
+                    else:
+                        parent["children"].append(node_data)
+
+        data = {
+            "created_at": datetime.now(),
+            "file_tree": root_nodes,
+            "total_nodes": len(workspace.nodes) if workspace.nodes else 0,
+        }
+        return create_response(200, value_correction(data))
 
     except Exception as e:
         ExceptionHandler(e)
