@@ -2,10 +2,11 @@
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from typing import Dict, Set
+from typing import Set
 import re
 
 from models import Environment, Workspace
+from routers.runner.runner import resolve_variables
 from schema import VariableResolutionRequest
 from config import get_db, get_user_by_username
 from utils import ExceptionHandler, create_response, value_correction
@@ -19,16 +20,6 @@ def extract_variables_from_text(text: str) -> Set[str]:
     pattern = r'\{\{([a-zA-Z_][a-zA-Z0-9_\-]*)\}\}'
     matches = re.findall(pattern, text)
     return set(matches)
-
-
-def resolve_variables_in_text(text: str, variables: Dict[str, str]) -> str:
-    """Replace {{variable_name}} patterns with actual values"""
-    def replace_variable(match: re.Match[str]) -> str:
-        var_name = match.group(1)
-        return variables.get(var_name, match.group(0))  # Keep original if not found
-
-    pattern = r'\{\{([a-zA-Z_][a-zA-Z0-9_\-]*)\}\}'
-    return re.sub(pattern, replace_variable, text)
 
 
 @router.get("/workspace/{workspace_id}/environments/active/variables")
@@ -225,7 +216,7 @@ async def resolve_variables_in_request(
                 variables_missing.append(var_name)
 
         # Resolve variables in the text
-        resolved_text = resolve_variables_in_text(resolution_request.text, variables_dict)
+        resolved_text = resolve_variables(resolution_request.text, variables_dict)
 
         data = {
             "original_text": resolution_request.text,

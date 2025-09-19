@@ -79,13 +79,35 @@ def handle_exception(exc: Exception) -> JSONResponse:
         error_message = f"Invalid value provided: {str(exc)}"
     elif isinstance(exc, AttributeError):
         response_code = 400
-        error_message = f"AttributeError: {str(exc)}"
+        error_message = f"Missing attribute: {str(exc)}"
+
+        # Special case: SQLAlchemy row
+        if hasattr(exc, "name") and "Row" in str(type(exc)):
+            # Extract keys if possible
+            try:
+                available = list(getattr(exc, "keys", lambda: [])())
+                if available:
+                    error_message += f". Available columns are: {available}"
+            except Exception:
+                pass
+
+        # Special case: generic object
+        elif hasattr(exc, "__dict__"):
+            error_message += f". Available attributes: {list(exc.__dict__.keys())}"
+
     elif isinstance(exc, TypeError):
         response_code = 400
         error_message = f"Operation not supported for the type: {str(exc)}"
     elif isinstance(exc, KeyError):
         response_code = 400
-        error_message = f"Key not found in the dictionary: {str(exc)}"
+        available_keys = []
+        context = getattr(exc, "__context__", None)
+        if isinstance(context, dict):
+            available_keys = list(context.keys())
+        error_message = f"Key not found: {str(exc)}"
+        if available_keys:
+            error_message += f". Available keys are: {available_keys}"
+
     elif isinstance(exc, IndexError):
         response_code = 400
         error_message = f"Index out of range: {str(exc)}"
@@ -111,7 +133,8 @@ def handle_exception(exc: Exception) -> JSONResponse:
         error_message = "Database operation timed out or failed to complete."
     elif isinstance(exc, ProgrammingError):
         response_code = 400
-        error_message = "Invalid database query or parameters."
+        orig = getattr(exc, "orig", None)
+        error_message = str(orig) if orig else "Invalid database query or parameters."
     elif isinstance(exc, DataError):
         response_code = 400
         error_message = "Invalid or out-of-range data provided."

@@ -1,5 +1,5 @@
-from pydantic import BaseModel, Field, validator, EmailStr, root_validator, ValidationError
-from typing import Optional, List, Dict, Any, Literal
+from pydantic import BaseModel, Field, validator, EmailStr, root_validator
+from typing import Optional, List, Dict, Any, Literal, Union
 from enum import Enum
 
 class PaginationRes(BaseModel):
@@ -782,24 +782,17 @@ class RunType(str, Enum):
     selected = "selected"
     api = "api"
 
-class BulkRunnerReq(BaseModel):
-    type: RunType
-    apis: list
 
-    @root_validator(pre=True)
-    def validate_bulk_req(cls, values):
-        apis = values.get('apis')
-        if not isinstance(apis, list) or not apis:
-            raise ValidationError('apis must be a non-empty list')
-        # Check if all are dicts with file_id (and optional cases)
-        if all(isinstance(a, dict) and 'file_id' in a for a in apis):
-            for a in apis:
-                if not isinstance(a['file_id'], int):
-                    raise ValidationError('file_id must be int')
-                if 'cases' in a and not (isinstance(a['cases'], list) or a['cases'] is None):
-                    raise ValidationError('cases must be a list or None')
-            return values
-        # Or all are ints
-        if all(isinstance(a, int) for a in apis):
-            return values
-        raise ValidationError('apis must be a list of dicts with file_id (and optional cases) or a list of ints')
+class SelectedType(BaseModel):
+    file_id: int
+    cases: List[int]
+
+
+class BulkRunnerApi(BaseModel):
+    type: RunType = RunType.api
+    apis: List[int]             # just a list of ints
+
+
+class BulkRunnerSelected(BaseModel):
+    type: RunType = RunType.selected
+    apis: List[SelectedType]    # list of objects

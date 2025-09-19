@@ -15,7 +15,7 @@ from utils import (
     create_response,
     value_correction
 )
-from validator import validate_expected_spec
+from routers.runner.validator import validate_expected_spec
 
 router = APIRouter()
 

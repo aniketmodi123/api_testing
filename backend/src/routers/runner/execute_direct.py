@@ -5,7 +5,7 @@ import time
 import json
 
 from schema import ApiExecuteRequest
-from validator import evaluate_expect
+from routers.runner.validator import evaluate_expect
 
 from utils import (
     ExceptionHandler,

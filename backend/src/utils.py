@@ -17,7 +17,7 @@ from passlib.context import CryptContext
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from config import JWT_ALGORITHM, JWT_SECRET_KEY, SessionLocal
-from models import Cache, Node, Workspace, Api
+from models import Cache, Environment, Node, Workspace, Api
 from schema import PaginationRes
 
 # Get the base directory
@@ -851,51 +851,27 @@ async def get_workspace_tree_response(db, workspace_id, include_apis=True):
     return data, None
 
 
-def resolve_variables_in_text(text: str, variables: dict) -> str:
-    """Replace {{variable_name}} patterns with actual values"""
-    if not text or not variables:
-        return text
+async def get_workspace_variables(db: AsyncSession, workspace_id: int) -> dict:
+    """Get all enabled variables from the active environment in a workspace"""
+    try:
+        # Get active environment
+        active_env_query = select(Environment).where(
+            Environment.workspace_id == workspace_id,
+            Environment.is_active == True
+        )
+        active_env_result = await db.execute(active_env_query)
+        active_environment = active_env_result.scalar_one_or_none()
 
-    def replace_variable(match):
-        var_name = match.group(1)
-        return str(variables.get(var_name, match.group(0)))  # Keep original if not found
+        if not active_environment or not active_environment.variables:
+            return {}
 
-    pattern = r'\{\{([a-zA-Z_][a-zA-Z0-9_\-]*)\}\}'
-    return re.sub(pattern, replace_variable, str(text))
+        # Get all enabled variables with actual values (including secrets for execution)
+        variables_dict = {}
+        for key, var_data in active_environment.variables.items():
+            if var_data is not None:
+                variables_dict[key] = var_data
 
-
-def resolve_variables_in_dict(data: dict, variables: dict) -> dict:
-    """Recursively resolve variables in dictionary values"""
-    if not data or not variables:
-        return data
-
-    resolved_data = {}
-    for key, value in data.items():
-        if isinstance(value, str):
-            resolved_data[key] = resolve_variables_in_text(value, variables)
-        elif isinstance(value, dict):
-            resolved_data[key] = resolve_variables_in_dict(value, variables)
-        elif isinstance(value, list):
-            resolved_data[key] = resolve_variables_in_list(value, variables)
-        else:
-            resolved_data[key] = value
-    return resolved_data
-
-
-def resolve_variables_in_list(data: list, variables: dict) -> list:
-    """Recursively resolve variables in list items"""
-    if not data or not variables:
-        return data
-
-    resolved_data = []
-    for item in data:
-        if isinstance(item, str):
-            resolved_data.append(resolve_variables_in_text(item, variables))
-        elif isinstance(item, dict):
-            resolved_data.append(resolve_variables_in_dict(item, variables))
-        elif isinstance(item, list):
-            resolved_data.append(resolve_variables_in_list(item, variables))
-        else:
-            resolved_data.append(item)
-    return resolved_data
+        return variables_dict
+    except Exception as e:
+        return {}
 
