@@ -1,4 +1,4 @@
-﻿import httpx, re, time, asyncio
+﻿import httpx, time, asyncio
 from typing import Dict, Any, List
 from routers.runner.validator import evaluate_expect
 from datetime import datetime
@@ -8,7 +8,7 @@ from sqlalchemy import select, and_
 from sqlalchemy.orm import selectinload
 from config import get_db
 from models import Api, Workspace, Node
-from utils import create_response, ExceptionHandler, value_correction
+from utils import ExceptionHandler, resolve_variables
 from common_querys import get_user_by_username, get_workspace_variables, get_headers
 
 
@@ -20,29 +20,6 @@ async def verify_nodes(db: AsyncSession, node_id: list[int], user_id: int):
         .where(and_(Node.id.in_(node_id), Workspace.user_id == user_id))
     )
     return result.scalars().all()
-
-
-
-def resolve_variables(data: Any, variables: dict, ts: int | None = None) -> Any:
-    if data is None:
-        return None
-    if not ts:
-        ts = int(time.time() * 1000)
-
-    if isinstance(data, str):
-        result = str(data)
-        if variables:
-            def replace_variable(match):
-                var_name = match.group(1)
-                return str(variables.get(var_name, match.group(0)))
-            result = re.sub(r"\{\{([a-zA-Z_][a-zA-Z0-9_\-]*)\}\}", replace_variable, result)
-        return result.replace("${ts}", str(ts))
-
-    if isinstance(data, dict):
-        return {k: resolve_variables(v, variables, ts) for k, v in data.items()}
-    if isinstance(data, list):
-        return [resolve_variables(i, variables, ts) for i in data]
-    return data
 
 
 def resolve_docker_url(url: str) -> str:
@@ -207,26 +184,34 @@ async def bulk_run_cases(
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        req = data['req']
-        username = data['username']
-        workspace_id = data['workspace_id']
+        req = data.payload
+        username = data.username
+        workspace_id = data.workspace_id
         # ---- Verify User ----
         user = await get_user_by_username(db, username)
         if not user:
-            return create_response(400, error_message="User not found")
+            return {
+                    "response_code": 206,
+                    "data": {},
+                    "error_message": "user not found"
+                }
 
         # ---- Collect File IDs ----
         file_ids, api_requests = [], {}
-        if req.type == "api":
-            file_ids = req.apis
-            api_requests = {fid: None for fid in req.apis}
-        elif req.type == "selected":
-            file_ids = [api.file_id for api in req.apis]  # type: ignore
-            api_requests = {api.file_id: api.cases for api in req.apis}  # type: ignore
+        if req["type"] == "api":
+            file_ids = req["apis"]
+            api_requests = {fid: None for fid in req["apis"]}
+        elif req["type"] == "selected":
+            file_ids = [api["file_id"] for api in req["apis"]]  # type: ignore
+            api_requests = {api["file_id"]: api["cases"] for api in req["apis"]}  # type: ignore
 
         file_nodes = await verify_nodes(db, file_ids, user.id)
         if not file_nodes:
-            return create_response(206, error_message="File not found or access denied")
+            return {
+                "response_code": 206,
+                "data": {},
+                "error_message": "File not found or access denied"
+            }
 
         # ---- Batch Query APIs for all files ----
         query = select(Api).where(Api.file_id.in_(file_ids)).options(selectinload(Api.cases))
@@ -290,52 +275,61 @@ async def bulk_run_cases(
 
         results = await asyncio.gather(*[run_api(fid, data) for fid, data in record.items()])
         results_dict = {fid: result for fid, result in results}
-
-        # ---- Fetch Workspace and Nodes ----
-        result = await db.execute(
-            select(Workspace).options(selectinload(Workspace.nodes)).where(Workspace.id == workspace_id)
-        )
-        workspace = result.scalar_one_or_none()
-        if not workspace:
-            return create_response(206, error_message="Workspace not found")
-
-        node_dict = {
-            node.id: {
-                "id": node.id,
-                "name": node.name,
-                "type": node.type,
-                "parent_id": node.parent_id,
-                "created_at": node.created_at,
-            }
-            for node in workspace.nodes
+        return {
+            "response_code": 200,
+            "data": results_dict
         }
 
-        # ---- Build Tree with Inline Pruning ----
-        def build_tree(node_id: int):
-            node = node_dict[node_id]
-            children = [build_tree(cid) for cid in node_dict if node_dict[cid]["parent_id"] == node_id]
-            children = [c for c in children if c]
+        # # ---- Fetch Workspace and Nodes ----
+        # result = await db.execute(
+        #     select(Workspace).options(selectinload(Workspace.nodes)).where(Workspace.id == workspace_id)
+        # )
+        # workspace = result.scalar_one_or_none()
+        # if not workspace:
+        #     return {
+        #         "response_code": 206,
+        #         "data": {},
+        #         "error_message": "Workspace not found"
+        #     }
 
-            if node["type"] == "file":
-                run_data = results_dict.get(node_id)
-                if run_data:
-                    return {"file_id": node_id, **run_data}
-                return None
-            else:
-                if children:
-                    return {**node, "children": children}
-                return None
+        # node_dict = {
+        #     node.id: {
+        #         "id": node.id,
+        #         "name": node.name,
+        #         "type": node.type,
+        #         "parent_id": node.parent_id,
+        #         "created_at": node.created_at,
+        #     }
+        #     for node in workspace.nodes
+        # }
 
-        root_nodes = [build_tree(nid) for nid, n in node_dict.items() if n["parent_id"] is None]
-        root_nodes = [n for n in root_nodes if n]
+        # # ---- Build Tree with Inline Pruning ----
+        # def build_tree(node_id: int):
+        #     node = node_dict[node_id]
+        #     children = [build_tree(cid) for cid in node_dict if node_dict[cid]["parent_id"] == node_id]
+        #     children = [c for c in children if c]
 
-        # ---- Response ----
-        data = {
-            "created_at": datetime.now(),
-            "file_tree": root_nodes,
-            "total_nodes": len(workspace.nodes) if workspace.nodes else 0,
-        }
-        return create_response(200, value_correction(data))
+        #     if node["type"] == "file":
+        #         run_data = results_dict.get(node_id)
+        #         if run_data:
+        #             return {"file_id": node_id, **run_data}
+        #         return None
+        #     else:
+        #         if children:
+        #             return {**node, "children": children}
+        #         return None
+
+        # root_nodes = [build_tree(nid) for nid, n in node_dict.items() if n["parent_id"] is None]
+        # root_nodes = [n for n in root_nodes if n]
+
+        # return {
+        #     "response_code": 200,
+        #     "data": {
+        #         "created_at": datetime.now(),
+        #         "file_tree": root_nodes,
+        #         "total_nodes": len(workspace.nodes) if workspace.nodes else 0,
+        #     }
+        # }
 
     except Exception as e:
         ExceptionHandler(e)

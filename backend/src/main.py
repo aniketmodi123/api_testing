@@ -3,11 +3,12 @@ from fastapi.responses import JSONResponse
 import pytz
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from config import check_db_connection, engine
+from config import check_db_connection, engine, SessionLocal
 from exception_handler import unified_exception_handler
 from models import Base
 from datetime import datetime
 from routers.runner import run_case, execute_direct, bulk_run_cases
+from routers.script.test_scheduler import run_engine_once
 from routers.workspace import list_workspace_tree
 from routers.sso import create_user, forget_password, login, logout, otp_generation, update_user, delete_user, user_profile
 from routers.workspace import create_workspace, update_workspace, list_workspace, list_workspace_tree,delete_workspace
@@ -76,16 +77,16 @@ async def health_check():
         )
 
 
-@app.get("/")
-async def root():
-    """Root endpoint with basic API information."""
-    return {
-        "message": "API Testing Backend",
-        "version": "1.0",
-        "docs": "/swagger",
-        "health": "/health",
-        "timestamp": datetime.now(pytz.timezone('Asia/Kolkata')).isoformat()
-    }
+# @app.get("/")
+# async def root():
+#     """Root endpoint with basic API information."""
+#     return {
+#         "message": "API Testing Backend",
+#         "version": "1.0",
+#         "docs": "/swagger",
+#         "health": "/health",
+#         "timestamp": datetime.now(pytz.timezone('Asia/Kolkata')).isoformat()
+#     }
 
 
 @app.middleware("http")
@@ -108,8 +109,9 @@ async def add_process_time_header(request: Request, call_next):
 
 
 @app.get("/")
-def welcome():
-    return "welcome"
+async def welcome():
+    return await run_engine_once()
+
 
 app.add_exception_handler(Exception, unified_exception_handler)
 

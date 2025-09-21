@@ -2,10 +2,11 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Header
 from pydantic import BaseModel
 
-from routers.runner.runner import resolve_variables, run_from_list_api
+from routers.runner.runner import run_from_list_api
 from utils import (
     ExceptionHandler,
     create_response,
+    resolve_variables
 )
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession

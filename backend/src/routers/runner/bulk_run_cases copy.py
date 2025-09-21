@@ -7,9 +7,9 @@ from sqlalchemy import select, and_
 from sqlalchemy.orm import selectinload
 
 from models import Api, Workspace, Node
-from routers.runner.runner import resolve_variables, run_from_list_api
+from routers.runner.runner import run_from_list_api
 from schema import BulkRunnerApi, BulkRunnerSelected
-from utils import create_response, ExceptionHandler, value_correction
+from utils import create_response, ExceptionHandler, value_correction, resolve_variables
 from common_querys import get_user_by_username, get_workspace_variables, get_headers
 from config import get_db
 

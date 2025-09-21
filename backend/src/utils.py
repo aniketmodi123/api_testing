@@ -1,3 +1,4 @@
+from time import time
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from psycopg2.errors import UndefinedTable, IntegrityError
@@ -523,116 +524,27 @@ def extract_variables_from_text(text: str) -> List[str]:
     return list(set(matches))  # Return unique variable names
 
 
-def replace_variables_in_text(text: str, variables: Dict[str, str]) -> str:
-    """
-    Replace all variables in text with their values from the variables dictionary.
+def resolve_variables(data: Any, variables: dict, ts: int | None = None) -> Any:
+    if data is None:
+        return None
+    if not ts:
+        ts = int(time() * 1000)
 
-    Args:
-        text (str): The text containing variables in {{variable_name}} format
-        variables (Dict[str, str]): Dictionary of variable names to values
+    if isinstance(data, str):
+        result = str(data)
+        if variables:
+            def replace_variable(match):
+                var_name = match.group(1)
+                return str(variables.get(var_name, match.group(0)))
+            result = re.sub(r"\{\{([a-zA-Z_][a-zA-Z0-9_\-]*)\}\}", replace_variable, result)
+        return result.replace("${ts}", str(ts))
 
-    Returns:
-        str: Text with variables replaced by their values
-    """
-    if not isinstance(text, str) or not variables:
-        return text
+    if isinstance(data, dict):
+        return {k: resolve_variables(v, variables, ts) for k, v in data.items()}
+    if isinstance(data, list):
+        return [resolve_variables(i, variables, ts) for i in data]
+    return data
 
-    def replace_match(match):
-        variable_name = match.group(1).strip()
-        return str(variables.get(variable_name, match.group(0)))  # Return original if not found
-
-    pattern = r'\{\{([^}]+)\}\}'
-    return re.sub(pattern, replace_match, text)
-
-
-def replace_variables_in_dict(data: Dict[str, Any], variables: Dict[str, str]) -> Dict[str, Any]:
-    """
-    Recursively replace variables in all string values within a dictionary.
-
-    Args:
-        data (Dict[str, Any]): Dictionary that may contain variables
-        variables (Dict[str, str]): Dictionary of variable names to values
-
-    Returns:
-        Dict[str, Any]: Dictionary with variables replaced
-    """
-    if not isinstance(data, dict) or not variables:
-        return data
-
-    result = {}
-    for key, value in data.items():
-        if isinstance(value, str):
-            result[key] = replace_variables_in_text(value, variables)
-        elif isinstance(value, dict):
-            result[key] = replace_variables_in_dict(value, variables)
-        elif isinstance(value, list):
-            result[key] = replace_variables_in_list(value, variables)
-        else:
-            result[key] = value
-
-    return result
-
-
-def replace_variables_in_list(data: List[Any], variables: Dict[str, str]) -> List[Any]:
-    """
-    Recursively replace variables in all string values within a list.
-
-    Args:
-        data (List[Any]): List that may contain variables
-        variables (Dict[str, str]): Dictionary of variable names to values
-
-    Returns:
-        List[Any]: List with variables replaced
-    """
-    if not isinstance(data, list) or not variables:
-        return data
-
-    result = []
-    for item in data:
-        if isinstance(item, str):
-            result.append(replace_variables_in_text(item, variables))
-        elif isinstance(item, dict):
-            result.append(replace_variables_in_dict(item, variables))
-        elif isinstance(item, list):
-            result.append(replace_variables_in_list(item, variables))
-        else:
-            result.append(item)
-
-    return result
-
-
-def replace_variables_in_api_data(api_data: Dict[str, Any], variables: Dict[str, str]) -> Dict[str, Any]:
-    """
-    Replace variables in complete API data structure including url, headers, body, params, etc.
-
-    Args:
-        api_data (Dict[str, Any]): Complete API data structure
-        variables (Dict[str, str]): Dictionary of variable names to values
-
-    Returns:
-        Dict[str, Any]: API data with all variables replaced
-    """
-    if not isinstance(api_data, dict) or not variables:
-        return api_data
-
-    # Create a copy to avoid modifying the original
-    result = {}
-
-    for key, value in api_data.items():
-        if isinstance(value, str):
-            # Replace variables in string fields like URL, method, etc.
-            result[key] = replace_variables_in_text(value, variables)
-        elif isinstance(value, dict):
-            # Replace variables in nested objects like headers, body, params
-            result[key] = replace_variables_in_dict(value, variables)
-        elif isinstance(value, list):
-            # Replace variables in arrays
-            result[key] = replace_variables_in_list(value, variables)
-        else:
-            # Keep other types as-is (numbers, booleans, null)
-            result[key] = value
-
-    return result
 
 async def get_environment_variables(environment_id: int) -> Dict[str, str]:
     try:
@@ -663,7 +575,7 @@ async def resolve_api_variables(environment_id: int, api_data: Dict[str, Any]) -
         Dict[str, Any]: API data with all variables resolved
     """
     variables = await get_environment_variables(environment_id)
-    return replace_variables_in_api_data(api_data, variables)
+    return resolve_variables(api_data, variables)
 
 
 def get_variables_from_api_data(api_data: Dict[str, Any]) -> List[str]:
