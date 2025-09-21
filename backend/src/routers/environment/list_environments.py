@@ -5,7 +5,8 @@ from sqlalchemy import select, update, delete
 
 from models import Environment, Workspace
 from schema import EnvironmentUpdate
-from config import get_db, get_user_by_username
+from config import get_db
+from common_querys import get_user_by_username
 from utils import ExceptionHandler, create_response, value_correction
 
 router = APIRouter()

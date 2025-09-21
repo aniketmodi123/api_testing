@@ -8,7 +8,8 @@ from schema import NodeCopyRequest
 from typing import Optional
 import logging
 
-from utils import ExceptionHandler, create_response, get_unique_name, value_correction, get_workspace_tree_response
+from utils import ExceptionHandler, create_response, value_correction
+from common_querys import get_workspace_tree_response, get_unique_name
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

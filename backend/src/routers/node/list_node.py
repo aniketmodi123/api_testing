@@ -3,11 +3,8 @@ from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from config import (
-    get_db,
-    get_node_path,
-    get_user_by_username
-)
+from config import get_db
+from common_querys import get_node_path, get_user_by_username
 from models import Workspace, Node
 from utils import (
     ExceptionHandler,

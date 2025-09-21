@@ -1,11 +1,11 @@
 from datetime import datetime
-from operator import and_
 import asyncio
 from typing import Union
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, and_
 from sqlalchemy.orm import selectinload
+
 from models import Api, Workspace, Node
 from routers.runner.runner import resolve_variables, run_from_list_api
 from schema import BulkRunnerApi, BulkRunnerSelected

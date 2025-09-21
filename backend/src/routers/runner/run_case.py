@@ -6,18 +6,16 @@ from routers.runner.runner import resolve_variables, run_from_list_api
 from utils import (
     ExceptionHandler,
     create_response,
-    get_workspace_variables
 )
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from config import (
-    get_db,
-    get_headers,
-    get_user_by_username,
-    verify_node_ownership
+    get_db
 )
+
+from common_querys import verify_node_ownership, get_user_by_username, get_workspace_variables, get_headers
 from models import Api
 
 

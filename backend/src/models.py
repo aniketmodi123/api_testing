@@ -1,11 +1,13 @@
 from datetime import datetime
-from typing import Optional
 from sqlalchemy import (
-    Boolean, Column, DateTime, Integer, String, Text, ForeignKey, CheckConstraint, JSON, TIMESTAMP, func, text
+    Boolean, Column, DateTime, Integer, String, Text, ForeignKey, CheckConstraint, JSON, TIMESTAMP, func, text, Index
 )
-from sqlalchemy.orm import relationship, Mapped, mapped_column, declarative_base
+from sqlalchemy.orm import relationship, Mapped, mapped_column
 
-Base = declarative_base()
+from typing import List, Optional, Dict, Any
+from config import Base
+
+
 
 # ---------------------------
 # User Model
@@ -179,3 +181,101 @@ class OTPAttempt(Base):
     locked_until: Mapped[Optional[datetime]] = mapped_column(DateTime, server_default=None)
     expire_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class BulkTestSchedule(Base):
+    __tablename__ = "bulk_test_schedules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    # Owner context
+    username: Mapped[str] = mapped_column(String(255), index=True)
+    workspace_id: Mapped[int] = mapped_column(Integer, index=True)
+
+    type: Mapped[str] = mapped_column(String(20), nullable=False)  # once | daily | weekly | monthly
+
+    # Run timing
+    date_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    time: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    days_of_week: Mapped[Optional[List[str]]] = mapped_column(JSON, nullable=True)
+    day_of_month: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    payload: Mapped[Dict[str, Any]] = mapped_column(JSON, nullable=False)
+
+    last_run: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    next_run: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    executions: Mapped[List["BulkTestExecution"]] = relationship(
+        back_populates="schedule", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        Index("ix_schedule_enabled_next_run", "enabled", "next_run"),
+        Index("ix_schedule_user_workspace", "username", "workspace_id"),
+    )
+
+
+class BulkTestExecution(Base):
+    __tablename__ = "bulk_test_executions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    schedule_id: Mapped[int] = mapped_column(
+        ForeignKey("bulk_test_schedules.id", ondelete="CASCADE"), index=True
+    )
+
+    status: Mapped[str] = mapped_column(String(20), default="queued", index=True)
+
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    total_cases: Mapped[int] = mapped_column(Integer, default=0)
+    passed: Mapped[int] = mapped_column(Integer, default=0)
+    failed: Mapped[int] = mapped_column(Integer, default=0)
+    duration_ms: Mapped[int] = mapped_column(Integer, default=0)
+
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    schedule: Mapped["BulkTestSchedule"] = relationship(back_populates="executions")
+    results: Mapped[List["BulkTestResult"]] = relationship(
+        back_populates="execution", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        Index("ix_execution_schedule_status", "schedule_id", "status"),
+        Index("ix_execution_started", "started_at"),
+    )
+
+
+class BulkTestResult(Base):
+    __tablename__ = "bulk_test_results"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    execution_id: Mapped[int] = mapped_column(
+        ForeignKey("bulk_test_executions.id", ondelete="CASCADE"), index=True
+    )
+
+    case_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    case_name: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    status_code: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    success: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+
+    failures: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    request: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    response: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+
+    duration_ms: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, index=True)
+
+    execution: Mapped["BulkTestExecution"] = relationship(back_populates="results")
+
+    __table_args__ = (
+        Index("ix_result_execution_case", "execution_id", "case_id"),
+        Index("ix_result_success", "success"),
+    )

@@ -2,16 +2,12 @@ from fastapi import APIRouter, Depends, Header
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import (
-    get_db,
-    get_user_by_username
-)
+from config import get_db
+from common_querys import get_user_by_username
 from models import Workspace, Node, Api, ApiCase
-from schema import UpdateTestCaseRequest
 from utils import (
     ExceptionHandler,
-    create_response,
-    value_correction
+    create_response
 )
 
 router = APIRouter()
@@ -46,7 +42,7 @@ async def delete_test_case(
         case = result.scalar_one_or_none()
 
         if not case:
-            return create_response(206, error_message="Test case not found or access denied")
+            return create_response(206, error_message ="Test case not found or access denied")
 
         # Delete the test case
         await db.delete(case)

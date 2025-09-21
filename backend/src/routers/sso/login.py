@@ -4,11 +4,13 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import (
-    get_db,
+from config import get_db
+
+from common_querys import (
     log_failed_attempt,
     log_success_attempt
 )
+
 from models import User, Cache
 from schema import UserSignIn
 from utils import (

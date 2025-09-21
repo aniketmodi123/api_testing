@@ -6,7 +6,8 @@ from config import get_db
 from schema import NodeCopyRequest
 import logging
 
-from utils import ExceptionHandler, create_response, get_unique_name, value_correction, get_workspace_tree_response
+from utils import ExceptionHandler, create_response, value_correction
+from common_querys import get_workspace_tree_response, get_unique_name
 from routers.node.copy_node import copy_node_recursive
 
 router = APIRouter()
