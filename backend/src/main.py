@@ -1,14 +1,15 @@
+import asyncio
 import time
 from fastapi.responses import JSONResponse
 import pytz
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from config import check_db_connection, engine, SessionLocal
+from config import check_db_connection, engine
 from exception_handler import unified_exception_handler
 from models import Base
 from datetime import datetime
 from routers.runner import run_case, execute_direct, bulk_run_cases
-from routers.script.test_scheduler import run_engine_once
+from routers.script.test_scheduler import run_engine, run_engine_once
 from routers.workspace import list_workspace_tree
 from routers.sso import create_user, forget_password, login, logout, otp_generation, update_user, delete_user, user_profile
 from routers.workspace import create_workspace, update_workspace, list_workspace, list_workspace_tree,delete_workspace
@@ -50,6 +51,7 @@ async def startup_event():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     await check_db_connection()
+    asyncio.create_task(run_engine())
 
 
 @app.get("/health")

@@ -1,12 +1,24 @@
 from datetime import datetime
 from sqlalchemy import (
-    Boolean, Column, DateTime, Integer, String, Text, ForeignKey, CheckConstraint, JSON, TIMESTAMP, func, text, Index
+    Boolean,
+    Column,
+    DateTime,
+    Integer,
+    String,
+    Text,
+    ForeignKey,
+    CheckConstraint,
+    JSON,
+    TIMESTAMP,
+    func,
+    text,
+    Index,
+    Enum as SAEnum,
 )
 from sqlalchemy.orm import relationship, Mapped, mapped_column
-
 from typing import List, Optional, Dict, Any
 from config import Base
-
+from enum import Enum
 
 
 # ---------------------------
@@ -183,26 +195,54 @@ class OTPAttempt(Base):
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
 
+# ---------- Enums ----------
+class ScheduleType(str, Enum):
+    """Frequency for the scheduler."""
+    once = "once"
+    minutely = "minutely"
+    hourly = "hourly"
+    daily = "daily"
+    weekly = "weekly"
+    monthly = "monthly"
+
+
+# ---------- Models ----------
 class BulkTestSchedule(Base):
     __tablename__ = "bulk_test_schedules"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
 
-    # Owner context
+    # Owner context (unchanged)
     username: Mapped[str] = mapped_column(String(255), index=True)
     workspace_id: Mapped[int] = mapped_column(Integer, index=True)
 
-    type: Mapped[str] = mapped_column(String(20), nullable=False)  # once | daily | weekly | monthly
+    # Use Enum for type (replaces free-form string)
+    type: Mapped[ScheduleType] = mapped_column(
+        SAEnum(ScheduleType, name="schedule_type_enum"),
+        nullable=False,
+        index=True,
+    )
 
-    # Run timing
+    # Generic interval (reused across all repeating types; ignored for ONCE)
+    interval_count: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+
+    # Initial anchor for schedule (optional). If null, "now" is used.
+    start_from: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    # Run timing (reused exactly as you had)
+    # - date_time: for ONCE (one-shot run moment)
+    # - time: HH:MM used by hourly/daily/weekly/monthly to align within the period
+    # - days_of_week: used by WEEKLY (["Mon","Thu"] etc.)
+    # - day_of_month: used by MONTHLY (1..28 recommended)
     date_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    time: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    time: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)  # "HH:MM"
     days_of_week: Mapped[Optional[List[str]]] = mapped_column(JSON, nullable=True)
     day_of_month: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
 
+    # Original request payload (unchanged)
     payload: Mapped[Dict[str, Any]] = mapped_column(JSON, nullable=False)
 
     last_run: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
@@ -212,25 +252,32 @@ class BulkTestSchedule(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
 
     executions: Mapped[List["BulkTestExecution"]] = relationship(
-        back_populates="schedule", cascade="all, delete-orphan"
+        back_populates="schedule",
+        cascade="all, delete-orphan",
     )
 
     __table_args__ = (
+        # fast polling
         Index("ix_schedule_enabled_next_run", "enabled", "next_run"),
         Index("ix_schedule_user_workspace", "username", "workspace_id"),
+        # guard interval
+        CheckConstraint("interval_count >= 1", name="ck_schedule_interval_ge_1"),
+        # guard monthly day if provided
+        CheckConstraint("(day_of_month IS NULL) OR (day_of_month BETWEEN 1 AND 31)", name="ck_schedule_dom_1_31"),
     )
 
 
+# Keeping these for completeness if they’re already defined elsewhere
 class BulkTestExecution(Base):
     __tablename__ = "bulk_test_executions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     schedule_id: Mapped[int] = mapped_column(
-        ForeignKey("bulk_test_schedules.id", ondelete="CASCADE"), index=True
+        ForeignKey("bulk_test_schedules.id", ondelete="CASCADE"),
+        index=True,
     )
 
     status: Mapped[str] = mapped_column(String(20), default="queued", index=True)
-
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
@@ -243,7 +290,8 @@ class BulkTestExecution(Base):
 
     schedule: Mapped["BulkTestSchedule"] = relationship(back_populates="executions")
     results: Mapped[List["BulkTestResult"]] = relationship(
-        back_populates="execution", cascade="all, delete-orphan"
+        back_populates="execution",
+        cascade="all, delete-orphan",
     )
 
     __table_args__ = (
@@ -257,7 +305,8 @@ class BulkTestResult(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     execution_id: Mapped[int] = mapped_column(
-        ForeignKey("bulk_test_executions.id", ondelete="CASCADE"), index=True
+        ForeignKey("bulk_test_executions.id", ondelete="CASCADE"),
+        index=True,
     )
 
     case_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)

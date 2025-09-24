@@ -1,3 +1,4 @@
+from datetime import datetime
 from pydantic import BaseModel, Field, validator, EmailStr, root_validator
 from typing import Optional, List, Dict, Any, Literal, Union
 from enum import Enum
@@ -778,21 +779,92 @@ class ApiExecuteRequest(BaseModel):
     expected: Optional[Dict[str, Any]] = Field(None, description="Expected response criteria for validation")
 
 
-class RunType(str, Enum):
-    selected = "selected"
-    api = "api"
-
-
-class SelectedType(BaseModel):
+class BulkSelectedItem(BaseModel):
     file_id: int
     cases: List[int]
 
+class BulkPayloadSelected(BaseModel):
+    type: Literal["selected"]
+    apis: List[BulkSelectedItem]
 
-class BulkRunnerApi(BaseModel):
-    type: RunType = RunType.api
-    apis: List[int]             # just a list of ints
+class BulkPayloadApi(BaseModel):
+    type: Literal["api"]
+    apis: List[int]
 
+BulkPayload = Union[BulkPayloadSelected, BulkPayloadApi]
 
-class BulkRunnerSelected(BaseModel):
-    type: RunType = RunType.selected
-    apis: List[SelectedType]    # list of objects
+# -----------------------------
+# Schedule create schema
+# -----------------------------
+class ScheduleCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    type: Literal["once", "minutes", "hourly", "daily", "weekly", "monthly"]
+
+    # Generic / optional fields
+    date_time: Optional[datetime] = None         # for "once"
+    time: Optional[str] = None                   # "HH:MM" for hourly/daily/weekly/monthly
+    days_of_week: Optional[List[str]] = None     # for weekly (["Mon","Wed"] or full names)
+    day_of_month: Optional[int] = None          # for monthly
+    enabled: bool = True
+
+    # Repeating cadence
+    interval_count: Optional[int] = None        # minutes: min 20; hourly: every N hours (keep minute from `time`)
+
+    # Original bulk payload
+    payload: BulkPayload
+
+    @validator("time")
+    def _check_time_format(cls, v, values):
+        t = values.get("type")
+        if t in ("hourly", "daily", "weekly", "monthly"):
+            if not v or ":" not in v:
+                raise ValueError("time must be HH:MM for hourly/daily/weekly/monthly")
+            h, m = v.split(":", 1)
+            if not (h.isdigit() and m.isdigit()):
+                raise ValueError("time must be HH:MM")
+            if not (0 <= int(h) <= 23 and 0 <= int(m) <= 59):
+                raise ValueError("time must be a valid clock time")
+        return v
+
+    @root_validator(skip_on_failure=True)
+    def _validate_by_type(cls, values):
+        t = values.get("type")
+        date_time = values.get("date_time")
+        time = values.get("time")
+        days = values.get("days_of_week") or []
+        dom = values.get("day_of_month")
+        interval = values.get("interval_count")
+
+        if t == "once":
+            if not date_time:
+                raise ValueError("date_time is required for type=once")
+
+        elif t == "minutes":
+            if interval is None:
+                raise ValueError("interval_count is required for type=minutes")
+            if interval < 20:
+                raise ValueError("interval_count must be >= 20 minutes")
+
+        elif t == "hourly":
+            if interval is not None and interval < 1:
+                raise ValueError("interval_count must be >= 1 when provided for type=hourly")
+            # keep minute component from `time` (default 00:00 if not provided)
+            # we already validate `time` above when t in hourly/daily/weekly/monthly
+
+        elif t == "daily":
+            if not time:
+                raise ValueError("time (HH:MM) is required for type=daily")
+
+        elif t == "weekly":
+            if not time:
+                raise ValueError("time (HH:MM) is required for type=weekly")
+            if not days:
+                raise ValueError("days_of_week is required for type=weekly")
+
+        elif t == "monthly":
+            if not time:
+                raise ValueError("time (HH:MM) is required for type=monthly")
+            if dom is None or not (1 <= dom <= 31):
+                raise ValueError("day_of_month must be in 1..31 for type=monthly")
+
+        return values
