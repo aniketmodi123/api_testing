@@ -452,6 +452,29 @@
   color: var(--primary);
 }
 
+/* Test Results Grid - using same layout as TestResultsGrid component */
+.testResultsGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+  margin-top: 16px;
+  padding: 8px 0;
+}
+
+/* Responsive adjustments for smaller screens */
+@media (max-width: 1200px) {
+  .testResultsGrid {
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .testResultsGrid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+}
+
 .resultsDetails {
   flex: 1;
   overflow: auto;
@@ -782,4 +805,324 @@
     flex-direction: column;
     align-items: stretch;
   }
+}
+
+/* New Three-Table UI Styles */
+
+/* Section Headers */
+.sectionHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sectionHeader h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.refreshButton {
+  padding: 4px 8px;
+  font-size: 11px;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.refreshButton:hover {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
+/* History Section */
+.historySection {
+  padding: 12px;
+}
+
+.historyList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.historyItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  transition: border-color 0.2s;
+}
+
+.historyItem:hover {
+  border-color: var(--primary);
+}
+
+.historyInfo {
+  flex: 1;
+}
+
+.historyTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.historyTitle strong {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.historyType {
+  padding: 2px 6px;
+  font-size: 10px;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
+.historyMeta {
+  display: flex;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.historyActions {
+  display: flex;
+  gap: 6px;
+}
+
+.viewButton {
+  padding: 8px;
+  background: transparent;
+  color: var(--primary);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  min-height: 32px;
+}
+
+.viewButton:hover {
+  background: rgba(59, 130, 246, 0.1);
+  color: var(--primary-dark);
+  transform: scale(1.1);
+}
+
+.viewButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.viewButton:disabled:hover {
+  background: transparent;
+  transform: none;
+}
+
+.deleteButton {
+  padding: 8px;
+  background: transparent;
+  color: #ef4444;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  min-height: 32px;
+}
+
+.deleteButton:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: #dc2626;
+  transform: scale(1.1);
+}
+
+.deleteButton:active {
+  background: rgba(239, 68, 68, 0.2);
+  transform: scale(1.05);
+}
+
+.deleteButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.deleteButton:disabled:hover {
+  background: transparent;
+  transform: none;
+}
+
+/* Progress Section */
+.progressSection {
+  padding: 12px;
+}
+
+.progressList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.progressItem {
+  padding: 12px;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.progressInfo {
+  margin-bottom: 8px;
+}
+
+.progressTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.progressTitle strong {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.progressStats {
+  display: flex;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.progressTimes {
+  display: flex;
+  gap: 12px;
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+.errorMessage {
+  padding: 8px;
+  background: #fee;
+  border: 1px solid #fcc;
+  border-radius: 4px;
+  font-size: 11px;
+  color: #c00;
+}
+
+/* Status Badges */
+.statusBadge {
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 500;
+  border-radius: 12px;
+  text-transform: uppercase;
+}
+
+.statusBadge.enabled {
+  background: #e7f5e7;
+  color: #2d5a2d;
+  border: 1px solid #b3d9b3;
+}
+
+.statusBadge.disabled {
+  background: #f5f5f5;
+  color: #666;
+  border: 1px solid #ccc;
+}
+
+.statusBadge.running {
+  background: #e7f0ff;
+  color: #1a4f8a;
+  border: 1px solid #b3d1ff;
+}
+
+.statusBadge.queued {
+  background: #fff7e7;
+  color: #8a5c1a;
+  border: 1px solid #ffd9b3;
+}
+
+.statusBadge.success {
+  background: #e7f5e7;
+  color: #2d5a2d;
+  border: 1px solid #b3d9b3;
+}
+
+.statusBadge.failed {
+  background: #fee;
+  color: #c00;
+  border: 1px solid #fcc;
+}
+
+.statusBadge.partial {
+  background: #fff7e7;
+  color: #8a5c1a;
+  border: 1px solid #ffd9b3;
+}
+
+/* Results Section */
+.resultsSection {
+  padding: 12px;
+}
+
+/* Empty States */
+.emptyState {
+  text-align: center;
+  padding: 24px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.emptyState p {
+  margin: 0;
+}
+
+/* Failures Display in BulkResults */
+.failures {
+  margin-top: 8px;
+  padding: 8px;
+  background: #fee;
+  border: 1px solid #fcc;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.failures strong {
+  color: #c00;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.failures ul {
+  margin: 0;
+  padding-left: 16px;
+  color: #900;
+}
+
+.failures li {
+  margin-bottom: 2px;
 }

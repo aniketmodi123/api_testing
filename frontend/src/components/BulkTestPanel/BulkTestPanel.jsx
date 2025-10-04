@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiService } from '../../services/apiService.js';
 import { useAuth } from '../../store/session.jsx';
+import { useWorkspace } from '../../store/workspace.jsx';
 import LookingLoader from '../LookingLoader/LookingLoader.jsx';
 import BulkCollectionTree from './BulkCollectionTree.jsx';
 import BulkControls from './BulkControls.jsx';
@@ -18,6 +19,21 @@ export default function BulkTestPanel({ onSelectRequest }) {
   const [showScheduler, setShowScheduler] = useState(false);
   const [scheduledJobs, setScheduledJobs] = useState([]);
   const [selectedApiCases, setSelectedApiCases] = useState([]);
+  const [pollingInterval, setPollingInterval] = useState(null);
+
+  // New state for the three-table structure
+  const [testHistory, setTestHistory] = useState([]); // BulkTestSchedule data
+  const [runningTests, setRunningTests] = useState([]); // BulkTestExecution data (running/queued)
+  const [latestResults, setLatestResults] = useState(null); // BulkTestResult data
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [loadingRunning, setLoadingRunning] = useState(false);
+  const [loadingExecution, setLoadingExecution] = useState(false);
+  const [loadingDelete, setLoadingDelete] = useState(false);
+  const [loadingScheduleCreate, setLoadingScheduleCreate] = useState(false);
+
+  // Hooks for auth and workspace (moved up to be available early)
+  const auth = useAuth();
+  const { activeWorkspace } = useWorkspace();
 
   // Tab management for right panel
   const [activeTab, setActiveTab] = useState('selection'); // 'selection', 'results', 'scheduled'
@@ -64,12 +80,298 @@ export default function BulkTestPanel({ onSelectRequest }) {
     };
   }, [isResizing]);
 
+  // Load test history (BulkTestSchedule)
+  const loadTestHistory = useCallback(async () => {
+    if (!auth?.username || !activeWorkspace?.id) return;
+
+    setLoadingHistory(true);
+    try {
+      const response = await apiService.getBulkTestSchedules(
+        auth.username,
+        activeWorkspace.id
+      );
+      // Always set the data, even if it's empty array
+      setTestHistory(response?.data || []);
+    } catch (error) {
+      console.error('Failed to load test history:', error);
+      setTestHistory([]); // Clear on error
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, [auth?.username, activeWorkspace?.id]);
+
+  // Load running tests (BulkTestExecution with status running/queued)
+  const loadRunningTests = useCallback(async () => {
+    if (!auth?.username || !activeWorkspace?.id) return;
+
+    setLoadingRunning(true);
+    try {
+      const response = await apiService.getRunningBulkTestExecutions(
+        auth.username,
+        activeWorkspace.id
+      );
+      // Always set the data, even if it's empty array
+      setRunningTests(response?.data || []);
+    } catch (error) {
+      console.error('Failed to load running tests:', error);
+      setRunningTests([]); // Clear on error
+    } finally {
+      setLoadingRunning(false);
+    }
+  }, [auth?.username, activeWorkspace?.id]);
+
   // Switch to results tab when results are available
   useEffect(() => {
     if (results && !isRunning) {
       setActiveTab('results');
     }
   }, [results, isRunning]);
+
+  // Poll for execution results of running jobs
+  useEffect(() => {
+    const runningJobs = scheduledJobs.filter(job => job.status === 'running');
+
+    if (runningJobs.length > 0) {
+      const interval = setInterval(async () => {
+        for (const job of runningJobs) {
+          try {
+            if (job.schedule?.id && auth?.username) {
+              const executions = await apiService.getBulkTestExecutions(
+                job.schedule.id,
+                auth.username
+              );
+
+              console.log('Polling execution results:', executions);
+
+              // Check if execution is complete
+              if (
+                executions?.data &&
+                Array.isArray(executions.data) &&
+                executions.data.length > 0
+              ) {
+                const latestExecution = executions.data[0];
+                if (
+                  latestExecution.status !== 'running' &&
+                  latestExecution.status !== 'queued'
+                ) {
+                  // Update job status
+                  setScheduledJobs(prev =>
+                    prev.map(j =>
+                      j.id === job.id
+                        ? {
+                            ...j,
+                            status: latestExecution.status,
+                            execution: latestExecution,
+                          }
+                        : j
+                    )
+                  );
+
+                  // If it's a recent execution, show results
+                  if (
+                    latestExecution.results &&
+                    latestExecution.results.length > 0
+                  ) {
+                    // Transform execution results to the format expected by BulkResults
+                    const transformedResults = {
+                      summary: {
+                        total:
+                          latestExecution.total_cases ||
+                          latestExecution.results.length,
+                        passed:
+                          latestExecution.passed ||
+                          latestExecution.results.filter(r => r.success).length,
+                        failed:
+                          latestExecution.failed ||
+                          latestExecution.results.filter(r => !r.success)
+                            .length,
+                        pass_rate: latestExecution.total_cases
+                          ? Math.round(
+                              (latestExecution.passed /
+                                latestExecution.total_cases) *
+                                100
+                            )
+                          : 0,
+                        duration: latestExecution.duration_ms
+                          ? `${latestExecution.duration_ms}ms`
+                          : null,
+                      },
+                      details: latestExecution.results.map(result => ({
+                        id: result.id,
+                        name: result.case_name,
+                        status: result.success ? 'passed' : 'failed',
+                        response: {
+                          status: result.status_code,
+                        },
+                        duration: result.duration_ms
+                          ? `${result.duration_ms}ms`
+                          : 'N/A',
+                        failures: result.failures,
+                        request: result.request,
+                        response_data: result.response,
+                      })),
+                    };
+
+                    setResults(transformedResults);
+                    setActiveTab('results');
+                  }
+                }
+              }
+            }
+          } catch (error) {
+            console.error('Failed to poll execution status:', error);
+          }
+        }
+      }, 5000); // Poll every 5 seconds
+
+      setPollingInterval(interval);
+
+      return () => {
+        clearInterval(interval);
+        setPollingInterval(null);
+      };
+    } else if (pollingInterval) {
+      clearInterval(pollingInterval);
+      setPollingInterval(null);
+    }
+  }, [scheduledJobs, auth?.username, loadRunningTests, loadTestHistory]);
+
+  // Load initial data when component mounts or workspace changes
+  useEffect(() => {
+    // Clear local state when workspace changes
+    setScheduledJobs([]);
+    setLatestResults(null);
+
+    // Load fresh data
+    loadTestHistory();
+    loadRunningTests();
+  }, [loadTestHistory, loadRunningTests, activeWorkspace?.id]);
+
+  // Handle viewing executions for a specific schedule
+  const handleViewScheduleExecutions = useCallback(
+    async scheduleId => {
+      setLoadingExecution(true);
+      try {
+        const executions = await apiService.getBulkTestExecutions(
+          scheduleId,
+          auth.username
+        );
+
+        if (executions?.data && executions.data.length > 0) {
+          const latestExecution = executions.data[0];
+
+          // Transform and set the latest results
+          if (latestExecution.results && latestExecution.results.length > 0) {
+            const transformedResults = {
+              summary: {
+                total:
+                  latestExecution.total_cases || latestExecution.results.length,
+                passed:
+                  latestExecution.passed ||
+                  latestExecution.results.filter(r => r.success).length,
+                failed:
+                  latestExecution.failed ||
+                  latestExecution.results.filter(r => !r.success).length,
+                pass_rate: latestExecution.total_cases
+                  ? Math.round(
+                      (latestExecution.passed / latestExecution.total_cases) *
+                        100
+                    )
+                  : 0,
+                duration: latestExecution.duration_ms
+                  ? `${latestExecution.duration_ms}ms`
+                  : null,
+              },
+              details: latestExecution.results.map(result => ({
+                id: result.id,
+                name: result.case_name,
+                status: result.success ? 'passed' : 'failed',
+                response: {
+                  status: result.status_code,
+                },
+                duration: result.duration_ms
+                  ? `${result.duration_ms}ms`
+                  : 'N/A',
+                failures: result.failures,
+                request: result.request,
+                response_data: result.response,
+              })),
+            };
+
+            setLatestResults(transformedResults);
+            setActiveTab('results');
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load schedule executions:', error);
+        alert('Failed to load execution results');
+      } finally {
+        setLoadingExecution(false);
+      }
+    },
+    [auth?.username]
+  );
+
+  // Delete a bulk test schedule and all its related data
+  const handleDeleteSchedule = useCallback(
+    async scheduleId => {
+      if (!auth?.username) {
+        console.error('No username available for delete operation');
+        return;
+      }
+
+      const confirmDelete = window.confirm(
+        'Are you sure you want to delete this test history?\n\nThis will permanently delete:\n- The schedule\n- All execution records\n- All test results\n\nThis action cannot be undone.'
+      );
+
+      if (!confirmDelete) {
+        return;
+      }
+
+      setLoadingDelete(true);
+      try {
+        await apiService.deleteBulkTestSchedule(scheduleId, auth.username);
+
+        // Remove from local state
+        setTestHistory(prev =>
+          prev.filter(schedule => schedule.id !== scheduleId)
+        );
+
+        // Also remove from scheduled jobs if it exists there
+        setScheduledJobs(prev =>
+          prev.filter(job => job.schedule?.id !== scheduleId)
+        );
+
+        // Show success message
+        alert('Test history deleted successfully');
+
+        // Refresh the data to ensure consistency
+        await loadTestHistory();
+        await loadRunningTests();
+      } catch (error) {
+        console.error('Failed to delete schedule:', error);
+        alert('Failed to delete test history. Please try again.');
+      } finally {
+        setLoadingDelete(false);
+      }
+    },
+    [auth?.username, loadTestHistory, loadRunningTests]
+  );
+
+  useEffect(() => {
+    return () => {
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+      }
+    };
+  }, [pollingInterval]);
+  useEffect(() => {
+    return () => {
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+      }
+    };
+  }, [pollingInterval]);
 
   // Sync selectedApiCases with selectedItems and testScope
   useEffect(() => {
@@ -493,57 +795,187 @@ export default function BulkTestPanel({ onSelectRequest }) {
   }, []);
 
   // Run bulk tests
-  const auth = useAuth();
   const handleRunTests = useCallback(async () => {
     if (selectedItems.length === 0 && testScope === 'selected') {
       alert('Please select APIs or test cases to run');
       return;
     }
 
+    if (!activeWorkspace?.id) {
+      alert('No workspace selected');
+      return;
+    }
+
+    // Helper function to get local datetime in ISO format without timezone
+    const getLocalDateTime = () => {
+      const now = new Date();
+      // Get local time by adjusting for timezone offset
+      const localTime = new Date(
+        now.getTime() - now.getTimezoneOffset() * 60000
+      );
+      return localTime.toISOString().slice(0, -1); // Remove 'Z' to indicate local time
+    };
+
     setIsRunning(true);
     setResults(null);
 
     try {
       const username = auth?.username || '';
-      const response = await apiService.bulkRunCases(
-        testScope,
-        selectedApiCases,
-        username
-      );
-      setResults(response.data || response);
-    } catch (error) {
-      console.error('Bulk test failed:', error);
-      alert('Failed to run bulk tests');
-    } finally {
-      setIsRunning(false);
-    }
-  }, [selectedApiCases, testScope, auth]);
 
-  // Schedule tests
-  const handleScheduleTests = useCallback(
-    scheduleConfig => {
+      // Prepare the payload for scheduling
+      const payload = {
+        type: testScope,
+        apis:
+          testScope === 'api'
+            ? selectedApiCases // Array of file IDs for 'api' type
+            : selectedApiCases, // Array of {file_id, cases} for 'selected' type
+      };
+
+      // Create a schedule with immediate execution (type: "once")
+      const scheduleData = {
+        name: `Bulk Test Run - ${new Date().toLocaleString()}`,
+        type: 'once',
+        date_time: getLocalDateTime(), // Use local time consistently
+        enabled: true,
+        payload: payload,
+      };
+
+      console.log('Creating bulk test schedule:', scheduleData);
+
+      // Save the request first (create schedule)
+      const scheduleResponse = await apiService.createBulkTestSchedule(
+        scheduleData,
+        username,
+        activeWorkspace.id
+      );
+
+      console.log('Schedule created:', scheduleResponse);
+
+      // Add to local scheduled jobs for UI tracking
       const newJob = {
-        id: Date.now().toString(),
-        name:
-          scheduleConfig.name || `Bulk Test - ${new Date().toLocaleString()}`,
+        id: scheduleResponse.data?.id || Date.now().toString(),
+        name: scheduleData.name,
         selectedItems: [...selectedItems],
-        schedule: scheduleConfig,
-        status: 'scheduled',
+        schedule: scheduleResponse.data,
+        status: 'running',
         createdAt: new Date().toISOString(),
       };
 
       setScheduledJobs(prev => [...prev, newJob]);
-      setShowScheduler(false);
 
-      // TODO: Send to backend for actual scheduling
-      console.log('Scheduled job:', newJob);
+      // Refresh data to show the new schedule
+      await loadTestHistory();
+      await loadRunningTests();
+
+      // Switch to progress tab to show the new execution
+      setActiveTab('progress');
+
+      // The background scheduler will pick up and execute the test
+      // We can optionally poll for results or show a message
+      alert(
+        'Bulk test has been scheduled and will run in the background. Check the "Running Tests" tab for progress.'
+      );
+    } catch (error) {
+      console.error('Failed to schedule bulk test:', error);
+      alert(
+        `Failed to schedule bulk test: ${error.message || 'Unknown error'}`
+      );
+    } finally {
+      setIsRunning(false);
+    }
+  }, [selectedApiCases, testScope, auth, activeWorkspace, selectedItems]);
+
+  // Schedule tests (for future/recurring schedules)
+  const handleScheduleTests = useCallback(
+    async scheduleConfig => {
+      if (!activeWorkspace?.id) {
+        alert('No workspace selected');
+        return;
+      }
+
+      setLoadingScheduleCreate(true);
+      try {
+        const username = auth?.username || '';
+
+        // Prepare the payload for scheduling
+        const payload = {
+          type: testScope,
+          apis:
+            testScope === 'api'
+              ? selectedApiCases // Array of file IDs for 'api' type
+              : selectedApiCases, // Array of {file_id, cases} for 'selected' type
+        };
+
+        // Process the schedule config to ensure proper datetime format
+        const processedConfig = { ...scheduleConfig };
+
+        // If it's a "once" type schedule, ensure datetime is in the right format
+        if (scheduleConfig.type === 'once' && scheduleConfig.datetime) {
+          // datetime-local provides format like "2025-10-04T20:43"
+          // We need to convert it to ISO format but without 'Z' to indicate local time
+          processedConfig.date_time = scheduleConfig.datetime + ':00'; // Add seconds
+          delete processedConfig.datetime; // Remove the original field
+        }
+
+        // Create the schedule
+        const scheduleData = {
+          ...processedConfig,
+          payload: payload,
+        };
+
+        console.log('Creating scheduled bulk test:', scheduleData);
+
+        const scheduleResponse = await apiService.createBulkTestSchedule(
+          scheduleData,
+          username,
+          activeWorkspace.id
+        );
+
+        const newJob = {
+          id: scheduleResponse.data?.id || Date.now().toString(),
+          name:
+            scheduleConfig.name || `Bulk Test - ${new Date().toLocaleString()}`,
+          selectedItems: [...selectedItems],
+          schedule: scheduleResponse.data,
+          status: 'scheduled',
+          createdAt: new Date().toISOString(),
+        };
+
+        setScheduledJobs(prev => [...prev, newJob]);
+        setShowScheduler(false);
+
+        // Refresh data to show the new schedule
+        await loadTestHistory();
+
+        alert('Bulk test has been scheduled successfully!');
+      } catch (error) {
+        console.error('Failed to create schedule:', error);
+        alert(`Failed to create schedule: ${error.message || 'Unknown error'}`);
+      } finally {
+        setLoadingScheduleCreate(false);
+      }
     },
-    [selectedItems]
+    [selectedApiCases, testScope, auth, activeWorkspace, selectedItems]
   );
 
   return (
     <div className={styles.bulkTestContainer} ref={containerRef}>
-      {isRunning && <LookingLoader overlay text="Running bulk tests..." />}
+      {isRunning && <LookingLoader overlay text="Running bulk test..." />}
+      {loadingExecution && (
+        <LookingLoader overlay text="Loading test results..." />
+      )}
+      {loadingDelete && (
+        <LookingLoader overlay text="Deleting test history..." />
+      )}
+      {loadingScheduleCreate && (
+        <LookingLoader overlay text="Creating schedule..." />
+      )}
+      {loadingHistory && (
+        <LookingLoader overlay text="Loading test history..." />
+      )}
+      {loadingRunning && (
+        <LookingLoader overlay text="Loading running tests..." />
+      )}
       {/* Left Panel: Collection Tree */}
       <div
         className={styles.leftPanel}
@@ -580,7 +1012,9 @@ export default function BulkTestPanel({ onSelectRequest }) {
           isRunning={isRunning}
           onRunTests={handleRunTests}
           onShowScheduler={() => setShowScheduler(true)}
-          selectedCount={selectedItems.length}
+          selectedCount={
+            selectedItems.filter(item => item.type === 'api').length
+          }
         />
 
         {/* Tabs */}
@@ -589,26 +1023,31 @@ export default function BulkTestPanel({ onSelectRequest }) {
             className={`${styles.tab} ${activeTab === 'selection' ? styles.active : ''}`}
             onClick={() => setActiveTab('selection')}
           >
-            Selected Items ({selectedItems.length})
+            📋 Setup ({selectedItems.length})
+          </div>
+          <div
+            className={`${styles.tab} ${activeTab === 'history' ? styles.active : ''}`}
+            onClick={() => setActiveTab('history')}
+          >
+            📚 Test History
+          </div>
+          <div
+            className={`${styles.tab} ${activeTab === 'progress' ? styles.active : ''}`}
+            onClick={() => setActiveTab('progress')}
+          >
+            ⚡ Running Tests
           </div>
           <div
             className={`${styles.tab} ${activeTab === 'results' ? styles.active : ''}`}
             onClick={() => setActiveTab('results')}
           >
-            Test Results
+            📊 Latest Results
           </div>
-          {scheduledJobs.length > 0 && (
-            <div
-              className={`${styles.tab} ${activeTab === 'scheduled' ? styles.active : ''}`}
-              onClick={() => setActiveTab('scheduled')}
-            >
-              Scheduled Jobs ({scheduledJobs.length})
-            </div>
-          )}
         </div>
 
         {/* Tab Content */}
         <div className={styles.tabContent}>
+          {/* Setup Tab - Selected Items (Original functionality) */}
           {activeTab === 'selection' && (
             <BulkSelection
               selectedItems={
@@ -621,25 +1060,184 @@ export default function BulkTestPanel({ onSelectRequest }) {
             />
           )}
 
-          {activeTab === 'results' && (
-            <BulkResults results={results} isRunning={isRunning} />
+          {/* Test History Tab - BulkTestSchedule data */}
+          {activeTab === 'history' && (
+            <div className={styles.historySection}>
+              <div className={styles.sectionHeader}>
+                <h3>📚 Bulk Test History</h3>
+                <button
+                  className={styles.refreshButton}
+                  onClick={loadTestHistory}
+                  disabled={loadingHistory}
+                >
+                  {loadingHistory ? '⏳ Loading...' : '🔄 Refresh'}
+                </button>
+              </div>
+              <div className={styles.historyList}>
+                {testHistory.length === 0 ? (
+                  <div className={styles.emptyState}>
+                    <p>
+                      No test history yet. Run your first bulk test to see it
+                      here!
+                    </p>
+                  </div>
+                ) : (
+                  testHistory.map(schedule => (
+                    <div key={schedule.id} className={styles.historyItem}>
+                      <div className={styles.historyInfo}>
+                        <div className={styles.historyTitle}>
+                          <strong>{schedule.name}</strong>
+                          <span className={styles.historyType}>
+                            {schedule.type}
+                          </span>
+                        </div>
+                        <div className={styles.historyMeta}>
+                          <span>
+                            Created:{' '}
+                            {new Date(schedule.created_at).toLocaleDateString()}
+                          </span>
+                          <span>
+                            Executions: {schedule.executions_count || 0}
+                          </span>
+                          <span
+                            className={`${styles.statusBadge} ${schedule.enabled ? styles.enabled : styles.disabled}`}
+                          >
+                            {schedule.enabled ? 'Active' : 'Disabled'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className={styles.historyActions}>
+                        <button
+                          className={styles.viewButton}
+                          onClick={() =>
+                            handleViewScheduleExecutions(schedule.id)
+                          }
+                          title="View test results"
+                          disabled={loadingExecution || loadingDelete}
+                        >
+                          <svg
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            xmlns="http://www.w3.org/2000/svg"
+                          >
+                            <path
+                              d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"
+                              fill="currentColor"
+                            />
+                          </svg>
+                        </button>
+                        <button
+                          className={styles.deleteButton}
+                          onClick={() => handleDeleteSchedule(schedule.id)}
+                          title="Delete this test history and all its results"
+                          disabled={loadingExecution || loadingDelete}
+                        >
+                          <svg
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            xmlns="http://www.w3.org/2000/svg"
+                          >
+                            <path
+                              d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"
+                              fill="currentColor"
+                            />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
           )}
 
-          {activeTab === 'scheduled' && scheduledJobs.length > 0 && (
-            <div className={styles.scheduledJobsSection}>
-              <div className={styles.jobsList}>
-                {scheduledJobs.map(job => (
-                  <div key={job.id} className={styles.jobItem}>
-                    <div className={styles.jobInfo}>
-                      <strong>{job.name}</strong>
-                      <span className={styles.jobStatus}>{job.status}</span>
-                    </div>
-                    <div className={styles.jobDetails}>
-                      {job.selectedItems.length} items • {job.schedule.type}
-                    </div>
-                  </div>
-                ))}
+          {/* Running Tests Tab - BulkTestExecution data */}
+          {activeTab === 'progress' && (
+            <div className={styles.progressSection}>
+              <div className={styles.sectionHeader}>
+                <h3>⚡ Running Tests</h3>
+                <button
+                  className={styles.refreshButton}
+                  onClick={loadRunningTests}
+                  disabled={loadingRunning}
+                >
+                  {loadingRunning ? '⏳ Loading...' : '🔄 Refresh'}
+                </button>
               </div>
+              <div className={styles.progressList}>
+                {runningTests.length === 0 ? (
+                  <div className={styles.emptyState}>
+                    <p>
+                      No tests currently running. Start a bulk test to see
+                      progress here!
+                    </p>
+                  </div>
+                ) : (
+                  runningTests.map(execution => (
+                    <div key={execution.id} className={styles.progressItem}>
+                      <div className={styles.progressInfo}>
+                        <div className={styles.progressTitle}>
+                          <strong>Execution #{execution.id}</strong>
+                          <span
+                            className={`${styles.statusBadge} ${styles[execution.status]}`}
+                          >
+                            {execution.status.toUpperCase()}
+                          </span>
+                        </div>
+                        <div className={styles.progressStats}>
+                          <span>Total: {execution.total_cases}</span>
+                          <span>Passed: {execution.passed}</span>
+                          <span>Failed: {execution.failed}</span>
+                          {execution.duration_ms > 0 && (
+                            <span>Duration: {execution.duration_ms}ms</span>
+                          )}
+                        </div>
+                        <div className={styles.progressTimes}>
+                          <span>
+                            Started:{' '}
+                            {new Date(execution.started_at).toLocaleString()}
+                          </span>
+                          {execution.finished_at && (
+                            <span>
+                              Finished:{' '}
+                              {new Date(execution.finished_at).toLocaleString()}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      {execution.status === 'failed' &&
+                        execution.error_message && (
+                          <div className={styles.errorMessage}>
+                            <strong>Error:</strong> {execution.error_message}
+                          </div>
+                        )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Latest Results Tab - BulkTestResult data */}
+          {activeTab === 'results' && (
+            <div className={styles.resultsSection}>
+              <div className={styles.sectionHeader}>
+                <h3>📊 Latest Test Results</h3>
+              </div>
+              {latestResults ? (
+                <BulkResults results={latestResults} isRunning={isRunning} />
+              ) : (
+                <div className={styles.emptyState}>
+                  <p>
+                    No recent results available. Run a bulk test to see detailed
+                    results here!
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>

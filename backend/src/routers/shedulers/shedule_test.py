@@ -9,14 +9,27 @@ from fastapi import APIRouter, Depends, Header
 
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from config import get_db
 from common_querys import get_user_by_username
-from models import BulkTestSchedule, Node, Workspace
+from models import BulkTestSchedule, Node, Workspace, BulkTestExecution
 from schema import ScheduleCreate
 from utils import create_response, value_correction
 
 router = APIRouter(prefix="/schedules", tags=["schedules"])
+
+# -----------------------------
+# Helper Functions
+# -----------------------------
+
+def ensure_naive_datetime(dt: Optional[datetime]) -> Optional[datetime]:
+    """Ensure datetime is timezone-naive for database compatibility"""
+    if dt is None:
+        return None
+    if hasattr(dt, 'tzinfo') and dt.tzinfo is not None:
+        return dt.replace(tzinfo=None)
+    return dt
 
 # -----------------------------
 # Helpers
@@ -43,7 +56,8 @@ def _seed_first_next_run(s: BulkTestSchedule, now: datetime) -> Optional[datetim
     if t == "once":
         # Use the requested time. If it's in the past, we still store it;
         # the engine will ignore until updated/enabled again.
-        return s.date_time
+        # Ensure timezone-naive datetime
+        return ensure_naive_datetime(s.date_time)
 
     if t == "minutes":
         n = max(20, int(getattr(s, "interval_count", 20) or 20))  # enforce min 20
@@ -133,7 +147,7 @@ async def create_schedule(
         username=username,
         workspace_id=workspace_id,
         type=body.type,
-        date_time=body.date_time,
+        date_time=ensure_naive_datetime(body.date_time),
         time=body.time,
         days_of_week=body.days_of_week,
         day_of_month=body.day_of_month,
@@ -148,7 +162,7 @@ async def create_schedule(
     setattr(sched, "interval_count", ic)
 
     # 4) Seed next_run
-    now = datetime.now()
+    now = datetime.now()  # This is already timezone-naive
     sched.next_run = _seed_first_next_run(sched, now)
 
     # 5) Persist
@@ -172,3 +186,239 @@ async def create_schedule(
         "updated_at": sched.updated_at if hasattr(sched, "updated_at") else None,
     }
     return create_response(200, value_correction(data))
+
+
+@router.get("", summary="Get bulk test schedules")
+async def get_schedules(
+    username: str = Header(...),
+    workspace_id: int = Header(...),
+    db: AsyncSession = Depends(get_db),
+):
+    # 1) Verify user exists
+    user = await get_user_by_username(db, username)
+    if not user:
+        return create_response(400, error_message="User not found")
+
+    # 2) Get schedules for this user and workspace
+    result = await db.execute(
+        select(BulkTestSchedule)
+        .where(
+            and_(
+                BulkTestSchedule.username == username,
+                BulkTestSchedule.workspace_id == workspace_id
+            )
+        )
+        .options(selectinload(BulkTestSchedule.executions))
+        .order_by(BulkTestSchedule.created_at.desc())
+    )
+    schedules = result.scalars().all()
+
+    # 3) Format response
+    data = []
+    for sched in schedules:
+        schedule_data = {
+            "id": sched.id,
+            "name": sched.name,
+            "type": sched.type,
+            "enabled": sched.enabled,
+            "interval_count": getattr(sched, "interval_count", None),
+            "date_time": sched.date_time,
+            "time": sched.time,
+            "days_of_week": sched.days_of_week,
+            "day_of_month": sched.day_of_month,
+            "next_run": sched.next_run,
+            "last_run": sched.last_run,
+            "created_at": sched.created_at if hasattr(sched, "created_at") else None,
+            "updated_at": sched.updated_at if hasattr(sched, "updated_at") else None,
+            "executions_count": len(sched.executions) if sched.executions else 0,
+        }
+        data.append(schedule_data)
+
+    return create_response(200, value_correction(data))
+
+
+@router.get("/{schedule_id}/executions", summary="Get bulk test executions for a schedule")
+async def get_schedule_executions(
+    schedule_id: int,
+    username: str = Header(...),
+    db: AsyncSession = Depends(get_db),
+):
+    # 1) Verify user exists
+    user = await get_user_by_username(db, username)
+    if not user:
+        return create_response(400, error_message="User not found")
+
+    # 2) Verify schedule ownership
+    sched_result = await db.execute(
+        select(BulkTestSchedule)
+        .where(
+            and_(
+                BulkTestSchedule.id == schedule_id,
+                BulkTestSchedule.username == username
+            )
+        )
+    )
+    schedule = sched_result.scalar_one_or_none()
+    if not schedule:
+        return create_response(404, error_message="Schedule not found or access denied")
+
+    # 3) Get executions for this schedule
+    exec_result = await db.execute(
+        select(BulkTestExecution)
+        .where(BulkTestExecution.schedule_id == schedule_id)
+        .options(selectinload(BulkTestExecution.results))
+        .order_by(BulkTestExecution.started_at.desc())
+    )
+    executions = exec_result.scalars().all()
+
+    # 4) Format response
+    data = []
+    for exec_obj in executions:
+        exec_data = {
+            "id": exec_obj.id,
+            "schedule_id": exec_obj.schedule_id,
+            "status": exec_obj.status,
+            "started_at": exec_obj.started_at,
+            "finished_at": exec_obj.finished_at,
+            "total_cases": exec_obj.total_cases,
+            "passed": exec_obj.passed,
+            "failed": exec_obj.failed,
+            "duration_ms": exec_obj.duration_ms,
+            "error_message": exec_obj.error_message,
+            "results": [
+                {
+                    "id": res.id,
+                    "case_id": res.case_id,
+                    "case_name": res.case_name,
+                    "status_code": res.status_code,
+                    "success": res.success,
+                    "failures": res.failures,
+                    "request": res.request,
+                    "response": res.response,
+                    "duration_ms": res.duration_ms,
+                    "created_at": res.created_at,
+                }
+                for res in (exec_obj.results or [])
+            ] if exec_obj.results else []
+        }
+        data.append(exec_data)
+
+    return create_response(200, value_correction(data))
+
+
+@router.get("/executions/running", summary="Get all running bulk test executions for user workspace")
+async def get_running_executions(
+    username: str = Header(...),
+    workspace_id: int = Header(...),
+    db: AsyncSession = Depends(get_db),
+):
+    # 1) Verify user exists
+    user = await get_user_by_username(db, username)
+    if not user:
+        return create_response(400, error_message="User not found")
+
+    # 2) Get all schedules for this user and workspace
+    schedules_result = await db.execute(
+        select(BulkTestSchedule.id)
+        .where(
+            and_(
+                BulkTestSchedule.username == username,
+                BulkTestSchedule.workspace_id == workspace_id
+            )
+        )
+    )
+    schedule_ids = [row[0] for row in schedules_result.fetchall()]
+
+    if not schedule_ids:
+        return create_response(200, value_correction([]))
+
+    # 3) Get running/queued executions for these schedules
+    exec_result = await db.execute(
+        select(BulkTestExecution)
+        .where(
+            and_(
+                BulkTestExecution.schedule_id.in_(schedule_ids),
+                BulkTestExecution.status.in_(["running", "queued"])
+            )
+        )
+        .options(selectinload(BulkTestExecution.schedule))
+        .order_by(BulkTestExecution.started_at.desc())
+    )
+    executions = exec_result.scalars().all()
+
+    # 4) Format response
+    data = []
+    for exec_obj in executions:
+        exec_data = {
+            "id": exec_obj.id,
+            "schedule_id": exec_obj.schedule_id,
+            "schedule_name": exec_obj.schedule.name if exec_obj.schedule else "Unknown",
+            "status": exec_obj.status,
+            "started_at": exec_obj.started_at,
+            "finished_at": exec_obj.finished_at,
+            "total_cases": exec_obj.total_cases,
+            "passed": exec_obj.passed,
+            "failed": exec_obj.failed,
+            "duration_ms": exec_obj.duration_ms,
+            "error_message": exec_obj.error_message,
+        }
+        data.append(exec_data)
+
+    return create_response(200, value_correction(data))
+
+
+@router.delete("/{schedule_id}", summary="Delete a bulk test schedule and all its executions/results")
+async def delete_schedule(
+    schedule_id: int,
+    username: str = Header(...),
+    db: AsyncSession = Depends(get_db),
+):
+    # 1) Verify user exists
+    user = await get_user_by_username(db, username)
+    if not user:
+        return create_response(400, error_message="User not found")
+
+    # 2) Verify schedule ownership
+    sched_result = await db.execute(
+        select(BulkTestSchedule)
+        .where(
+            and_(
+                BulkTestSchedule.id == schedule_id,
+                BulkTestSchedule.username == username
+            )
+        )
+    )
+    schedule = sched_result.scalar_one_or_none()
+    if not schedule:
+        return create_response(404, error_message="Schedule not found or access denied")
+
+    # 3) Delete all related results first (due to foreign key constraints)
+    from models import BulkTestResult
+
+    # Get all execution IDs for this schedule
+    exec_result = await db.execute(
+        select(BulkTestExecution.id)
+        .where(BulkTestExecution.schedule_id == schedule_id)
+    )
+    execution_ids = [row[0] for row in exec_result.fetchall()]
+
+    if execution_ids:
+        # Delete all results for these executions
+        await db.execute(
+            BulkTestResult.__table__.delete().where(BulkTestResult.execution_id.in_(execution_ids))
+        )
+
+        # Delete all executions for this schedule
+        await db.execute(
+            BulkTestExecution.__table__.delete().where(BulkTestExecution.schedule_id == schedule_id)
+        )
+
+    # 4) Delete the schedule itself
+    await db.execute(
+        BulkTestSchedule.__table__.delete().where(BulkTestSchedule.id == schedule_id)
+    )
+
+    # 5) Commit the transaction
+    await db.commit()
+
+    return create_response(200, {"message": "Schedule and all related data deleted successfully"})

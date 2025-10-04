@@ -1,6 +1,11 @@
+import { useState } from 'react';
+import TestResultCard from '../TestResultCard';
+import TestResultFocusModal from '../TestResultFocusModal';
 import styles from './BulkTestPanel.module.css';
 
 export default function BulkResults({ results, isRunning }) {
+  const [focusedResult, setFocusedResult] = useState(null);
+
   if (isRunning) {
     return (
       <div className={styles.resultsSection}>
@@ -52,26 +57,46 @@ export default function BulkResults({ results, isRunning }) {
         )}
       </div>
 
-      {/* Details */}
-      <div className={styles.resultsDetails}>
-        {details &&
-          details.map(result => (
-            <div key={result.id} className={styles.resultItem}>
-              <div className={styles.resultInfo}>
-                <span
-                  className={`${styles.statusIcon} ${styles[result.status]}`}
-                >
-                  {result.status === 'passed' ? '✅' : '❌'}
-                </span>
-                <span className={styles.resultName}>{result.name}</span>
-              </div>
-              <div className={styles.resultMeta}>
-                <span>Status: {result.response?.status || 'N/A'}</span>
-                <span>Duration: {result.duration}</span>
-              </div>
-            </div>
+      {/* Test Results using the same design as API test cases */}
+      {details && details.length > 0 && (
+        <div className={styles.testResultsGrid}>
+          {details.map((result, index) => (
+            <TestResultCard
+              key={result.id || index}
+              testResult={{
+                id: result.id,
+                name: result.name,
+                success: result.status === 'passed',
+                status: result.status,
+                status_code: result.response?.status,
+                duration_ms: result.duration
+                  ? parseInt(result.duration.replace('ms', ''))
+                  : 0,
+                duration: result.duration,
+                failures: result.failures,
+                request: result.request,
+                response_data: result.response_data,
+                // Add any additional data that might be needed
+                case_id: result.id,
+                ok: result.status === 'passed',
+                passed: result.status === 'passed',
+              }}
+              onFocus={setFocusedResult}
+              onSave={null} // Bulk test results are read-only
+              onRunTest={null} // Can't re-run individual bulk test results
+            />
           ))}
-      </div>
+        </div>
+      )}
+
+      {/* Result Focus Modal using the same modal as API test cases */}
+      <TestResultFocusModal
+        testResult={focusedResult}
+        isOpen={!!focusedResult}
+        onClose={() => setFocusedResult(null)}
+        onRunTest={null} // Can't re-run from bulk results
+        onSave={null} // Bulk results are read-only
+      />
     </div>
   );
 }

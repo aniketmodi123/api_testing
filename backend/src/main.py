@@ -9,7 +9,7 @@ from exception_handler import unified_exception_handler
 from models import Base
 from datetime import datetime
 from routers.runner import run_case, execute_direct, bulk_run_cases
-from routers.script.test_scheduler import run_engine, run_engine_once
+from routers.script.test_scheduler import run_engine
 from routers.workspace import list_workspace_tree
 from routers.sso import create_user, forget_password, login, logout, otp_generation, update_user, delete_user, user_profile
 from routers.workspace import create_workspace, update_workspace, list_workspace, list_workspace_tree,delete_workspace
@@ -18,6 +18,7 @@ from routers.headers import complete_headers, set_headers,list_headers,delete_he
 from routers.api import list_apis, save_api
 from routers.api_cases import delete_case, get_case, list_search_api_case, create_dup_case, save_api_case
 from routers.environment import create_environment, list_environments, resolve_variables, save_variables,delete_variables, list_variables
+from routers.shedulers import shedule_test
 from security import AuthMiddleware
 
 FASTAPI_CONFIG = {
@@ -79,16 +80,16 @@ async def health_check():
         )
 
 
-# @app.get("/")
-# async def root():
-#     """Root endpoint with basic API information."""
-#     return {
-#         "message": "API Testing Backend",
-#         "version": "1.0",
-#         "docs": "/swagger",
-#         "health": "/health",
-#         "timestamp": datetime.now(pytz.timezone('Asia/Kolkata')).isoformat()
-#     }
+@app.get("/")
+async def root():
+    """Root endpoint with basic API information."""
+    return {
+        "message": "API Testing Backend",
+        "version": "1.0",
+        "docs": "/swagger",
+        "health": "/health",
+        "timestamp": datetime.now(pytz.timezone('Asia/Kolkata')).isoformat()
+    }
 
 
 @app.middleware("http")
@@ -110,11 +111,7 @@ async def add_process_time_header(request: Request, call_next):
 
 
 
-@app.get("/")
-async def welcome():
-    return await run_engine_once()
-
-
+app.add_exception_handler(HTTPException, unified_exception_handler)
 app.add_exception_handler(Exception, unified_exception_handler)
 
 
@@ -176,3 +173,6 @@ app.include_router(delete_variables.router, prefix="/environment", tags=["Variab
 app.include_router(run_case.router, tags=["Runner"])
 app.include_router(execute_direct.router, prefix="/api", tags=["API Execution"])
 app.include_router(bulk_run_cases.router, tags=["Runner"])
+
+# schedules
+app.include_router(shedule_test.router, tags=["Schedules"])

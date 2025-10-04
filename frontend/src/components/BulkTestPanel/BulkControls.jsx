@@ -43,10 +43,10 @@ export default function BulkControls({
           {isRunning ? (
             <>
               <span className={styles.spinner}></span>
-              Running...
+              Scheduling...
             </>
           ) : (
-            `▶️ Run ${testScope === 'selected' ? 'Selected' : testScope === 'folder' ? 'Folder' : 'All'} Tests`
+            `🚀 Schedule & Run ${testScope === 'selected' ? 'Selected' : testScope === 'folder' ? 'Folder' : 'All'} Tests`
           )}
         </button>
 

@@ -53,7 +53,7 @@
 
 .folderSelector.selected {
   background-color: var(--selected-item-background);
-  border-color: var(--primary);
+  /* border-color: var(--primary); */
 }
 
 .folderToggle {
@@ -119,7 +119,7 @@
 
 .apiSelector.selected {
   background-color: var(--selected-item-background);
-  border-color: var(--primary);
+  /* border-color: var(--primary); */
 }
 
 .selectIcon {
@@ -194,7 +194,7 @@
 
 .fileItems .testCaseItem.selected {
   background-color: var(--selected-item-background);
-  border-color: var(--primary);
+  /* border-color: var(--primary); */
 }
 
 .fileItems .caseIcon {
@@ -231,7 +231,7 @@
 
 .requestItem.selected {
   background-color: var(--selected-item-background);
-  border-color: var(--primary);
+  /* border-color: var(--primary); */
 }
 
 .methodBadge {
@@ -355,7 +355,7 @@
 
 .testCaseItem.selected {
   background-color: var(--selected-item-background);
-  border-color: var(--primary);
+  /* border-color: var(--primary); */
 }
 
 .caseIcon {

@@ -31,6 +31,7 @@ export default function BulkScheduler({ onSchedule, onClose, selectedItems }) {
     }
 
     onSchedule(scheduleConfig);
+    console.log('BulkScheduler submitting config:', scheduleConfig);
   };
 
   const handleDayOfWeekChange = day => {
