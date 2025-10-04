@@ -907,4 +907,33 @@ export const apiService = {
       throw error;
     }
   },
+
+  /**
+   * Update a bulk test schedule
+   * @param {number} scheduleId - Schedule ID to update
+   * @param {Object} scheduleData - Updated schedule data
+   * @param {string} username - Username for header
+   * @param {number} workspaceId - Workspace ID for header
+   * @returns {Promise} Promise with update result
+   */
+  async updateBulkTestSchedule(
+    scheduleId,
+    scheduleData,
+    username,
+    workspaceId
+  ) {
+    try {
+      const response = await api.put(`/schedules/${scheduleId}`, scheduleData, {
+        headers: {
+          'Content-Type': 'application/json',
+          username: username,
+          'workspace-id': workspaceId,
+        },
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error updating bulk test schedule:', error);
+      throw error;
+    }
+  },
 };

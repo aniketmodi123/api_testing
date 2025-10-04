@@ -17,6 +17,8 @@ export default function BulkTestPanel({ onSelectRequest }) {
   const [isRunning, setIsRunning] = useState(false);
   const [results, setResults] = useState(null);
   const [showScheduler, setShowScheduler] = useState(false);
+  const [showEditScheduler, setShowEditScheduler] = useState(false);
+  const [editingSchedule, setEditingSchedule] = useState(null);
   const [scheduledJobs, setScheduledJobs] = useState([]);
   const [selectedApiCases, setSelectedApiCases] = useState([]);
   const [pollingInterval, setPollingInterval] = useState(null);
@@ -356,6 +358,112 @@ export default function BulkTestPanel({ onSelectRequest }) {
       }
     },
     [auth?.username, loadTestHistory, loadRunningTests]
+  );
+
+  // Handle editing a schedule
+  const handleEditSchedule = useCallback(schedule => {
+    setEditingSchedule(schedule);
+    setShowEditScheduler(true);
+  }, []);
+
+  // Handle updating a schedule
+  const handleUpdateSchedule = useCallback(
+    async scheduleConfig => {
+      if (!activeWorkspace?.id || !editingSchedule) {
+        alert('No workspace selected or no schedule to edit');
+        return;
+      }
+
+      setLoadingScheduleCreate(true);
+      try {
+        const username = auth?.username || '';
+
+        // Prepare the payload for scheduling
+        const payload = {
+          type: testScope,
+          apis:
+            testScope === 'api'
+              ? selectedApiCases // Array of file IDs for 'api' type
+              : selectedApiCases, // Array of {file_id, cases} for 'selected' type
+        };
+
+        // Process the schedule config to ensure proper datetime format
+        const processedConfig = { ...scheduleConfig };
+
+        // If it's a "once" type schedule, ensure datetime is in the right format
+        if (scheduleConfig.type === 'once' && scheduleConfig.datetime) {
+          // datetime-local provides format like "2025-10-04T20:43"
+          // We need to convert it to ISO format but without 'Z' to indicate local time
+          processedConfig.date_time = scheduleConfig.datetime + ':00'; // Add seconds
+          delete processedConfig.datetime; // Remove the original field
+        }
+
+        // Map frontend fields to backend API fields
+        if (scheduleConfig.intervalCount) {
+          processedConfig.interval_count = scheduleConfig.intervalCount;
+          delete processedConfig.intervalCount;
+        }
+
+        // Map days of week
+        if (scheduleConfig.daysOfWeek) {
+          processedConfig.days_of_week = scheduleConfig.daysOfWeek;
+          delete processedConfig.daysOfWeek;
+        }
+
+        // Map day of month
+        if (scheduleConfig.dayOfMonth) {
+          processedConfig.day_of_month = scheduleConfig.dayOfMonth;
+          delete processedConfig.dayOfMonth;
+        }
+
+        // Create the schedule update data
+        const scheduleData = {
+          ...processedConfig,
+          payload: payload,
+        };
+
+        console.log('Updating bulk test schedule:', scheduleData);
+
+        const scheduleResponse = await apiService.updateBulkTestSchedule(
+          editingSchedule.id,
+          scheduleData,
+          username,
+          activeWorkspace.id
+        );
+
+        // Update local state
+        setTestHistory(prev =>
+          prev.map(schedule =>
+            schedule.id === editingSchedule.id
+              ? { ...schedule, ...scheduleResponse.data }
+              : schedule
+          )
+        );
+
+        // Close the edit modal
+        setShowEditScheduler(false);
+        setEditingSchedule(null);
+
+        // Refresh data
+        await loadTestHistory();
+
+        alert('Schedule updated successfully!');
+      } catch (error) {
+        console.error('Failed to update schedule:', error);
+        alert(`Failed to update schedule: ${error.message || 'Unknown error'}`);
+      } finally {
+        setLoadingScheduleCreate(false);
+      }
+    },
+    [
+      selectedApiCases,
+      testScope,
+      auth,
+      activeWorkspace,
+      selectedItems,
+      editingSchedule,
+      loadTestHistory,
+    ]
   );
 
   useEffect(() => {
@@ -917,6 +1025,24 @@ export default function BulkTestPanel({ onSelectRequest }) {
           delete processedConfig.datetime; // Remove the original field
         }
 
+        // Map frontend fields to backend API fields
+        if (scheduleConfig.intervalCount) {
+          processedConfig.interval_count = scheduleConfig.intervalCount;
+          delete processedConfig.intervalCount;
+        }
+
+        // Map days of week
+        if (scheduleConfig.daysOfWeek) {
+          processedConfig.days_of_week = scheduleConfig.daysOfWeek;
+          delete processedConfig.daysOfWeek;
+        }
+
+        // Map day of month
+        if (scheduleConfig.dayOfMonth) {
+          processedConfig.day_of_month = scheduleConfig.dayOfMonth;
+          delete processedConfig.dayOfMonth;
+        }
+
         // Create the schedule
         const scheduleData = {
           ...processedConfig,
@@ -960,21 +1086,31 @@ export default function BulkTestPanel({ onSelectRequest }) {
 
   return (
     <div className={styles.bulkTestContainer} ref={containerRef}>
-      {isRunning && <LookingLoader overlay text="Running bulk test..." />}
-      {loadingExecution && (
-        <LookingLoader overlay text="Loading test results..." />
-      )}
-      {loadingDelete && (
-        <LookingLoader overlay text="Deleting test history..." />
-      )}
-      {loadingScheduleCreate && (
-        <LookingLoader overlay text="Creating schedule..." />
-      )}
-      {loadingHistory && (
-        <LookingLoader overlay text="Loading test history..." />
-      )}
-      {loadingRunning && (
-        <LookingLoader overlay text="Loading running tests..." />
+      {/* Single LookingLoader with priority-based messaging */}
+      {(isRunning ||
+        loadingExecution ||
+        loadingDelete ||
+        loadingScheduleCreate ||
+        loadingHistory ||
+        loadingRunning) && (
+        <LookingLoader
+          overlay
+          text={
+            isRunning
+              ? 'Running bulk test...'
+              : loadingScheduleCreate
+                ? 'Creating schedule...'
+                : loadingExecution
+                  ? 'Loading test results...'
+                  : loadingDelete
+                    ? 'Deleting test history...'
+                    : loadingHistory
+                      ? 'Loading test history...'
+                      : loadingRunning
+                        ? 'Loading running tests...'
+                        : 'Processing...'
+          }
+        />
       )}
       {/* Left Panel: Collection Tree */}
       <div
@@ -992,6 +1128,14 @@ export default function BulkTestPanel({ onSelectRequest }) {
             onSelectRequest={handleTreeSelection}
             selectedItems={selectedItems}
             testScope={testScope}
+            parentLoading={
+              isRunning ||
+              loadingExecution ||
+              loadingDelete ||
+              loadingScheduleCreate ||
+              loadingHistory ||
+              loadingRunning
+            }
           />
         </div>
       </div>
@@ -1129,6 +1273,25 @@ export default function BulkTestPanel({ onSelectRequest }) {
                           </svg>
                         </button>
                         <button
+                          className={styles.editButton}
+                          onClick={() => handleEditSchedule(schedule)}
+                          title="Edit this schedule"
+                          disabled={loadingExecution || loadingDelete}
+                        >
+                          <svg
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            xmlns="http://www.w3.org/2000/svg"
+                          >
+                            <path
+                              d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"
+                              fill="currentColor"
+                            />
+                          </svg>
+                        </button>
+                        <button
                           className={styles.deleteButton}
                           onClick={() => handleDeleteSchedule(schedule.id)}
                           title="Delete this test history and all its results"
@@ -1249,6 +1412,20 @@ export default function BulkTestPanel({ onSelectRequest }) {
           onSchedule={handleScheduleTests}
           onClose={() => setShowScheduler(false)}
           selectedItems={selectedItems}
+        />
+      )}
+
+      {/* Edit Scheduler Modal */}
+      {showEditScheduler && editingSchedule && (
+        <BulkScheduler
+          onSchedule={handleUpdateSchedule}
+          onClose={() => {
+            setShowEditScheduler(false);
+            setEditingSchedule(null);
+          }}
+          selectedItems={selectedItems}
+          existingSchedule={editingSchedule}
+          isEditing={true}
         />
       )}
     </div>

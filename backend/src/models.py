@@ -199,11 +199,11 @@ class OTPAttempt(Base):
 class ScheduleType(str, Enum):
     """Frequency for the scheduler."""
     once = "once"
-    minutely = "minutely"
-    hourly = "hourly"
     daily = "daily"
     weekly = "weekly"
     monthly = "monthly"
+    minutely = "minutely"
+    hourly = "hourly"
 
 
 # ---------- Models ----------

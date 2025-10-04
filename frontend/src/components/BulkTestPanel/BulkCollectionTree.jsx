@@ -330,6 +330,7 @@ export default function BulkCollectionTree({
   onSelectRequest,
   selectedItems = [],
   testScope = 'selected',
+  parentLoading = false,
 }) {
   const { activeWorkspace } = useWorkspace();
   const [bulkTreeData, setBulkTreeData] = useState([]);
@@ -424,7 +425,7 @@ export default function BulkCollectionTree({
     onSelectRequest(item);
   };
 
-  if (loading) {
+  if (loading && !parentLoading) {
     return <LookingLoader overlay text="Loading ..." />;
   }
 

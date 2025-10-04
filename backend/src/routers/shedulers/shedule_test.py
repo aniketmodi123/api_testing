@@ -13,7 +13,7 @@ from sqlalchemy.orm import selectinload
 
 from config import get_db
 from common_querys import get_user_by_username
-from models import BulkTestSchedule, Node, Workspace, BulkTestExecution
+from models import BulkTestSchedule, Node, Workspace, BulkTestExecution, ScheduleType
 from schema import ScheduleCreate
 from utils import create_response, value_correction
 
@@ -59,20 +59,17 @@ def _seed_first_next_run(s: BulkTestSchedule, now: datetime) -> Optional[datetim
         # Ensure timezone-naive datetime
         return ensure_naive_datetime(s.date_time)
 
-    if t == "minutes":
-        n = max(20, int(getattr(s, "interval_count", 20) or 20))  # enforce min 20
+    if t == "minutely":
+        n = max(20, int(getattr(s, "interval_count", 20) or 20))  # enforce min 20, but use dynamic value
         base = now.replace(second=0, microsecond=0)
-        minute = (base.minute // n + 1) * n
-        delta = minute - base.minute
-        return base + timedelta(minutes=delta)
+        return base + timedelta(minutes=n)
 
     if t == "hourly":
-        n = max(1, int(getattr(s, "interval_count", 1) or 1))
+        n = max(1, int(getattr(s, "interval_count", 1) or 1))  # dynamic interval
         hh, mm = _parse_hhmm(s.time)
         candidate = now.replace(minute=mm, second=0, microsecond=0)
         if candidate <= now:
-            candidate += timedelta(hours=1)
-        # we keep exact minute; step alignment happens in compute_next_run
+            candidate += timedelta(hours=n)  # use dynamic interval
         return candidate
 
     if t == "daily":
@@ -157,7 +154,7 @@ async def create_schedule(
 
     # interval_count lives on the model (make sure the column exists)
     ic = body.interval_count if body.interval_count is not None else (
-        20 if body.type == "minutes" else 1  # sensible defaults
+        20 if body.type == "minutely" else 1  # 20 min default for minutely, 1 for others
     )
     setattr(sched, "interval_count", ic)
 
@@ -422,3 +419,88 @@ async def delete_schedule(
     await db.commit()
 
     return create_response(200, {"message": "Schedule and all related data deleted successfully"})
+
+
+@router.put("/{schedule_id}", summary="Update a bulk test schedule")
+async def update_schedule(
+    schedule_id: int,
+    body: ScheduleCreate,
+    username: str = Header(...),
+    workspace_id: int = Header(...),
+    db: AsyncSession = Depends(get_db),
+):
+    # 1) Verify user exists
+    user = await get_user_by_username(db, username)
+    if not user:
+        return create_response(400, error_message="User not found")
+
+    # 2) Verify schedule ownership
+    sched_result = await db.execute(
+        select(BulkTestSchedule)
+        .where(
+            and_(
+                BulkTestSchedule.id == schedule_id,
+                BulkTestSchedule.username == username,
+                BulkTestSchedule.workspace_id == workspace_id
+            )
+        )
+    )
+    schedule = sched_result.scalar_one_or_none()
+    if not schedule:
+        return create_response(404, error_message="Schedule not found or access denied")
+
+    # 3) Verify payload ownership (same as create)
+    file_ids: List[int] = []
+    if body.payload.type == "api":
+        file_ids = body.payload.apis
+    else:
+        file_ids = [a.file_id for a in body.payload.apis]
+
+    if file_ids:
+        nodes = await verify_nodes(db, file_ids, user.id)
+        allowed = {n.id for n in nodes}
+        missing = [fid for fid in file_ids if fid not in allowed]
+        if missing:
+            return create_response(206, error_message=f"File(s) not found or access denied: {missing}")
+
+    # 4) Update schedule fields
+    schedule.name = body.name
+    schedule.type = ScheduleType(body.type)  # Convert string to enum
+    schedule.date_time = ensure_naive_datetime(body.date_time)
+    schedule.time = body.time
+    schedule.days_of_week = body.days_of_week
+    schedule.day_of_month = body.day_of_month
+    schedule.enabled = body.enabled
+    schedule.payload = body.payload.dict()
+
+    # Update interval_count
+    ic = body.interval_count if body.interval_count is not None else (
+        20 if body.type == "minutely" else 1  # 20 min default for minutely
+    )
+    setattr(schedule, "interval_count", ic)
+
+    # 5) Recalculate next_run based on new schedule
+    now = datetime.now()
+    schedule.next_run = _seed_first_next_run(schedule, now)
+    schedule.updated_at = now
+
+    # 6) Persist changes
+    await db.commit()
+    await db.refresh(schedule)
+
+    # 7) Response
+    data = {
+        "id": schedule.id,
+        "name": schedule.name,
+        "type": schedule.type,
+        "enabled": schedule.enabled,
+        "interval_count": getattr(schedule, "interval_count", None),
+        "date_time": schedule.date_time,
+        "time": schedule.time,
+        "days_of_week": schedule.days_of_week,
+        "day_of_month": schedule.day_of_month,
+        "next_run": schedule.next_run,
+        "created_at": schedule.created_at,
+        "updated_at": schedule.updated_at,
+    }
+    return create_response(200, value_correction(data))

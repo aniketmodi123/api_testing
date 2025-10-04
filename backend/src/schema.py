@@ -1,7 +1,6 @@
 from datetime import datetime
 from pydantic import BaseModel, Field, validator, EmailStr, root_validator
 from typing import Optional, List, Dict, Any, Literal, Union
-from enum import Enum
 
 class PaginationRes(BaseModel):
     page: int
@@ -798,7 +797,7 @@ BulkPayload = Union[BulkPayloadSelected, BulkPayloadApi]
 # -----------------------------
 class ScheduleCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
-    type: Literal["once", "minutes", "hourly", "daily", "weekly", "monthly"]
+    type: Literal["once", "minutely", "hourly", "daily", "weekly", "monthly"]
 
     # Generic / optional fields
     date_time: Optional[datetime] = None         # for "once"
@@ -839,9 +838,9 @@ class ScheduleCreate(BaseModel):
             if not date_time:
                 raise ValueError("date_time is required for type=once")
 
-        elif t == "minutes":
+        elif t == "minutely":
             if interval is None:
-                raise ValueError("interval_count is required for type=minutes")
+                raise ValueError("interval_count is required for type=minutely")
             if interval < 20:
                 raise ValueError("interval_count must be >= 20 minutes")
 
