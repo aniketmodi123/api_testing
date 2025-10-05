@@ -22,7 +22,7 @@ const Logo = () => {
   };
 
   return (
-    <Link to="/" style={styles.logoLink}>
+    <Link to="/collections" style={styles.logoLink}>
       <h1
         style={styles.logo}
         onMouseEnter={e => (e.target.style.opacity = '0.8')}

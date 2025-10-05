@@ -764,4 +764,199 @@ export const apiService = {
       data: Object.values(buckets),
     };
   },
+
+  /**
+   * Run bulk test cases using backend bulk_run_cases API
+   * @param {Array} apis - Array of API/case objects (see backend BulkRunnerReq)
+   * @param {string} username - Username for header
+   * @returns {Promise} Promise with bulk test results
+   */
+  async bulkRunCases(type, apis, username) {
+    try {
+      const response = await api.post(
+        '/bulk_run_cases',
+        { type, apis },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            username: username,
+          },
+        }
+      );
+      // Consistent response handling like runTest
+      const payload = response?.data;
+      if (Array.isArray(payload)) {
+        return {
+          data: payload,
+          status: 200,
+          message: 'Bulk test executed',
+        };
+      }
+      return {
+        data: payload?.data ?? [],
+        status: payload?.response_code ?? 200,
+        message: payload?.message || 'Bulk test executed successfully',
+      };
+    } catch (error) {
+      console.error('Error running bulk test cases:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Create a bulk test schedule
+   * @param {Object} scheduleData - Schedule configuration
+   * @param {string} username - Username for header
+   * @param {number} workspaceId - Workspace ID for header
+   * @returns {Promise} Promise with schedule creation result
+   */
+  async createBulkTestSchedule(scheduleData, username, workspaceId) {
+    try {
+      const response = await api.post('/schedules', scheduleData, {
+        headers: {
+          'Content-Type': 'application/json',
+          username: username,
+          'workspace-id': workspaceId,
+        },
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error creating bulk test schedule:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get bulk test schedules
+   * @param {string} username - Username for header
+   * @param {number} workspaceId - Workspace ID for header
+   * @returns {Promise} Promise with schedules list
+   */
+  async getBulkTestSchedules(username, workspaceId) {
+    try {
+      const response = await api.get('/schedules', {
+        headers: {
+          username: username,
+          'workspace-id': workspaceId,
+        },
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching bulk test schedules:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get bulk test execution results
+   * @param {number} scheduleId - Schedule ID
+   * @param {string} username - Username for header
+   * @returns {Promise} Promise with execution results
+   */
+  async getBulkTestExecutions(scheduleId, username) {
+    try {
+      const response = await api.get(`/schedules/${scheduleId}/executions`, {
+        headers: {
+          username: username,
+        },
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching bulk test executions:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get all running/active bulk test executions across all schedules
+   * @param {string} username - Username for header
+   * @param {number} workspaceId - Workspace ID for header
+   * @returns {Promise} Promise with running executions
+   */
+  async getRunningBulkTestExecutions(username, workspaceId) {
+    try {
+      const response = await api.get('/schedules/executions/running', {
+        headers: {
+          username: username,
+          'workspace-id': workspaceId,
+        },
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching running bulk test executions:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Delete a single bulk test execution (and its results)
+   * @param {number} scheduleId - Parent schedule ID
+   * @param {number} executionId - Execution ID to delete
+   * @param {string} username - Username for header
+   */
+  async deleteBulkTestExecution(scheduleId, executionId, username) {
+    try {
+      const response = await api.delete(
+        `/schedules/${scheduleId}/executions/${executionId}`,
+        {
+          headers: {
+            username: username,
+          },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Error deleting bulk test execution:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Delete a bulk test schedule
+   * @param {number} scheduleId - Schedule ID to delete
+   * @param {string} username - Username for header
+   * @returns {Promise} Promise with deletion result
+   */
+  async deleteBulkTestSchedule(scheduleId, username) {
+    try {
+      const response = await api.delete(`/schedules/${scheduleId}`, {
+        headers: {
+          username: username,
+        },
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error deleting bulk test schedule:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Update a bulk test schedule
+   * @param {number} scheduleId - Schedule ID to update
+   * @param {Object} scheduleData - Updated schedule data
+   * @param {string} username - Username for header
+   * @param {number} workspaceId - Workspace ID for header
+   * @returns {Promise} Promise with update result
+   */
+  async updateBulkTestSchedule(
+    scheduleId,
+    scheduleData,
+    username,
+    workspaceId
+  ) {
+    try {
+      const response = await api.put(`/schedules/${scheduleId}`, scheduleData, {
+        headers: {
+          'Content-Type': 'application/json',
+          username: username,
+          'workspace-id': workspaceId,
+        },
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error updating bulk test schedule:', error);
+      throw error;
+    }
+  },
 };

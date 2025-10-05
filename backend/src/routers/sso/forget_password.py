@@ -3,7 +3,8 @@ from fastapi import APIRouter, HTTPException, Header, status, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from dateutil.relativedelta import relativedelta
-from config import get_db, log_failed_attempt
+from config import get_db
+from common_querys import log_failed_attempt
 from models import User, OTPAttempt
 from schema import ChangePassword, ForgotPassword
 from utils import (

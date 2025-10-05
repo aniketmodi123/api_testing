@@ -230,3 +230,81 @@
     width: 100%;
   }
 }
+
+/* Schedule info and hints */
+.scheduleInfo {
+  background-color: var(--background-lighter);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.scheduleHint {
+  margin: 6px 0 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-style: italic;
+  line-height: 1.4;
+}
+
+/* Dynamic interval input styling */
+.intervalInputGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.intervalInputGroup input {
+  flex: 1;
+  min-width: 80px;
+  max-width: 120px;
+}
+
+.intervalUnit {
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.quickOptions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.quickOptions span {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin-right: 4px;
+}
+
+.quickOption {
+  background: var(--background-lighter);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--text-muted);
+}
+
+.quickOption:hover {
+  background: var(--hover-background);
+  border-color: var(--primary);
+  color: var(--text);
+}
+
+.quickOption.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: white;
+}

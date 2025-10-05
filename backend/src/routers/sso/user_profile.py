@@ -3,8 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import (
-    get_db,
-    serialize_data
+    get_db
 )
 from models import User
 from schema import UserResponse

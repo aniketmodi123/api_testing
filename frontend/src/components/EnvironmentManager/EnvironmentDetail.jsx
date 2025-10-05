@@ -47,13 +47,6 @@ export default function EnvironmentDetail({
 
   // Update edit form when environment changes
   useEffect(() => {
-    console.log('🔄 Environment prop changed:', {
-      id: environment.id,
-      name: environment.name,
-      description: environment.description,
-      updated_at: environment.updated_at,
-    });
-    console.log('🎯 Full environment object:', environment);
     setEditForm({
       name: environment.name,
       description: environment.description || '',

@@ -15,6 +15,19 @@ export default function TestResultCard({
   onSave,
   onRunTest,
 }) {
+  // Safety check to ensure testResult exists
+  if (!testResult) {
+    return (
+      <div className={styles.card}>
+        <div className={styles.header}>
+          <div className={styles.titleSection}>
+            <h3 className={styles.title}>Invalid Test Result</h3>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const [editableData, setEditableData] = useState({
     request: pretty(testResult.request || testResult.requestData || {}),
     expected: pretty(testResult.expected || testResult.expectedData || {}),
@@ -56,12 +69,13 @@ export default function TestResultCard({
   };
 
   // Primary status detection: success: true means test passed
-  const isSuccess = Boolean(
-    testResult.success === true ||
-      testResult.status === 'passed' ||
-      testResult.ok === true ||
-      testResult.passed === true
-  );
+  const isSuccess =
+    Boolean(
+      testResult.success === true ||
+        testResult.status === 'passed' ||
+        testResult.ok === true ||
+        testResult.passed === true
+    ) && Boolean(testResult.request || testResult.requestData); // Ensure we have request data
 
   const statusCode = testResult.status_code || testResult.statusCode;
   const duration = testResult.duration_ms || testResult.duration || 0;

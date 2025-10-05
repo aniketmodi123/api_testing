@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { workspaceService } from '../../services/workspaceService';
 import { useNode } from '../../store/node';
 import { useWorkspace } from '../../store/workspace';
-import ConfirmModal from '../ConfirmModal';
 import styles from './MoveCopyPanel.module.css';
 
 /** ---- helpers ---- **/
@@ -313,24 +312,27 @@ export default function MoveCopyPanel({
   if (!isOpen) return null;
   if (isLoading) {
     return (
-      <ConfirmModal
-        isOpen={true}
-        loading={true}
-        loaderText={operation === 'copy' ? 'Copying...' : 'Moving...'}
-      />
+      <div className={styles.overlay}>
+        <div className={styles.panel}>
+          <div className={styles.header}>Processing...</div>
+        </div>
+      </div>
     );
   }
   if (error) {
     return (
-      <ConfirmModal
-        isOpen={true}
-        title="Error"
-        message={error}
-        confirmText="OK"
-        onConfirm={() => setError(null)}
-        onCancel={() => setError(null)}
-        type="error"
-      />
+      <div className={styles.overlay}>
+        <div className={styles.panel}>
+          <div className={styles.header}>Error</div>
+          <div className={styles.content}>{error}</div>
+          <button
+            className={styles.confirmButton}
+            onClick={() => setError(null)}
+          >
+            OK
+          </button>
+        </div>
+      </div>
     );
   }
 
@@ -403,11 +405,7 @@ export default function MoveCopyPanel({
                     minHeight: 40,
                   }}
                 >
-                  <ConfirmModal
-                    isOpen={true}
-                    loading={true}
-                    loaderText="Loading folders..."
-                  />
+                  <span>Loading folders...</span>
                 </div>
               ) : Array.isArray(localFolders) && localFolders.length > 0 ? (
                 renderFolderTree(localFolders)

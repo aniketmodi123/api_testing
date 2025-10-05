@@ -2,14 +2,10 @@ from fastapi import APIRouter, Depends, Header, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import get_db, get_user_by_username
+from config import get_db
 from models import Workspace
-from utils import (
-    ExceptionHandler,
-    create_response,
-    value_correction,
-    get_workspace_tree_response
-)
+from common_querys import get_user_by_username, get_workspace_tree_response
+from utils import ExceptionHandler, create_response, value_correction
 
 router = APIRouter()
 

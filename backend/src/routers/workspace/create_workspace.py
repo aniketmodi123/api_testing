@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import get_db, get_user_by_username
+from config import get_db
+from common_querys import get_user_by_username
 from models import Workspace
 from schema import WorkspaceCreateRequest
 from utils import (

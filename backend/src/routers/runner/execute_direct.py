@@ -1,31 +1,22 @@
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 from fastapi import APIRouter, Depends, Header as FastAPIHeader, HTTPException
-from pydantic import BaseModel, Field
-import httpx
-import time
-import json
+import httpx, time, json
 
 from schema import ApiExecuteRequest
-from validator import evaluate_expect
+from routers.runner.validator import evaluate_expect
 
 from utils import (
     ExceptionHandler,
     create_response,
-    replace_variables_in_text,
-    replace_variables_in_dict,
-    replace_variables_in_list,
-    get_environment_variables,
-    handle_http_error
+    resolve_variables,
+    handle_http_error,
+    get_environment_variables
 )
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from config import (
-    get_db,
-    get_user_by_username,
-    verify_node_ownership
-)
-from models import Environment, Node, Header
+from common_querys import get_user_by_username, verify_node_ownership, get_headers
+from config import get_db
+from models import Environment, Node
 
 def resolve_docker_url(url: str) -> str:
     """
@@ -152,34 +143,33 @@ async def execute_api_direct(
                 env_variables = await get_environment_variables(active_environment.id)
 
         # 2. Get merged headers using get_headers (includes parent folders and file)
-        from config import get_headers
         folder_path, folder_ids, headers_map, merge_result = await get_headers(db, request.file_id)
         merged_headers = merge_result.get("merged_headers", {})
 
 
         # 3. Resolve variables in all request parts
-        resolved_url = replace_variables_in_text(request.url, env_variables)
-        resolved_headers = replace_variables_in_dict(merged_headers, env_variables)
-        resolved_params = replace_variables_in_dict(request.params, env_variables)
+        resolved_url = resolve_variables(request.url, env_variables)
+        resolved_headers = resolve_variables(merged_headers, env_variables)
+        resolved_params = resolve_variables(request.params, env_variables)
         resolved_body = None
 
         if request.body is not None:
             if isinstance(request.body, str):
-                resolved_body = replace_variables_in_text(request.body, env_variables)
+                resolved_body = resolve_variables(request.body, env_variables)
             elif isinstance(request.body, dict):
-                resolved_body = replace_variables_in_dict(request.body, env_variables)
+                resolved_body = resolve_variables(request.body, env_variables)
             elif isinstance(request.body, list):
-                resolved_body = replace_variables_in_list(request.body, env_variables)
+                resolved_body = resolve_variables(request.body, env_variables)
             else:
                 resolved_body = request.body
 
         # 4. Merge headers (merged + request + defaults)
-        # Use replace_variables_in_dict from utils for request.headers
+        # Use resolve_variables from utils for request.headers
         final_headers = {
             'Content-Type': 'application/json',
             'User-Agent': 'API-Testing-Tool/1.0',
             **resolved_headers,  # Merged headers from get_headers (lowest priority)
-            **replace_variables_in_dict(request.headers, env_variables),  # Request headers (highest priority)
+            **resolve_variables(request.headers, env_variables),  # Request headers (highest priority)
         }
 
         # Add ngrok headers if needed

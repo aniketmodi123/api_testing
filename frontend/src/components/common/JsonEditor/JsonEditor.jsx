@@ -80,8 +80,6 @@ export const JsonEditor = ({
   const [isResizing, setIsResizing] = useState(false);
 
   // Undo/Redo functionality
-  console.log('Initial value:', value);
-  console.log(placeholder);
   const [history, setHistory] = useState([value]);
   const [historyIndex, setHistoryIndex] = useState(0);
   const [isUndoRedo, setIsUndoRedo] = useState(false);

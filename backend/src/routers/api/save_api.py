@@ -2,11 +2,8 @@ from fastapi import APIRouter, Depends, Header
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import (
-    get_db,
-    get_user_by_username,
-    verify_node_ownership
-)
+from config import get_db
+from common_querys import get_user_by_username, verify_node_ownership
 from models import Api, ApiCase
 from schema import ApiCreateRequest
 from utils import (

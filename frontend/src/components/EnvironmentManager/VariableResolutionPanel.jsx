@@ -89,10 +89,6 @@ export default function VariableResolutionPanel({ environment, variables }) {
 
   const handleCopyResolved = async () => {
     const success = await copyToClipboard(resolvedText);
-    if (success) {
-      // You can add a toast notification here
-      console.log('✅ Copied to clipboard');
-    }
   };
 
   const highlightVariables = text => {

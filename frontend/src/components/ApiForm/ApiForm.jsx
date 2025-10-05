@@ -191,11 +191,6 @@ const ApiForm = ({
 
     if (isNgrokUrl && !formData.headers['ngrok-skip-browser-warning']) {
       // Suggest adding ngrok headers
-      console.log(
-        '🔗 Ngrok URL detected! Auto-adding bypass headers for:',
-        formData.endpoint
-      );
-
       setFormData(prev => ({
         ...prev,
         headers: {
@@ -304,50 +299,23 @@ const ApiForm = ({
         formData.headers
       );
 
-      console.log('🚀 Making API call:', {
-        url: formData.endpoint,
-        method: formData.method,
-        headers: enhancedHeaders,
-        isNgrokUrl,
-      });
-
       if (isNgrokUrl) {
         // Make direct API call from frontend for ngrok URLs
-        console.log('🔗 Making direct frontend call to ngrok URL');
 
         // First, fetch headers from backend for this API's folder
         let backendHeaders = {};
         if (fileId) {
           try {
-            console.log('📡 Fetching headers from backend for fileId:', fileId);
             const headersResponse = await headerService.getHeaders(fileId);
             backendHeaders = headersResponse?.data?.content || {};
-            console.log(
-              '📋 Backend headers fetched successfully:',
-              backendHeaders
-            );
-
-            if (Object.keys(backendHeaders).length === 0) {
-              console.log('ℹ️ No backend headers found for this API');
-            }
           } catch (headerError) {
             console.warn('⚠️ Could not fetch backend headers:', headerError);
-            console.log(
-              'Will proceed with form headers and ngrok headers only'
-            );
           }
         } else {
           console.log('⚠️ No fileId available, skipping backend header fetch');
         }
 
-        // Merge backend headers with form headers and ngrok headers
-        // Priority: ngrok headers > form headers > backend headers
-        console.log('🔧 Merging headers with priority order:');
-        console.log('  1️⃣ Backend headers (lowest priority):', backendHeaders);
-        console.log('  2️⃣ Form headers (medium priority):', formData.headers);
-
         const ngrokHeaders = addNgrokHeadersIfNeeded(formData.endpoint, {});
-        console.log('  3️⃣ Ngrok headers (highest priority):', ngrokHeaders);
 
         const mergedHeaders = {
           'Content-Type': 'application/json',
@@ -355,12 +323,6 @@ const ApiForm = ({
           ...formData.headers, // Form headers (medium priority)
           ...ngrokHeaders, // Ngrok headers (highest priority)
         };
-
-        console.log('🎯 Final merged headers for direct call:', mergedHeaders);
-        console.log(
-          '📊 Total header count:',
-          Object.keys(mergedHeaders).length
-        );
 
         const requestConfig = {
           method: formData.method,
@@ -404,13 +366,6 @@ const ApiForm = ({
         }
 
         const startTime = Date.now();
-
-        // Log the actual request being sent
-        console.log('🚀 About to send fetch request:');
-        console.log('  📍 URL:', url);
-        console.log('  🔧 Method:', requestConfig.method);
-        console.log('  📋 Headers being sent:', requestConfig.headers);
-        console.log('  📦 Body:', requestConfig.body || 'No body');
 
         const response = await fetch(url, requestConfig);
         const duration = Date.now() - startTime;
@@ -503,11 +458,6 @@ const ApiForm = ({
 
       // For direct API calls (ngrok), don't trigger auth redirects
       if (isNgrokUrl) {
-        console.log(
-          '🔗 Direct API call error (no auth redirect triggered):',
-          err
-        );
-
         // For direct API call errors, don't try to save to backend
         setResponseData({
           status: err.status || 500,
@@ -538,11 +488,6 @@ const ApiForm = ({
         ...formData,
         headers: addNgrokHeadersIfNeeded(formData.endpoint, formData.headers),
       };
-
-      console.log('💾 Saving API definition:');
-      console.log('📍 Endpoint:', enhancedFormData.endpoint);
-      console.log('📋 Headers being saved:', enhancedFormData.headers);
-      console.log('🔧 Full API data:', enhancedFormData);
 
       if (apiId) {
         // Update existing API

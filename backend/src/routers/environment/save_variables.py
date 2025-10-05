@@ -2,10 +2,8 @@ from fastapi import APIRouter, Depends, Header as FastAPIHeader
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import (
-    get_db,
-    get_user_by_username
-)
+from common_querys import get_user_by_username
+from config import get_db
 from models import Environment, Workspace
 from schema import (
     VariablesSetRequest

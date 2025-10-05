@@ -25,11 +25,10 @@
 .folderHeader {
   display: flex;
   align-items: center;
-  padding: 6px 8px;
+  /* padding: 6px 8px; */
   cursor: pointer;
   border-radius: 3px;
   transition: background-color 0.2s;
-  gap: 4px;
 }
 
 .folderHeader:hover {
@@ -40,11 +39,11 @@
   display: flex;
   align-items: center;
   cursor: pointer;
-  padding: 3px 6px;
+  /* padding: 3px 6px; */
   border-radius: 4px;
   transition: all 0.2s;
   border: 1px solid transparent;
-  min-width: 28px;
+  min-width: 15px;
   justify-content: center;
 }
 
@@ -54,7 +53,7 @@
 
 .folderSelector.selected {
   background-color: var(--selected-item-background);
-  border-color: var(--primary);
+  /* border-color: var(--primary); */
 }
 
 .folderToggle {
@@ -65,7 +64,7 @@
   padding: 4px 6px;
   border-radius: 3px;
   transition: background-color 0.2s;
-  gap: 4px;
+  gap: 2px;
 }
 
 .folderToggle:hover {
@@ -73,14 +72,14 @@
 }
 
 .folderIcon {
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .folderName {
   flex: 1;
   color: var(--text);
   font-weight: 500;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .folderItems {
@@ -120,7 +119,7 @@
 
 .apiSelector.selected {
   background-color: var(--selected-item-background);
-  border-color: var(--primary);
+  /* border-color: var(--primary); */
 }
 
 .selectIcon {
@@ -158,7 +157,7 @@
   font-size: 9px;
   font-weight: 600;
   margin-right: 6px;
-  min-width: 30px;
+  min-width: 23px;
   text-align: center;
 }
 
@@ -166,7 +165,7 @@
   flex: 1;
   color: var(--text);
   font-weight: 500;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .fileItems {
@@ -195,7 +194,7 @@
 
 .fileItems .testCaseItem.selected {
   background-color: var(--selected-item-background);
-  border-color: var(--primary);
+  /* border-color: var(--primary); */
 }
 
 .fileItems .caseIcon {
@@ -232,7 +231,7 @@
 
 .requestItem.selected {
   background-color: var(--selected-item-background);
-  border-color: var(--primary);
+  /* border-color: var(--primary); */
 }
 
 .methodBadge {
@@ -356,7 +355,7 @@
 
 .testCaseItem.selected {
   background-color: var(--selected-item-background);
-  border-color: var(--primary);
+  /* border-color: var(--primary); */
 }
 
 .caseIcon {

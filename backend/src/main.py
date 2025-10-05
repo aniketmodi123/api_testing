@@ -1,16 +1,15 @@
-from sqlalchemy.exc import IntegrityError
+import asyncio
 import time
-from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from pydantic import ValidationError
 import pytz
-from fastapi import FastAPI, HTTPException, Request, Response, status
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from config import check_db_connection, engine
 from exception_handler import unified_exception_handler
 from models import Base
 from datetime import datetime
-from routers.runner import run_case, execute_direct
+from routers.runner import run_case, execute_direct, bulk_run_cases
+from routers.script.test_scheduler import run_engine
 from routers.workspace import list_workspace_tree
 from routers.sso import create_user, forget_password, login, logout, otp_generation, update_user, delete_user, user_profile
 from routers.workspace import create_workspace, update_workspace, list_workspace, list_workspace_tree,delete_workspace
@@ -19,6 +18,7 @@ from routers.headers import complete_headers, set_headers,list_headers,delete_he
 from routers.api import list_apis, save_api
 from routers.api_cases import delete_case, get_case, list_search_api_case, create_dup_case, save_api_case
 from routers.environment import create_environment, list_environments, resolve_variables, save_variables,delete_variables, list_variables
+from routers.shedulers import shedule_test
 from security import AuthMiddleware
 
 FASTAPI_CONFIG = {
@@ -52,6 +52,7 @@ async def startup_event():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     await check_db_connection()
+    asyncio.create_task(run_engine())
 
 
 @app.get("/health")
@@ -110,10 +111,7 @@ async def add_process_time_header(request: Request, call_next):
 
 
 
-@app.get("/")
-def welcome():
-    return "welcome"
-
+app.add_exception_handler(HTTPException, unified_exception_handler)
 app.add_exception_handler(Exception, unified_exception_handler)
 
 
@@ -174,3 +172,7 @@ app.include_router(delete_variables.router, prefix="/environment", tags=["Variab
 #runner
 app.include_router(run_case.router, tags=["Runner"])
 app.include_router(execute_direct.router, prefix="/api", tags=["API Execution"])
+app.include_router(bulk_run_cases.router, tags=["Runner"])
+
+# schedules
+app.include_router(shedule_test.router, tags=["Schedules"])

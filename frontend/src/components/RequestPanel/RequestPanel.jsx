@@ -217,19 +217,16 @@ export default function RequestPanel({ activeRequest }) {
 
     // Check cache first
     if (folderHeadersCache.has(headerNodeId)) {
-      console.log('📦 Using cached headers for node:', headerNodeId);
       return folderHeadersCache.get(headerNodeId);
     }
 
     try {
-      console.log('📡 Fetching headers from backend for node:', headerNodeId);
       const headersResponse = await headerService.getHeaders(headerNodeId);
       const headers = headersResponse?.data?.content || {};
 
       // Cache the result
       setFolderHeadersCache(prev => new Map(prev.set(headerNodeId, headers)));
 
-      console.log('📋 Headers fetched and cached:', headers);
       return headers;
     } catch (error) {
       console.warn('⚠️ Could not fetch headers for node:', headerNodeId, error);
@@ -547,8 +544,6 @@ export default function RequestPanel({ activeRequest }) {
         body: method !== 'GET' ? normalizeBody(bodyContent, bodyType) : null,
       });
 
-      console.log('✅ Backend API call successful:', response);
-
       // Format response for display to match UI expectations
       const formattedResponse = {
         status: response.data?.status_code || 200,
@@ -616,8 +611,6 @@ export default function RequestPanel({ activeRequest }) {
         extractValue(activeApi, 'validationSchema.response') ||
         defaultValidationSchema;
 
-      console.log('🔍 Starting API validation with schema:', validationSchema);
-
       // Use the dedicated validation endpoint
       const validationResponse =
         await BackendApiCallService.executeWithValidation({
@@ -630,8 +623,6 @@ export default function RequestPanel({ activeRequest }) {
           body: method !== 'GET' ? normalizeBody(bodyContent, bodyType) : null,
           expected: validationSchema,
         });
-
-      console.log('✅ Validation completed:', validationResponse);
 
       // Format response for display with validation results
       const formattedResponse = {

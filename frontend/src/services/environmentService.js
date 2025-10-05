@@ -32,7 +32,7 @@ export class EnvironmentService {
     customData = {}
   ) {
     try {
-      console.log('🎯 Template creation data:', { templateName, customData });
+      // dev log removed
 
       // Get the template data
       const templates = this.getAvailableTemplates();
@@ -65,7 +65,7 @@ export class EnvironmentService {
         variables: variables,
       };
 
-      console.log('📦 Final environment data being sent:', environmentData);
+      // dev log removed
 
       try {
         const response = await api.post(

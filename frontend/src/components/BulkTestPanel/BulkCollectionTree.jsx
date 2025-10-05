@@ -330,6 +330,7 @@ export default function BulkCollectionTree({
   onSelectRequest,
   selectedItems = [],
   testScope = 'selected',
+  parentLoading = false,
 }) {
   const { activeWorkspace } = useWorkspace();
   const [bulkTreeData, setBulkTreeData] = useState([]);
@@ -353,7 +354,6 @@ export default function BulkCollectionTree({
   const loadBulkTestingTree = async (isMounted = true) => {
     if (!activeWorkspace?.id || loading) return; // Prevent duplicate calls
 
-    console.log('Loading bulk testing tree for workspace:', activeWorkspace.id);
     setLoading(true);
     try {
       const response = await workspaceService.getBulkTestingTree(
@@ -385,11 +385,6 @@ export default function BulkCollectionTree({
 
         traverseAndExpand(response.data.file_tree);
         setExpandedFolders(expandedIds);
-
-        console.log('Loaded bulk testing tree:', response.data);
-        console.log('Total APIs:', response.data.total_apis);
-        console.log('Total test cases:', response.data.total_test_cases);
-        console.log('Auto-expanded folders:', expandedIds);
       }
     } catch (error) {
       console.error('Failed to load bulk testing tree:', error);
@@ -429,7 +424,7 @@ export default function BulkCollectionTree({
     onSelectRequest(item);
   };
 
-  if (loading) {
+  if (loading && !parentLoading) {
     return <LookingLoader overlay text="Loading ..." />;
   }
 

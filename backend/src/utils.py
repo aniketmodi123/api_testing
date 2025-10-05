@@ -1,5 +1,5 @@
-from sqlalchemy import select, and_
-from sqlalchemy.orm import selectinload
+from time import time
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from psycopg2.errors import UndefinedTable, IntegrityError
 from decimal import Decimal
@@ -10,14 +10,12 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Type, Union
 from fastapi import HTTPException, Response, status
 from fastapi.responses import JSONResponse
-from sqlalchemy.ext.asyncio import AsyncSession
 from jose import jwt
 import pandas as pd
 from passlib.context import CryptContext
 from pydantic import BaseModel, TypeAdapter, ValidationError
-
 from config import JWT_ALGORITHM, JWT_SECRET_KEY, SessionLocal
-from models import Cache, Node, Workspace, Api
+from models import Cache
 from schema import PaginationRes
 
 # Get the base directory
@@ -526,128 +524,29 @@ def extract_variables_from_text(text: str) -> List[str]:
     return list(set(matches))  # Return unique variable names
 
 
-def replace_variables_in_text(text: str, variables: Dict[str, str]) -> str:
-    """
-    Replace all variables in text with their values from the variables dictionary.
+def resolve_variables(data: Any, variables: dict, ts: int | None = None) -> Any:
+    if data is None:
+        return None
+    if not ts:
+        ts = int(time() * 1000)
 
-    Args:
-        text (str): The text containing variables in {{variable_name}} format
-        variables (Dict[str, str]): Dictionary of variable names to values
+    if isinstance(data, str):
+        result = str(data)
+        if variables:
+            def replace_variable(match):
+                var_name = match.group(1)
+                return str(variables.get(var_name, match.group(0)))
+            result = re.sub(r"\{\{([a-zA-Z_][a-zA-Z0-9_\-]*)\}\}", replace_variable, result)
+        return result.replace("${ts}", str(ts))
 
-    Returns:
-        str: Text with variables replaced by their values
-    """
-    if not isinstance(text, str) or not variables:
-        return text
-
-    def replace_match(match):
-        variable_name = match.group(1).strip()
-        return str(variables.get(variable_name, match.group(0)))  # Return original if not found
-
-    pattern = r'\{\{([^}]+)\}\}'
-    return re.sub(pattern, replace_match, text)
-
-
-def replace_variables_in_dict(data: Dict[str, Any], variables: Dict[str, str]) -> Dict[str, Any]:
-    """
-    Recursively replace variables in all string values within a dictionary.
-
-    Args:
-        data (Dict[str, Any]): Dictionary that may contain variables
-        variables (Dict[str, str]): Dictionary of variable names to values
-
-    Returns:
-        Dict[str, Any]: Dictionary with variables replaced
-    """
-    if not isinstance(data, dict) or not variables:
-        return data
-
-    result = {}
-    for key, value in data.items():
-        if isinstance(value, str):
-            result[key] = replace_variables_in_text(value, variables)
-        elif isinstance(value, dict):
-            result[key] = replace_variables_in_dict(value, variables)
-        elif isinstance(value, list):
-            result[key] = replace_variables_in_list(value, variables)
-        else:
-            result[key] = value
-
-    return result
-
-
-def replace_variables_in_list(data: List[Any], variables: Dict[str, str]) -> List[Any]:
-    """
-    Recursively replace variables in all string values within a list.
-
-    Args:
-        data (List[Any]): List that may contain variables
-        variables (Dict[str, str]): Dictionary of variable names to values
-
-    Returns:
-        List[Any]: List with variables replaced
-    """
-    if not isinstance(data, list) or not variables:
-        return data
-
-    result = []
-    for item in data:
-        if isinstance(item, str):
-            result.append(replace_variables_in_text(item, variables))
-        elif isinstance(item, dict):
-            result.append(replace_variables_in_dict(item, variables))
-        elif isinstance(item, list):
-            result.append(replace_variables_in_list(item, variables))
-        else:
-            result.append(item)
-
-    return result
-
-
-def replace_variables_in_api_data(api_data: Dict[str, Any], variables: Dict[str, str]) -> Dict[str, Any]:
-    """
-    Replace variables in complete API data structure including url, headers, body, params, etc.
-
-    Args:
-        api_data (Dict[str, Any]): Complete API data structure
-        variables (Dict[str, str]): Dictionary of variable names to values
-
-    Returns:
-        Dict[str, Any]: API data with all variables replaced
-    """
-    if not isinstance(api_data, dict) or not variables:
-        return api_data
-
-    # Create a copy to avoid modifying the original
-    result = {}
-
-    for key, value in api_data.items():
-        if isinstance(value, str):
-            # Replace variables in string fields like URL, method, etc.
-            result[key] = replace_variables_in_text(value, variables)
-        elif isinstance(value, dict):
-            # Replace variables in nested objects like headers, body, params
-            result[key] = replace_variables_in_dict(value, variables)
-        elif isinstance(value, list):
-            # Replace variables in arrays
-            result[key] = replace_variables_in_list(value, variables)
-        else:
-            # Keep other types as-is (numbers, booleans, null)
-            result[key] = value
-
-    return result
+    if isinstance(data, dict):
+        return {k: resolve_variables(v, variables, ts) for k, v in data.items()}
+    if isinstance(data, list):
+        return [resolve_variables(i, variables, ts) for i in data]
+    return data
 
 
 async def get_environment_variables(environment_id: int) -> Dict[str, str]:
-    """
-    Get all variables for a specific environment from the database.
-
-    Args:
-        environment_id (int): The ID of the environment
-
-    Returns:
-        Dict[str, str]: Dictionary of variable names to values
-    """
     try:
         async with SessionLocal() as db:
             from models import Environment
@@ -664,7 +563,6 @@ async def get_environment_variables(environment_id: int) -> Dict[str, str]:
         logs(f"Error getting environment variables: {e}", type="error")
         return {}
 
-
 async def resolve_api_variables(environment_id: int, api_data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Resolve all variables in API data using variables from the specified environment.
@@ -677,7 +575,7 @@ async def resolve_api_variables(environment_id: int, api_data: Dict[str, Any]) -
         Dict[str, Any]: API data with all variables resolved
     """
     variables = await get_environment_variables(environment_id)
-    return replace_variables_in_api_data(api_data, variables)
+    return resolve_variables(api_data, variables)
 
 
 def get_variables_from_api_data(api_data: Dict[str, Any]) -> List[str]:
@@ -704,148 +602,3 @@ def get_variables_from_api_data(api_data: Dict[str, Any]) -> List[str]:
 
     extract_from_value(api_data)
     return list(variables)
-
-
-async def get_unique_name(base_name: str, target_workspace_id: int, target_folder_id: int | None, db: AsyncSession) -> str:
-    """
-    Generate a unique name for the copied/moved node in the target location.
-    If 'name' exists, try 'name copy', 'name copy 2', etc.
-    """
-    async def name_exists(name):
-        query = select(Node).where(
-            Node.workspace_id == target_workspace_id,
-            Node.name == name
-        )
-        if target_folder_id is None:
-            query = query.where(Node.parent_id.is_(None))
-        else:
-            query = query.where(Node.parent_id == target_folder_id)
-        result = await db.execute(query)
-        return result.scalar_one_or_none() is not None
-
-    name = base_name
-    _re_copy = re.compile(r"^(.*?)( copy(?: (\d+))?)?$", re.IGNORECASE)
-    n = 1
-    while True:
-        if not await name_exists(name):
-            return name
-        m = _re_copy.match(name)
-        if m:
-            base = m.group(1)
-            num = m.group(3)
-            if num:
-                n = int(num) + 1
-            else:
-                n = 2 if name.lower().endswith("copy") else 1
-            name = f"{base} copy {n}" if n > 1 else f"{base} copy"
-        else:
-            name = f"{base_name} copy"
-
-
-
-def build_file_tree(nodes: List[Node], include_apis: bool = False, apis_dict: Optional[dict] = None) -> List[dict]:
-    """Build hierarchical file tree from flat node list, optionally including APIs and test cases"""
-    node_dict = {node.id: {
-        "id": node.id,
-        "name": node.name,
-        "type": node.type,
-        "method": None,
-        "parent_id": node.parent_id,
-        "created_at": node.created_at,
-        "children": []
-    } for node in nodes}
-
-    # Add APIs as children to their respective file nodes if requested
-    if include_apis and apis_dict:
-        for node_data in node_dict.values():
-            if node_data["type"] == "file":
-                file_apis = apis_dict.get(node_data["id"], [])
-                for api in file_apis:
-                    node_data["method"] = api.method
-                    if api.cases:
-                        for case in api.cases:
-                            node_data["children"].append(
-                                {
-                                    "id": case.id,
-                                    "name": case.name,
-                                    "created_at": case.created_at.strftime("%Y-%m-%d %H:%M:%S")
-                                }
-                            )
-
-    root_nodes = []
-    for node_data in node_dict.values():
-        if node_data["parent_id"] is None:
-            root_nodes.append(node_data)
-        else:
-            parent = node_dict.get(node_data["parent_id"])
-            if parent:
-                parent["children"].append(node_data)
-
-    # Sort children: files first, then folders, for every node recursively
-    def sort_children(node):
-        if node["children"]:
-            # Only sort children that have a 'type' key (i.e., nodes, not API cases)
-            node_children_with_type = [c for c in node["children"] if "type" in c]
-            node_children_without_type = [c for c in node["children"] if "type" not in c]
-            node_children_with_type.sort(key=lambda x: x["type"] == "folder")
-            node["children"] = node_children_with_type + node_children_without_type
-            for child in node_children_with_type:
-                sort_children(child)
-    for root in root_nodes:
-        sort_children(root)
-
-    return root_nodes
-
-
-async def get_workspace_tree_response(db, workspace_id, include_apis=True):
-    """
-    Fetch workspace, nodes, apis, and build the tree response dict (for create, delete, move, copy, etc).
-    Returns (data, message) tuple.
-    """
-    result = await db.execute(
-        select(Workspace)
-        .options(selectinload(Workspace.nodes))
-        .where(Workspace.id == workspace_id)
-    )
-    workspace = result.scalar_one_or_none()
-    if not workspace:
-        return None, "Workspace not found."
-
-    apis_dict = {}
-    total_apis = 0
-    total_test_cases = 0
-
-    if include_apis:
-        apis_result = await db.execute(
-            select(Api)
-            .join(Node, Api.file_id == Node.id)
-            .options(selectinload(Api.cases))
-            .where(
-                and_(
-                    Node.workspace_id == workspace_id,
-                    Api.is_active == True
-                )
-            )
-        )
-        apis = apis_result.scalars().all()
-        for api in apis:
-            if api.file_id not in apis_dict:
-                apis_dict[api.file_id] = []
-            apis_dict[api.file_id].append(api)
-            total_apis += 1
-            total_test_cases += len(api.cases) if api.cases else 0
-
-    file_tree = build_file_tree(workspace.nodes, include_apis, apis_dict) if workspace.nodes else []
-
-    data = {
-        "id": workspace.id,
-        "name": workspace.name,
-        "description": workspace.description,
-        "created_at": workspace.created_at,
-        "file_tree": file_tree,
-        "total_nodes": len(workspace.nodes) if workspace.nodes else 0,
-        "include_apis": include_apis,
-        "total_apis": total_apis,
-        "total_test_cases": total_test_cases
-    }
-    return data, None
