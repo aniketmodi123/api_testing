@@ -30,7 +30,9 @@ export function WorkspaceProvider({ children }) {
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (token && !shouldLoadWorkspaces) {
-      console.log('[WorkspaceProvider] Auto-enabling workspace loading for authenticated user');
+      console.log(
+        '[WorkspaceProvider] Auto-enabling workspace loading for authenticated user'
+      );
       setShouldLoadWorkspaces(true);
     }
   }, [shouldLoadWorkspaces]);
@@ -94,12 +96,18 @@ export function WorkspaceProvider({ children }) {
         const data = await workspaceService.getWorkspaces();
 
         if (data && Array.isArray(data.data)) {
-          console.log('[WorkspaceProvider] Workspaces loaded:', data.data.length);
+          console.log(
+            '[WorkspaceProvider] Workspaces loaded:',
+            data.data.length
+          );
           setWorkspaces(data.data);
 
           // Set first workspace as active if none is selected
           if (!activeWorkspace && data.data.length > 0) {
-            console.log('[WorkspaceProvider] Setting active workspace:', data.data[0]);
+            console.log(
+              '[WorkspaceProvider] Setting active workspace:',
+              data.data[0]
+            );
             setActiveWorkspace(data.data[0]);
           }
           // Reset retry count on success
