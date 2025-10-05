@@ -69,12 +69,13 @@ export default function TestResultCard({
   };
 
   // Primary status detection: success: true means test passed
-  const isSuccess = Boolean(
-    testResult.success === true ||
-    testResult.status === 'passed' ||
-    testResult.ok === true ||
-    testResult.passed === true
-  ) && Boolean(testResult.request || testResult.requestData); // Ensure we have request data
+  const isSuccess =
+    Boolean(
+      testResult.success === true ||
+        testResult.status === 'passed' ||
+        testResult.ok === true ||
+        testResult.passed === true
+    ) && Boolean(testResult.request || testResult.requestData); // Ensure we have request data
 
   const statusCode = testResult.status_code || testResult.statusCode;
   const duration = testResult.duration_ms || testResult.duration || 0;

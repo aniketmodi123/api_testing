@@ -190,7 +190,9 @@ export default function BulkResults({ results, isRunning }) {
                                 status_code: result.status_code,
                                 statusCode: result.status_code,
                                 duration_ms: result.duration_ms || 0,
-                                duration: result.duration_ms ? `${result.duration_ms}ms` : 'N/A',
+                                duration: result.duration_ms
+                                  ? `${result.duration_ms}ms`
+                                  : 'N/A',
                                 failures: result.failures || [],
                                 request: result.request || {},
                                 requestData: result.request || {},
