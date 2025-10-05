@@ -24,7 +24,18 @@ export function WorkspaceProvider({ children }) {
   const [error, setError] = useState(null);
   const [workspaceTree, setWorkspaceTree] = useState(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
-  const [shouldLoadWorkspaces, setShouldLoadWorkspaces] = useState(true);
+  const [shouldLoadWorkspaces, setShouldLoadWorkspaces] = useState(false);
+
+  // Auto-enable workspace loading if user is authenticated
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (token && !shouldLoadWorkspaces) {
+      console.log(
+        '[WorkspaceProvider] Auto-enabling workspace loading for authenticated user'
+      );
+      setShouldLoadWorkspaces(true);
+    }
+  }, [shouldLoadWorkspaces]);
 
   // Load workspaces from API only when enabled
   useEffect(() => {
@@ -81,13 +92,22 @@ export function WorkspaceProvider({ children }) {
       try {
         setLoading(true);
         setError(null);
+        console.log('[WorkspaceProvider] Fetching workspaces...');
         const data = await workspaceService.getWorkspaces();
 
         if (data && Array.isArray(data.data)) {
+          console.log(
+            '[WorkspaceProvider] Workspaces loaded:',
+            data.data.length
+          );
           setWorkspaces(data.data);
 
           // Set first workspace as active if none is selected
           if (!activeWorkspace && data.data.length > 0) {
+            console.log(
+              '[WorkspaceProvider] Setting active workspace:',
+              data.data[0]
+            );
             setActiveWorkspace(data.data[0]);
           }
           // Reset retry count on success
@@ -109,10 +129,14 @@ export function WorkspaceProvider({ children }) {
       }
     };
 
-    fetchWorkspaces();
+    // Add a small delay to ensure auth is fully initialized
+    const timeoutId = setTimeout(() => {
+      fetchWorkspaces();
+    }, 100);
 
     // Cleanup function to clear any pending timeouts
     return () => {
+      clearTimeout(timeoutId);
       clearTimeout(retryTimeout);
     };
   }, [refreshTrigger, shouldLoadWorkspaces, activeWorkspace]);
