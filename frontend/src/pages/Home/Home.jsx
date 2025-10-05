@@ -39,6 +39,8 @@ export default function Home() {
     workspaceTree,
     setShouldLoadWorkspaces,
     loading: workspaceLoading,
+    error: workspaceError,
+    refreshWorkspaces,
   } = useWorkspace(); // Use node context for managing nodes/folders
   const { selectedNode, setSelectedNode, loading: nodeLoading } = useNode();
 
@@ -76,9 +78,16 @@ export default function Home() {
     }
   }, [location.pathname]);
 
+  // Enable workspace loading immediately when Home component mounts
   useEffect(() => {
+    console.log('[Home] Enabling workspace loading on mount');
     setShouldLoadWorkspaces(true);
-    return () => setShouldLoadWorkspaces(false);
+    
+    // Don't disable on unmount to avoid issues when navigating between authenticated pages
+    return () => {
+      // Keep workspaces enabled for other authenticated pages
+      // setShouldLoadWorkspaces(false);
+    };
   }, [setShouldLoadWorkspaces]);
 
   const handleTabChange = tab => {
@@ -219,6 +228,27 @@ export default function Home() {
 
   return (
     <div className={styles.homeContainer}>
+      {/* Show loading state while workspaces are being loaded */}
+      {workspaceLoading && !activeWorkspace && (
+        <div className={styles.loadingOverlay}>
+          <div className={styles.loadingContent}>
+            <div className={styles.loadingSpinner}></div>
+            <p>Loading workspaces...</p>
+            {workspaceError && (
+              <div className={styles.errorMessage}>
+                <p>Error: {workspaceError}</p>
+                <button 
+                  className={styles.retryButton}
+                  onClick={() => refreshWorkspaces()}
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      
       <div className={styles.mainContent}>
         {/* Left Sidebar */}
         <Sidebar onTabChange={handleTabChange} />
