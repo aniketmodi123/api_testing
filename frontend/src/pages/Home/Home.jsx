@@ -82,7 +82,7 @@ export default function Home() {
   useEffect(() => {
     console.log('[Home] Enabling workspace loading on mount');
     setShouldLoadWorkspaces(true);
-    
+
     // Don't disable on unmount to avoid issues when navigating between authenticated pages
     return () => {
       // Keep workspaces enabled for other authenticated pages
@@ -237,7 +237,7 @@ export default function Home() {
             {workspaceError && (
               <div className={styles.errorMessage}>
                 <p>Error: {workspaceError}</p>
-                <button 
+                <button
                   className={styles.retryButton}
                   onClick={() => refreshWorkspaces()}
                 >
@@ -248,7 +248,7 @@ export default function Home() {
           </div>
         </div>
       )}
-      
+
       <div className={styles.mainContent}>
         {/* Left Sidebar */}
         <Sidebar onTabChange={handleTabChange} />
