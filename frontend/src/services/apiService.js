@@ -889,6 +889,29 @@ export const apiService = {
   },
 
   /**
+   * Delete a single bulk test execution (and its results)
+   * @param {number} scheduleId - Parent schedule ID
+   * @param {number} executionId - Execution ID to delete
+   * @param {string} username - Username for header
+   */
+  async deleteBulkTestExecution(scheduleId, executionId, username) {
+    try {
+      const response = await api.delete(
+        `/schedules/${scheduleId}/executions/${executionId}`,
+        {
+          headers: {
+            username: username,
+          },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Error deleting bulk test execution:', error);
+      throw error;
+    }
+  },
+
+  /**
    * Delete a bulk test schedule
    * @param {number} scheduleId - Schedule ID to delete
    * @param {string} username - Username for header

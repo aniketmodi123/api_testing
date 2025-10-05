@@ -1,4 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import DeleteIcon from '../../assets/images/delete.svg';
+import EditIcon from '../../assets/images/edit.svg';
+import RefreshIcon from '../../assets/images/refresh.svg';
+import ViewIcon from '../../assets/images/view.svg';
 import { apiService } from '../../services/apiService.js';
 import { useAuth } from '../../store/session.jsx';
 import { useWorkspace } from '../../store/workspace.jsx';
@@ -143,8 +147,6 @@ export default function BulkTestPanel({ onSelectRequest }) {
                 auth.username
               );
 
-              console.log('Polling execution results:', executions);
-
               // Check if execution is complete
               if (
                 executions?.data &&
@@ -252,21 +254,14 @@ export default function BulkTestPanel({ onSelectRequest }) {
   // Handle viewing executions for a specific schedule
   const handleViewScheduleExecutions = useCallback(
     async scheduleId => {
-      console.log('🔍 View button clicked for schedule ID:', scheduleId);
       setLoadingExecution(true);
       try {
-        console.log('📡 Calling getBulkTestExecutions API...');
         const executions = await apiService.getBulkTestExecutions(
           scheduleId,
           auth.username
         );
 
-        console.log('📦 API Response:', executions);
-        console.log('📊 Executions data:', executions?.data);
-
         if (executions?.data && executions.data.length > 0) {
-          console.log('✅ Found executions, passing all to results view...');
-
           // Pass all executions to the results view
           const allExecutionsData = {
             executions: executions.data,
@@ -275,9 +270,6 @@ export default function BulkTestPanel({ onSelectRequest }) {
 
           setLatestResults(allExecutionsData);
           setActiveTab('results');
-          console.log(
-            '🎉 All executions set successfully, switched to results tab'
-          );
         } else {
           console.log('⚠️ No executions found for this schedule');
           alert('No test executions found for this schedule');
@@ -402,8 +394,6 @@ export default function BulkTestPanel({ onSelectRequest }) {
           payload: payload,
         };
 
-        console.log('Updating bulk test schedule:', scheduleData);
-
         const scheduleResponse = await apiService.updateBulkTestSchedule(
           editingSchedule.id,
           scheduleData,
@@ -486,12 +476,6 @@ export default function BulkTestPanel({ onSelectRequest }) {
       setSelectedApiCases(apiCases);
     }
   }, [selectedItems, testScope]);
-
-  useEffect(() => {
-    if (selectedApiCases.length > 0) {
-      console.log('Selected API Cases (for API call):', selectedApiCases);
-    }
-  }, [selectedApiCases]);
 
   const handleResizerMouseDown = e => {
     e.preventDefault();
@@ -928,16 +912,12 @@ export default function BulkTestPanel({ onSelectRequest }) {
         payload: payload,
       };
 
-      console.log('Creating bulk test schedule:', scheduleData);
-
       // Save the request first (create schedule)
       const scheduleResponse = await apiService.createBulkTestSchedule(
         scheduleData,
         username,
         activeWorkspace.id
       );
-
-      console.log('Schedule created:', scheduleResponse);
 
       // Add to local scheduled jobs for UI tracking
       const newJob = {
@@ -960,9 +940,6 @@ export default function BulkTestPanel({ onSelectRequest }) {
 
       // The background scheduler will pick up and execute the test
       // We can optionally poll for results or show a message
-      alert(
-        'Bulk test has been scheduled and will run in the background. Check the "Running Tests" tab for progress.'
-      );
     } catch (error) {
       console.error('Failed to schedule bulk test:', error);
       alert(
@@ -1028,8 +1005,6 @@ export default function BulkTestPanel({ onSelectRequest }) {
           ...processedConfig,
           payload: payload,
         };
-
-        console.log('Creating scheduled bulk test:', scheduleData);
 
         const scheduleResponse = await apiService.createBulkTestSchedule(
           scheduleData,
@@ -1194,7 +1169,19 @@ export default function BulkTestPanel({ onSelectRequest }) {
                   onClick={loadTestHistory}
                   disabled={loadingHistory}
                 >
-                  {loadingHistory ? '⏳ Loading...' : '🔄 Refresh'}
+                  {loadingHistory ? (
+                    '⏳ Loading...'
+                  ) : (
+                    <>
+                      <img
+                        src={RefreshIcon}
+                        alt="Refresh"
+                        width="16"
+                        height="16"
+                      />
+                      Refresh
+                    </>
+                  )}
                 </button>
               </div>
               <div className={styles.historyList}>
@@ -1239,18 +1226,12 @@ export default function BulkTestPanel({ onSelectRequest }) {
                           title="View test results"
                           disabled={loadingExecution || loadingDelete}
                         >
-                          <svg
+                          <img
+                            src={ViewIcon}
+                            alt="View"
                             width="16"
                             height="16"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            xmlns="http://www.w3.org/2000/svg"
-                          >
-                            <path
-                              d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"
-                              fill="currentColor"
-                            />
-                          </svg>
+                          />
                         </button>
                         <button
                           className={styles.editButton}
@@ -1258,18 +1239,12 @@ export default function BulkTestPanel({ onSelectRequest }) {
                           title="Edit this schedule"
                           disabled={loadingExecution || loadingDelete}
                         >
-                          <svg
+                          <img
+                            src={EditIcon}
+                            alt="Edit"
                             width="16"
                             height="16"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            xmlns="http://www.w3.org/2000/svg"
-                          >
-                            <path
-                              d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"
-                              fill="currentColor"
-                            />
-                          </svg>
+                          />
                         </button>
                         <button
                           className={styles.deleteButton}
@@ -1277,18 +1252,12 @@ export default function BulkTestPanel({ onSelectRequest }) {
                           title="Delete this test history and all its results"
                           disabled={loadingExecution || loadingDelete}
                         >
-                          <svg
+                          <img
+                            src={DeleteIcon}
+                            alt="Delete"
                             width="16"
                             height="16"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            xmlns="http://www.w3.org/2000/svg"
-                          >
-                            <path
-                              d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"
-                              fill="currentColor"
-                            />
-                          </svg>
+                          />
                         </button>
                       </div>
                     </div>
@@ -1308,7 +1277,19 @@ export default function BulkTestPanel({ onSelectRequest }) {
                   onClick={loadRunningTests}
                   disabled={loadingRunning}
                 >
-                  {loadingRunning ? '⏳ Loading...' : '🔄 Refresh'}
+                  {loadingRunning ? (
+                    '⏳ Loading...'
+                  ) : (
+                    <>
+                      <img
+                        src={RefreshIcon}
+                        alt="Refresh"
+                        width="16"
+                        height="16"
+                      />
+                      Refresh
+                    </>
+                  )}
                 </button>
               </div>
               <div className={styles.progressList}>

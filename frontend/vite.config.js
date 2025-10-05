@@ -10,13 +10,6 @@ export default defineConfig({
       '@': resolve(__dirname, 'src'),
     },
   },
-  server: {
-    host: 'localhost',
-    port: 5174,
-  },
-  optimizeDeps: {
-    include: ['react', 'react-dom', 'react-router-dom'],
-  },
   build: {
     sourcemap: true,
     rollupOptions: {

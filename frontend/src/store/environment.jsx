@@ -64,12 +64,6 @@ export const EnvironmentProvider = ({ children }) => {
     return false;
   };
 
-  // Helper function to show success messages
-  const showSuccess = message => {
-    // You can implement toast notifications here
-    console.log('✅', message);
-  };
-
   /**
    * Environment Management Functions
    */
@@ -195,11 +189,6 @@ export const EnvironmentProvider = ({ children }) => {
         is_active: isActive,
         variables: variables,
       };
-
-      console.log(
-        '📦 Creating environment with custom name and default variables:',
-        environmentData
-      );
 
       const newEnvironment = await environmentService.createEnvironment(
         activeWorkspace.id,

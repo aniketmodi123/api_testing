@@ -21,6 +21,7 @@ const PASSWORD_RESET_ERROR = 'PASSWORD_RESET_ERROR';
 const OTP_START = 'OTP_START';
 const OTP_SUCCESS = 'OTP_SUCCESS';
 const OTP_ERROR = 'OTP_ERROR';
+const AUTH_INITIALIZED = 'AUTH_INITIALIZED';
 
 // Initial state
 const initialState = {
@@ -37,6 +38,7 @@ const initialState = {
   otpLoading: false,
   otpError: null,
   otpSent: false,
+  isInitialized: false,
 };
 
 // Reducer
@@ -115,7 +117,9 @@ function authReducer(state, action) {
         otpSent: false,
       };
     case LOGOUT:
-      return { ...initialState };
+      return { ...initialState, isInitialized: true };
+    case AUTH_INITIALIZED:
+      return { ...state, isInitialized: true };
     default:
       return state;
   }
@@ -128,10 +132,30 @@ const AuthContext = createContext();
 export function AuthProvider({ children }) {
   const [state, dispatch] = useReducer(authReducer, initialState, init => {
     // Try to load from localStorage
-    const token = localStorage.getItem('token');
-    const user = localStorage.getItem('user');
-    return token && user ? { ...init, token, user: JSON.parse(user) } : init;
+    try {
+      const token = localStorage.getItem('token');
+      const user = localStorage.getItem('user');
+
+      if (token && user) {
+        const parsedUser = JSON.parse(user);
+        return { ...init, token, user: parsedUser, isInitialized: true };
+      }
+    } catch (error) {
+      console.error('Error loading auth state from localStorage:', error);
+      // Clear corrupted data
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+    }
+
+    return { ...init, isInitialized: true };
   });
+
+  // Mark auth as initialized on first render if not already done
+  useEffect(() => {
+    if (!state.isInitialized) {
+      dispatch({ type: AUTH_INITIALIZED });
+    }
+  }, [state.isInitialized]);
 
   // Persist to localStorage
   useEffect(() => {

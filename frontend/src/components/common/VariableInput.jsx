@@ -35,7 +35,6 @@ export default function VariableInput({
       }
     });
 
-    console.log('📋 Local variable resolution:', variableMap);
     setResolvedVariables(variableMap);
   }, [value, variables]);
 

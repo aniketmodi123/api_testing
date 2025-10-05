@@ -303,6 +303,65 @@ async def get_schedule_executions(
     return create_response(200, value_correction(data))
 
 
+@router.delete("/{schedule_id}/executions/{execution_id}", summary="Delete a single bulk test execution and its results")
+async def delete_schedule_execution(
+    schedule_id: int,
+    execution_id: int,
+    username: str = Header(...),
+    db: AsyncSession = Depends(get_db),
+):
+    # 1) Verify user exists
+    user = await get_user_by_username(db, username)
+    if not user:
+        return create_response(400, error_message="User not found")
+
+    # 2) Verify schedule ownership
+    sched_result = await db.execute(
+        select(BulkTestSchedule)
+        .where(
+            and_(
+                BulkTestSchedule.id == schedule_id,
+                BulkTestSchedule.username == username
+            )
+        )
+    )
+    schedule = sched_result.scalar_one_or_none()
+    if not schedule:
+        return create_response(404, error_message="Schedule not found or access denied")
+
+    # 3) Find execution and ensure it belongs to schedule
+    exec_result = await db.execute(
+        select(BulkTestExecution)
+        .where(
+            and_(
+                BulkTestExecution.id == execution_id,
+                BulkTestExecution.schedule_id == schedule_id,
+            )
+        )
+    )
+    exec_obj = exec_result.scalar_one_or_none()
+    if not exec_obj:
+        return create_response(404, error_message="Execution not found")
+
+    # 4) Don't allow deletion of running/queued executions
+    if exec_obj.status in ("running", "queued"):
+        return create_response(400, error_message="Cannot delete an execution that is running or queued")
+
+    # 5) Delete all results for this execution then the execution
+    from models import BulkTestResult
+
+    await db.execute(
+        BulkTestResult.__table__.delete().where(BulkTestResult.execution_id == execution_id)
+    )
+    await db.execute(
+        BulkTestExecution.__table__.delete().where(BulkTestExecution.id == execution_id)
+    )
+
+    await db.commit()
+
+    return create_response(200, {"message": "Execution and related results deleted successfully"})
+
+
 @router.get("/executions/running", summary="Get all running bulk test executions for user workspace")
 async def get_running_executions(
     username: str = Header(...),

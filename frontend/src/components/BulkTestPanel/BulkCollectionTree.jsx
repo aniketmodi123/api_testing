@@ -354,7 +354,6 @@ export default function BulkCollectionTree({
   const loadBulkTestingTree = async (isMounted = true) => {
     if (!activeWorkspace?.id || loading) return; // Prevent duplicate calls
 
-    console.log('Loading bulk testing tree for workspace:', activeWorkspace.id);
     setLoading(true);
     try {
       const response = await workspaceService.getBulkTestingTree(

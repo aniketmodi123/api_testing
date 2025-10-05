@@ -22,12 +22,7 @@ export class BackendApiCallService {
     options = {},
   }) {
     try {
-      console.log('🎯 Sending API call to backend for processing:', {
-        fileId,
-        environmentId,
-        method,
-        url: url?.substring(0, 100) + '...',
-      });
+      // dev log removed
 
       const requestPayload = {
         file_id: fileId,
@@ -48,11 +43,7 @@ export class BackendApiCallService {
 
       // Make single backend call that handles everything
       const response = await api.post('/api/execute-direct', requestPayload);
-
-      console.log('✅ Backend API call completed:', {
-        status: response.status,
-        responseCode: response.data?.response_code,
-      });
+      // dev log removed
 
       return response.data;
     } catch (error) {
@@ -78,13 +69,7 @@ export class BackendApiCallService {
     options = {},
   }) {
     try {
-      console.log('🔍 Sending API call with validation to backend:', {
-        fileId,
-        environmentId,
-        method,
-        url: url?.substring(0, 100) + '...',
-        hasValidationSchema: !!expected,
-      });
+      // dev log removed
 
       const requestPayload = {
         file_id: fileId,
@@ -106,12 +91,7 @@ export class BackendApiCallService {
         '/api/execute-with-validation',
         requestPayload
       );
-
-      console.log('✅ Backend validation completed:', {
-        status: response.status,
-        responseCode: response.data?.response_code,
-        validationPassed: response.data?.data?.validation?.passed,
-      });
+      // dev log removed
 
       return response.data;
     } catch (error) {

@@ -11,10 +11,6 @@ const addNgrokHeadersIfNeeded = (apiData, existingHeaders = {}) => {
     (endpoint.includes('.ngrok.') || endpoint.includes('ngrok-free.app'));
 
   if (isNgrokUrl) {
-    console.log(
-      '🔗 TestCaseForm: Adding ngrok headers for endpoint:',
-      endpoint
-    );
     return {
       'ngrok-skip-browser-warning': 'true',
       'User-Agent': 'API-Testing-Tool/1.0',
@@ -92,9 +88,6 @@ const TestCaseForm = ({
       // Only for new test cases
       const enhancedHeaders = addNgrokHeadersIfNeeded(activeApi, {});
       if (Object.keys(enhancedHeaders).length > 0) {
-        console.log(
-          '🔗 TestCaseForm: Auto-adding ngrok headers for new test case'
-        );
         setFormData(prev => ({
           ...prev,
           headers: enhancedHeaders,

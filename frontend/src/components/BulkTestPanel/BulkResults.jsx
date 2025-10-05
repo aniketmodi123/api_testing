@@ -1,17 +1,34 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import DeleteIcon from '../../assets/images/delete.svg';
+import { apiService } from '../../services/apiService.js';
+import { useAuth } from '../../store/session.jsx';
 import TestResultCard from '../TestResultCard';
 import TestResultFocusModal from '../TestResultFocusModal';
 import styles from './BulkTestPanel.module.css';
 
 export default function BulkResults({ results, isRunning }) {
+  // Always declare all hooks first - no conditional returns before hooks
   const [focusedResult, setFocusedResult] = useState(null);
   const [expandedExecutions, setExpandedExecutions] = useState(new Set());
   const [currentPage, setCurrentPage] = useState(1);
   const [expandedExecutionPages, setExpandedExecutionPages] = useState({});
+  const [deletingIds, setDeletingIds] = useState(new Set());
+  const auth = useAuth();
+  const [localExecutions, setLocalExecutions] = useState([]);
 
   const EXECUTIONS_PER_PAGE = 10;
   const RESULTS_PER_PAGE = 10;
 
+  // Keep local executions in sync with incoming props
+  useEffect(() => {
+    if (results?.executions) {
+      setLocalExecutions(results.executions);
+    } else {
+      setLocalExecutions([]);
+    }
+  }, [results]);
+
+  // Early returns after all hooks are declared
   if (isRunning) {
     return (
       <div className={styles.resultsSection}>
@@ -35,7 +52,7 @@ export default function BulkResults({ results, isRunning }) {
 
   // Handle new execution list format
   if (results.executions) {
-    const { executions } = results;
+    const executions = localExecutions;
 
     // Pagination for executions
     const totalPages = Math.ceil(executions.length / EXECUTIONS_PER_PAGE);
@@ -159,6 +176,86 @@ export default function BulkResults({ results, isRunning }) {
                     </div>
                   </div>
                   <div className={styles.executionHeaderRight}>
+                    {/* Delete execution button */}
+                    <button
+                      title="Delete execution"
+                      className={styles.deleteButton}
+                      onClick={e => {
+                        e.stopPropagation();
+                        if (
+                          execution.status === 'running' ||
+                          execution.status === 'queued'
+                        ) {
+                          return; // Do not allow delete
+                        }
+                        if (
+                          !confirm(
+                            `Delete execution #${execution.id}? This will remove all its results.`
+                          )
+                        )
+                          return;
+
+                        // Call API and optimistically remove on success
+                        setDeletingIds(prev => new Set(prev).add(execution.id));
+                        apiService
+                          .deleteBulkTestExecution(
+                            execution.schedule_id,
+                            execution.id,
+                            auth?.username
+                          )
+                          .then(() => {
+                            // Remove the execution from local state
+                            setLocalExecutions(prev =>
+                              prev.filter(ex => ex.id !== execution.id)
+                            );
+                            // Collapse and clear pagination state for it
+                            setExpandedExecutions(prev => {
+                              const ns = new Set(prev);
+                              ns.delete(execution.id);
+                              return ns;
+                            });
+                            setExpandedExecutionPages(prev => {
+                              const np = { ...prev };
+                              delete np[execution.id];
+                              return np;
+                            });
+                            // If current page is now out of range, move back one page
+                            const total = executions.length - 1;
+                            const newTotalPages = Math.max(
+                              1,
+                              Math.ceil(total / EXECUTIONS_PER_PAGE)
+                            );
+                            setCurrentPage(prev =>
+                              Math.min(prev, newTotalPages)
+                            );
+                          })
+                          .catch(err => {
+                            alert(
+                              err?.response?.data?.error_message ||
+                                'Failed to delete execution'
+                            );
+                          })
+                          .finally(() => {
+                            setDeletingIds(prev => {
+                              const ns = new Set(prev);
+                              ns.delete(execution.id);
+                              return ns;
+                            });
+                          });
+                      }}
+                      disabled={
+                        deletingIds.has(execution.id) ||
+                        execution.status === 'running' ||
+                        execution.status === 'queued'
+                      }
+                    >
+                      <img
+                        src={DeleteIcon}
+                        alt="Delete"
+                        width="16"
+                        height="16"
+                      />
+                    </button>
                     <span className={styles.expandIcon}>
                       {isExpanded ? '▼' : '▶'}
                     </span>

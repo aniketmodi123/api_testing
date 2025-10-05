@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import BulkTestPanel from '../../components/BulkTestPanel/BulkTestPanel.jsx';
 import CollectionTree from '../../components/CollectionTree/CollectionTree';
 import { EnvironmentManager } from '../../components/EnvironmentManager';
@@ -13,6 +14,9 @@ import { useWorkspace } from '../../store/workspace';
 import styles from './Home.module.css';
 
 export default function Home() {
+  const location = useLocation();
+  const navigate = useNavigate();
+
   // State for collection, and request
   const [activeTab, setActiveTab] = useState('collections');
   const [activeRequest, setActiveRequest] = useState(null);
@@ -50,6 +54,28 @@ export default function Home() {
     createEnvironmentWithDefaults,
   } = useEnvironment();
 
+  // Derive tab from URL on mount and when URL changes
+  useEffect(() => {
+    const path = location.pathname || '/';
+    // Support both root and explicit section routes
+    if (path === '/' || path === '') {
+      setActiveTab('collections');
+      // Normalize URL so refresh/paste shows explicit section
+      navigate('/collections', { replace: true });
+      return;
+    }
+    if (path.startsWith('/collections')) {
+      setActiveTab('collections');
+    } else if (path.startsWith('/environments')) {
+      setActiveTab('environments');
+    } else if (path.startsWith('/bulk-test')) {
+      setActiveTab('bulkTest');
+    } else {
+      // default fallback
+      setActiveTab('collections');
+    }
+  }, [location.pathname]);
+
   useEffect(() => {
     setShouldLoadWorkspaces(true);
     return () => setShouldLoadWorkspaces(false);
@@ -57,6 +83,10 @@ export default function Home() {
 
   const handleTabChange = tab => {
     setActiveTab(tab);
+    // Push to corresponding route so refresh preserves section
+    if (tab === 'collections') navigate('/collections');
+    else if (tab === 'environments') navigate('/environments');
+    else if (tab === 'bulkTest') navigate('/bulk-test');
   };
 
   const handleSelectRequest = request => {
@@ -101,14 +131,7 @@ export default function Home() {
       } else {
         // Create new environment
         if (environmentData.includeDefaults) {
-          console.log(
-            '🚀 Creating environment with default variables but custom name/desc:',
-            {
-              userProvidedName: environmentData.name,
-              userProvidedDescription: environmentData.description,
-              is_active: environmentData.is_active,
-            }
-          );
+          // Dev log removed
 
           // Create environment with user's custom name and description but template variables
           result = await createEnvironmentWithDefaults(

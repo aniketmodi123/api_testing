@@ -1,8 +1,19 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import styles from './Sidebar.module.css';
 
 export default function Sidebar({ onTabChange }) {
+  const location = useLocation();
   const [activeTab, setActiveTab] = useState('collections');
+
+  // Sync with URL so refresh preserves selected tab highlight
+  useEffect(() => {
+    const path = location.pathname || '/';
+    if (path === '/' || path.startsWith('/collections'))
+      setActiveTab('collections');
+    else if (path.startsWith('/environments')) setActiveTab('environments');
+    else if (path.startsWith('/bulk-test')) setActiveTab('bulkTest');
+  }, [location.pathname]);
 
   const handleTabChange = tab => {
     setActiveTab(tab);

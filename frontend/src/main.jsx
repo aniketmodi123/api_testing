@@ -25,6 +25,17 @@ import './styles/global.css';
 
 import { ApiProvider } from './store/api.jsx';
 
+// Suppress non-error console logs in production unless explicitly enabled
+if (import.meta.env.PROD && import.meta.env.VITE_ENABLE_DEBUG_LOGS !== 'true') {
+  const noop = () => {};
+  // Preserve console.error, mute noisy dev/test logs
+  console.log = noop;
+  console.debug = noop;
+  console.info = noop;
+  console.warn = noop;
+  console.trace = noop;
+}
+
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <ThemeProvider>
@@ -41,7 +52,7 @@ createRoot(document.getElementById('root')).render(
                 >
                   <Routes>
                     <Route
-                      path="sign-in"
+                      path="/sign-in"
                       element={
                         <App>
                           <SignIn />
@@ -49,7 +60,7 @@ createRoot(document.getElementById('root')).render(
                       }
                     />
                     <Route
-                      path="sign-up"
+                      path="/sign-up"
                       element={
                         <App>
                           <SignUp />
@@ -57,7 +68,7 @@ createRoot(document.getElementById('root')).render(
                       }
                     />
                     <Route
-                      path="forgot-password"
+                      path="/forgot-password"
                       element={
                         <App>
                           <ForgotPassword />
@@ -67,7 +78,16 @@ createRoot(document.getElementById('root')).render(
 
                     <Route element={<AuthGuard />}>
                       <Route
-                        path=""
+                        path="/"
+                        element={
+                          <App>
+                            <Home />
+                          </App>
+                        }
+                      />
+                      {/* Explicit section routes so refresh preserves section */}
+                      <Route
+                        path="/collections"
                         element={
                           <App>
                             <Home />
@@ -75,7 +95,23 @@ createRoot(document.getElementById('root')).render(
                         }
                       />
                       <Route
-                        path="profile"
+                        path="/environments"
+                        element={
+                          <App>
+                            <Home />
+                          </App>
+                        }
+                      />
+                      <Route
+                        path="/bulk-test"
+                        element={
+                          <App>
+                            <Home />
+                          </App>
+                        }
+                      />
+                      <Route
+                        path="/profile"
                         element={
                           <App>
                             <SimpleUserProfile />
@@ -83,7 +119,7 @@ createRoot(document.getElementById('root')).render(
                         }
                       />
                       <Route
-                        path="change-password"
+                        path="/change-password"
                         element={
                           <App>
                             <ChangePassword />
@@ -91,7 +127,7 @@ createRoot(document.getElementById('root')).render(
                         }
                       />
                       <Route
-                        path="delete-account"
+                        path="/delete-account"
                         element={
                           <App>
                             <DeleteAccount />
@@ -99,15 +135,19 @@ createRoot(document.getElementById('root')).render(
                         }
                       />
                       <Route
-                        path="update-profile"
+                        path="/update-profile"
                         element={
                           <App>
                             <UpdateProfile />
                           </App>
                         }
                       />
-                      <Route path="*" element={<Navigate to="/" replace />} />
                     </Route>
+                    {/* Catch-all route for unknown paths - redirect to collections */}
+                    <Route
+                      path="*"
+                      element={<Navigate to="/collections" replace />}
+                    />
                   </Routes>
                 </Router>
               </ApiProvider>
