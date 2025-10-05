@@ -252,61 +252,41 @@ export default function BulkTestPanel({ onSelectRequest }) {
   // Handle viewing executions for a specific schedule
   const handleViewScheduleExecutions = useCallback(
     async scheduleId => {
+      console.log('🔍 View button clicked for schedule ID:', scheduleId);
       setLoadingExecution(true);
       try {
+        console.log('📡 Calling getBulkTestExecutions API...');
         const executions = await apiService.getBulkTestExecutions(
           scheduleId,
           auth.username
         );
 
+        console.log('📦 API Response:', executions);
+        console.log('📊 Executions data:', executions?.data);
+
         if (executions?.data && executions.data.length > 0) {
-          const latestExecution = executions.data[0];
+          console.log('✅ Found executions, passing all to results view...');
 
-          // Transform and set the latest results
-          if (latestExecution.results && latestExecution.results.length > 0) {
-            const transformedResults = {
-              summary: {
-                total:
-                  latestExecution.total_cases || latestExecution.results.length,
-                passed:
-                  latestExecution.passed ||
-                  latestExecution.results.filter(r => r.success).length,
-                failed:
-                  latestExecution.failed ||
-                  latestExecution.results.filter(r => !r.success).length,
-                pass_rate: latestExecution.total_cases
-                  ? Math.round(
-                      (latestExecution.passed / latestExecution.total_cases) *
-                        100
-                    )
-                  : 0,
-                duration: latestExecution.duration_ms
-                  ? `${latestExecution.duration_ms}ms`
-                  : null,
-              },
-              details: latestExecution.results.map(result => ({
-                id: result.id,
-                name: result.case_name,
-                status: result.success ? 'passed' : 'failed',
-                response: {
-                  status: result.status_code,
-                },
-                duration: result.duration_ms
-                  ? `${result.duration_ms}ms`
-                  : 'N/A',
-                failures: result.failures,
-                request: result.request,
-                response_data: result.response,
-              })),
-            };
+          // Pass all executions to the results view
+          const allExecutionsData = {
+            executions: executions.data,
+            scheduleId: scheduleId,
+          };
 
-            setLatestResults(transformedResults);
-            setActiveTab('results');
-          }
+          setLatestResults(allExecutionsData);
+          setActiveTab('results');
+          console.log(
+            '🎉 All executions set successfully, switched to results tab'
+          );
+        } else {
+          console.log('⚠️ No executions found for this schedule');
+          alert('No test executions found for this schedule');
         }
       } catch (error) {
-        console.error('Failed to load schedule executions:', error);
-        alert('Failed to load execution results');
+        console.error('❌ Failed to load schedule executions:', error);
+        alert(
+          `Failed to load execution results: ${error.message || 'Unknown error'}`
+        );
       } finally {
         setLoadingExecution(false);
       }
