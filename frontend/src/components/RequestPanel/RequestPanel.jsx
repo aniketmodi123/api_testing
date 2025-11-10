@@ -41,6 +41,178 @@ const copyToClipboard = async text => {
   }
 };
 
+// Helper function to map status codes to readable text
+const mapStatusToText = statusCode => {
+  const statusMap = {
+    200: '200 OK',
+    201: '201 Created',
+    204: '204 No Content',
+    206: '206 No Data Found',
+    400: '400 Bad Request',
+    401: '401 Unauthorized',
+    403: '403 Forbidden',
+    404: '404 Not Found',
+    500: '500 Internal Server Error',
+    502: '502 Bad Gateway',
+    503: '503 Service Unavailable',
+  };
+  return statusMap[statusCode] || `${statusCode}`;
+};
+
+// Transform test results to Excel-friendly tabular format
+const transformTestResultsToExcel = testResults => {
+  let resultsArray = [];
+
+  // Extract results array from different possible formats
+  if (Array.isArray(testResults)) {
+    resultsArray = testResults;
+  } else if (testResults?.test_cases) {
+    resultsArray = testResults.test_cases;
+  } else if (testResults?.data) {
+    resultsArray = Array.isArray(testResults.data)
+      ? testResults.data
+      : [testResults.data];
+  } else if (testResults) {
+    resultsArray = [testResults];
+  }
+
+  // Transform to 6-column format
+  const excelData = resultsArray.map((item, index) => {
+    // 1. Test case name
+    const testCaseName = item.case || item.name || `Test Case ${index + 1}`;
+
+    // 2. Input params/body
+    let inputData = '';
+    if (item.request?.params && Object.keys(item.request.params).length > 0) {
+      inputData = JSON.stringify(item.request.params);
+    } else if (item.request?.body) {
+      inputData = JSON.stringify(item.request.body);
+    }
+
+    // 3. Expected response type
+    let expectedResponseType = 'N/A';
+    if (item.expected?.status) {
+      expectedResponseType = mapStatusToText(item.expected.status);
+    } else if (item.request?.expected?.status) {
+      expectedResponseType = mapStatusToText(item.request.expected.status);
+    } else if (
+      item.expected?.status_in &&
+      Array.isArray(item.expected.status_in)
+    ) {
+      expectedResponseType = item.expected.status_in
+        .map(s => mapStatusToText(s))
+        .join(' or ');
+    } else if (
+      item.request?.expected?.status_in &&
+      Array.isArray(item.request.expected.status_in)
+    ) {
+      expectedResponseType = item.request.expected.status_in
+        .map(s => mapStatusToText(s))
+        .join(' or ');
+    }
+
+    // 4. Actual response type
+    const actualStatusCode = item.response?.status_code || item.status_code;
+    const actualResponseType = actualStatusCode
+      ? mapStatusToText(actualStatusCode)
+      : 'N/A';
+
+    // 5. Result
+    const result = (item.ok ?? item.passed ?? item.success) ? 'Pass' : 'Fail';
+
+    // 6. Validation focus - summarize key checks
+    let validationFocus = 'N/A';
+    const expected = item.expected || item.request?.expected;
+    if (expected?.json?.checks && Array.isArray(expected.json.checks)) {
+      const firstChecks = expected.json.checks.slice(0, 3);
+      validationFocus = firstChecks
+        .map(check => {
+          if (check.path && check.expect) {
+            return `${check.path}: ${check.expect}`;
+          }
+          return JSON.stringify(check);
+        })
+        .join('; ');
+    } else if (expected?.json?.either && Array.isArray(expected.json.either)) {
+      const firstEither = expected.json.either[0];
+      if (firstEither?.checks) {
+        validationFocus = firstEither.checks
+          .slice(0, 2)
+          .map(check => `${check.path}: ${check.expect}`)
+          .join('; ');
+      }
+    } else if (expected?.status || expected?.status_in) {
+      validationFocus = 'Status code validation';
+    }
+
+    return {
+      'Test case name': testCaseName,
+      'Input params/body': inputData,
+      'Expected response type': expectedResponseType,
+      'Actual response type': actualResponseType,
+      Result: result,
+      'Validation focus': validationFocus,
+    };
+  });
+
+  return excelData;
+};
+
+// Copy table to clipboard with HTML format for proper table rendering
+async function copyTableToClipboard(excelData) {
+  const headers = [
+    'Test case name',
+    'Input params/body',
+    'Expected response type',
+    'Actual response type',
+    'Result',
+    'Validation focus',
+  ];
+
+  // Build HTML table
+  const htmlTable = `
+  <table border="1" cellspacing="0" cellpadding="5" style="border-collapse: collapse; width: 100%; border: 1px solid #ccc;">
+    <thead style="background-color: #f3f3f3; font-weight: bold;">
+      <tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>
+    </thead>
+    <tbody>
+      ${excelData
+        .map(row => {
+          const color = row.Result === 'Pass' ? '#e7f7e7' : '#fbeaea';
+          return `<tr style="background-color: ${color};">
+            ${headers.map(h => `<td>${row[h] || ''}</td>`).join('')}
+          </tr>`;
+        })
+        .join('')}
+    </tbody>
+  </table>`;
+
+  // Build tab-separated plain text fallback
+  const tsv = [
+    headers.join('\t'),
+    ...excelData.map(row =>
+      headers
+        .map(h =>
+          (row[h] ?? '').toString().replace(/\n/g, ' ').replace(/\t/g, ' ')
+        )
+        .join('\t')
+    ),
+  ].join('\n');
+
+  // Copy HTML to clipboard (makes Confluence/Docs paste as real table)
+  await navigator.clipboard.write([
+    new ClipboardItem({
+      'text/html': new Blob([htmlTable], { type: 'text/html' }),
+      'text/plain': new Blob([tsv], { type: 'text/plain' }),
+    }),
+  ]);
+
+  console.log(
+    '✅ Table copied with full structure! Paste directly into Confluence or Docs.'
+  );
+  return true;
+}
+
 // Reusable copy button component
 const CopyButton = ({ textToCopy, className }) => {
   const [copied, setCopied] = useState(false);
@@ -1988,6 +2160,28 @@ export default function RequestPanel({ activeRequest }) {
                 <div className={styles.testResultsHeader}>
                   <h4>Test Results</h4>
                   <div className={styles.testResultsActions}>
+                    <Button
+                      variant="primary"
+                      size="small"
+                      className={styles.copyExcelButton}
+                      onClick={async () => {
+                        try {
+                          const excelData =
+                            transformTestResultsToExcel(testResults);
+                          await copyTableToClipboard(excelData);
+                          alert(
+                            '✅ Table copied to clipboard! You can now paste directly into Excel, Confluence, Google Docs, Notion, or Word.'
+                          );
+                        } catch (err) {
+                          console.error('Error creating Excel data:', err);
+                          alert(
+                            'Error preparing data for Excel. Please try again.'
+                          );
+                        }
+                      }}
+                    >
+                      Copy Excel
+                    </Button>
                     <Button
                       variant="secondary"
                       size="small"

@@ -102,6 +102,7 @@ async def get_file_api(
         data["total_cases"] = len(cases_data)
 
         results = await run_from_list_api(data)
+
         return results["flat"]
 
     except Exception as e:

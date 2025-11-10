@@ -153,5 +153,3 @@ Perfect ⚡ — here’s your **manual updated** with all the strict corrections
 ---
 
 ⚡ Now your manual is **fully aligned with all corrections** (200 never alone, real 422 structure, invalid token for 401, headers only when overriding).
-
-Do you also want me to **rewrite the Create/Update/GET templates** into ready-to-use **test case objects** (with `name`, `params`, `expected`) instead of just the `expected` fragments?
