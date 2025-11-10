@@ -40,30 +40,51 @@ const copyToClipboard = async text => {
     return false;
   }
 };
-
-// Helper function to map status codes to readable text
-const mapStatusToText = statusCode => {
+function mapStatusToText(status) {
+  if (!status) return 'N/A';
+  const code = Number(status);
   const statusMap = {
     200: '200 OK',
     201: '201 Created',
     204: '204 No Content',
-    206: '206 No Data Found',
     400: '400 Bad Request',
     401: '401 Unauthorized',
     403: '403 Forbidden',
     404: '404 Not Found',
+    406: '406 Not Acceptable',
+    409: '409 Conflict',
+    422: '422 Unprocessable Entity',
     500: '500 Internal Server Error',
     502: '502 Bad Gateway',
     503: '503 Service Unavailable',
+    206: '206 No Data Found',
   };
-  return statusMap[statusCode] || `${statusCode}`;
-};
+  return statusMap[code] || code.toString();
+}
 
-// Transform test results to Excel-friendly tabular format
+// 🔹 Build cURL command from request
+function buildCurlCommand(req) {
+  if (!req || !req.url) return 'N/A';
+
+  const method = req.method?.toUpperCase() || 'GET';
+  const headers = req.headers
+    ? Object.entries(req.headers)
+        .map(([k, v]) => `-H "${k}: ${v}"`)
+        .join(' \\\n  ')
+    : '';
+
+  const body =
+    req.body && Object.keys(req.body).length
+      ? `-H "Content-Type: application/json" \\\n  -d '${JSON.stringify(req.body)}'`
+      : '';
+
+  return `curl -X ${method} "${req.url}" \\\n  ${headers}${body ? ' \\\n  ' + body : ''}`;
+}
+
+// 🔹 Transform test results into simplified table
 const transformTestResultsToExcel = testResults => {
   let resultsArray = [];
 
-  // Extract results array from different possible formats
   if (Array.isArray(testResults)) {
     resultsArray = testResults;
   } else if (testResults?.test_cases) {
@@ -76,141 +97,82 @@ const transformTestResultsToExcel = testResults => {
     resultsArray = [testResults];
   }
 
-  // Transform to 6-column format
-  const excelData = resultsArray.map((item, index) => {
-    // 1. Test case name
+  return resultsArray.map((item, index) => {
     const testCaseName = item.case || item.name || `Test Case ${index + 1}`;
-
-    // 2. Input params/body
-    let inputData = '';
-    if (item.request?.params && Object.keys(item.request.params).length > 0) {
-      inputData = JSON.stringify(item.request.params);
-    } else if (item.request?.body) {
-      inputData = JSON.stringify(item.request.body);
-    }
-
-    // 3. Expected response type
-    let expectedResponseType = 'N/A';
-    if (item.expected?.status) {
-      expectedResponseType = mapStatusToText(item.expected.status);
-    } else if (item.request?.expected?.status) {
-      expectedResponseType = mapStatusToText(item.request.expected.status);
-    } else if (
-      item.expected?.status_in &&
-      Array.isArray(item.expected.status_in)
-    ) {
-      expectedResponseType = item.expected.status_in
-        .map(s => mapStatusToText(s))
-        .join(' or ');
-    } else if (
-      item.request?.expected?.status_in &&
-      Array.isArray(item.request.expected.status_in)
-    ) {
-      expectedResponseType = item.request.expected.status_in
-        .map(s => mapStatusToText(s))
-        .join(' or ');
-    }
-
-    // 4. Actual response type
-    const actualStatusCode = item.response?.status_code || item.status_code;
-    const actualResponseType = actualStatusCode
-      ? mapStatusToText(actualStatusCode)
-      : 'N/A';
-
-    // 5. Result
     const result = (item.ok ?? item.passed ?? item.success) ? 'Pass' : 'Fail';
 
-    // 6. Validation focus - summarize key checks
-    let validationFocus = 'N/A';
-    const expected = item.expected || item.request?.expected;
-    if (expected?.json?.checks && Array.isArray(expected.json.checks)) {
-      const firstChecks = expected.json.checks.slice(0, 3);
-      validationFocus = firstChecks
-        .map(check => {
-          if (check.path && check.expect) {
-            return `${check.path}: ${check.expect}`;
-          }
-          return JSON.stringify(check);
-        })
-        .join('; ');
-    } else if (expected?.json?.either && Array.isArray(expected.json.either)) {
-      const firstEither = expected.json.either[0];
-      if (firstEither?.checks) {
-        validationFocus = firstEither.checks
-          .slice(0, 2)
-          .map(check => `${check.path}: ${check.expect}`)
-          .join('; ');
-      }
-    } else if (expected?.status || expected?.status_in) {
-      validationFocus = 'Status code validation';
-    }
+    // --- Request as cURL ---
+    const requestCurl = buildCurlCommand(item.request);
+
+    // --- Expected ---
+    const expected = item.request?.expected || item.expected || {};
+    const expectedStatus = expected.status_in
+      ? expected.status_in.map(s => mapStatusToText(s)).join(' or ')
+      : expected.status
+        ? mapStatusToText(expected.status)
+        : 'N/A';
+
+    // --- Response (formatted JSON) ---
+    const response = item.response?.json
+      ? JSON.stringify(item.response.json, null, 2)
+      : item.response || 'N/A';
 
     return {
       'Test case name': testCaseName,
-      'Input params/body': inputData,
-      'Expected response type': expectedResponseType,
-      'Actual response type': actualResponseType,
+      Request: requestCurl,
+      Expected: expectedStatus,
+      Response: response,
       Result: result,
-      'Validation focus': validationFocus,
     };
   });
-
-  return excelData;
 };
 
-// Copy table to clipboard with HTML format for proper table rendering
+// 🔹 Copy structured table to clipboard (Confluence / Docs compatible)
 async function copyTableToClipboard(excelData) {
   const headers = [
     'Test case name',
-    'Input params/body',
-    'Expected response type',
-    'Actual response type',
+    'Request',
+    'Expected',
+    'Response',
     'Result',
-    'Validation focus',
   ];
 
-  // Build HTML table
   const htmlTable = `
-  <table border="1" cellspacing="0" cellpadding="5" style="border-collapse: collapse; width: 100%; border: 1px solid #ccc;">
+  <table border="1" cellspacing="0" cellpadding="6" style="border-collapse: collapse; width: 100%; border: 1px solid #ccc;">
     <thead style="background-color: #f3f3f3; font-weight: bold;">
       <tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>
     </thead>
     <tbody>
       ${excelData
         .map(row => {
-          const color = row.Result === 'Pass' ? '#e7f7e7' : '#fbeaea';
-          return `<tr style="background-color: ${color};">
-            ${headers.map(h => `<td>${row[h] || ''}</td>`).join('')}
+          const color = row.Result === 'Pass' ? '#09ee09ff' : '#fbeaea';
+          return `<tr style="background-color: ${color}; vertical-align: top;">
+            ${headers
+              .map(h => {
+                let value = row[h] || '';
+                if (h === 'Response') {
+                  // Preserve indentation & line breaks
+                  value = `<pre style="white-space: pre-wrap; font-family: monospace;">${value}</pre>`;
+                }
+                return `<td style="vertical-align: top;">${value}</td>`;
+              })
+              .join('')}
           </tr>`;
         })
         .join('')}
     </tbody>
   </table>`;
 
-  // Build tab-separated plain text fallback
-  const tsv = [
-    headers.join('\t'),
-    ...excelData.map(row =>
-      headers
-        .map(h =>
-          (row[h] ?? '').toString().replace(/\n/g, ' ').replace(/\t/g, ' ')
-        )
-        .join('\t')
-    ),
-  ].join('\n');
-
-  // Copy HTML to clipboard (makes Confluence/Docs paste as real table)
   await navigator.clipboard.write([
     new ClipboardItem({
       'text/html': new Blob([htmlTable], { type: 'text/html' }),
-      'text/plain': new Blob([tsv], { type: 'text/plain' }),
+      'text/plain': new Blob([htmlTable], { type: 'text/plain' }),
     }),
   ]);
 
   console.log(
-    '✅ Table copied with full structure! Paste directly into Confluence or Docs.'
+    '✅ Table copied with pretty JSON + cURL! Paste directly into Confluence or Docs.'
   );
-  return true;
 }
 
 // Reusable copy button component
