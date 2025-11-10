@@ -2169,9 +2169,6 @@ export default function RequestPanel({ activeRequest }) {
                           const excelData =
                             transformTestResultsToExcel(testResults);
                           await copyTableToClipboard(excelData);
-                          alert(
-                            '✅ Table copied to clipboard! You can now paste directly into Excel, Confluence, Google Docs, Notion, or Word.'
-                          );
                         } catch (err) {
                           console.error('Error creating Excel data:', err);
                           alert(
@@ -2375,18 +2372,7 @@ export default function RequestPanel({ activeRequest }) {
                 >
                   {isSending ? 'Running...' : 'Re-run Test'}
                 </Button>
-                <Button
-                  variant="primary"
-                  size="small"
-                  onClick={() => {
-                    // Save the modified test result data
-                    // Here you would implement saving logic to your backend
-                    // For now, just show a confirmation
-                    alert(
-                      'Test data changes saved locally. Implement backend save as needed.'
-                    );
-                  }}
-                >
+                <Button variant="primary" size="small" onClick={() => {}}>
                   Save Changes
                 </Button>
                 <Button
