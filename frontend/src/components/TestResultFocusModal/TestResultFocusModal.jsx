@@ -336,55 +336,57 @@ export default function TestResultFocusModal({
           </div>
         </div>
 
-        {((testResult.failures && testResult.failures.length > 0) ||
-          testResult.error) && (
-          <div className={styles.failures}>
-            {testResult.failures
-              ? `• ${testResult.failures.join('\n• ')}`
-              : testResult.error}
-          </div>
-        )}
+        <div className={styles.modalScrollContainer}>
+          {((testResult.failures && testResult.failures.length > 0) ||
+            testResult.error) && (
+            <div className={styles.failures}>
+              {testResult.failures
+                ? `• ${testResult.failures.join('\n• ')}`
+                : testResult.error}
+            </div>
+          )}
 
-        <div className={styles.content}>
-          <div className={styles.column}>
-            <div className={styles.sectionTitle}>
-              Request{' '}
-              {isEditing && (
-                <span className={styles.editIndicator}>(Editing)</span>
+          <div className={styles.content}>
+            <div className={styles.column}>
+              <div className={styles.sectionTitle}>
+                Request{' '}
+                {isEditing && (
+                  <span className={styles.editIndicator}>(Editing)</span>
+                )}
+              </div>
+              {isEditing ? (
+                <JsonEditor
+                  value={editableRequest}
+                  onChange={setEditableRequest}
+                  placeholder="Enter JSON request data..."
+                  minHeight={300}
+                  maxHeight={600}
+                  resizable={true}
+                  language="json"
+                />
+              ) : (
+                <pre className={styles.json}>
+                  {pretty(testResult.request || testResult.requestData)}
+                </pre>
               )}
             </div>
-            {isEditing ? (
-              <JsonEditor
-                value={editableRequest}
-                onChange={setEditableRequest}
-                placeholder="Enter JSON request data..."
-                minHeight={300}
-                maxHeight={600}
-                resizable={true}
-                language="json"
-              />
-            ) : (
+            <div className={styles.column}>
+              <div className={styles.sectionTitle}>Response</div>
               <pre className={styles.json}>
-                {pretty(testResult.request || testResult.requestData)}
+                {pretty(testResult.response || testResult.responseData)}
               </pre>
-            )}
+            </div>
           </div>
-          <div className={styles.column}>
-            <div className={styles.sectionTitle}>Response</div>
-            <pre className={styles.json}>
-              {pretty(testResult.response || testResult.responseData)}
-            </pre>
-          </div>
-        </div>
 
-        {(testResult.expected || testResult.expectedData) && (
-          <div className={styles.expectedSection}>
-            <div className={styles.sectionTitle}>Expected</div>
-            <pre className={styles.json}>
-              {pretty(testResult.expected || testResult.expectedData)}
-            </pre>
-          </div>
-        )}
+          {(testResult.expected || testResult.expectedData) && (
+            <div className={styles.expectedSection}>
+              <div className={styles.sectionTitle}>Expected</div>
+              <pre className={styles.json}>
+                {pretty(testResult.expected || testResult.expectedData)}
+              </pre>
+            </div>
+          )}
+        </div>
       </div>
     </>
   );

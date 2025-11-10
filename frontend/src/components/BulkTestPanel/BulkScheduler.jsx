@@ -11,12 +11,20 @@ export default function BulkScheduler({
   // Initialize state with existing schedule data if editing
   const [scheduleConfig, setScheduleConfig] = useState(() => {
     if (isEditing && existingSchedule) {
+      // Parse date_time properly - API returns format "2025-11-10 16:41:26"
+      let datetimeValue = '';
+      if (existingSchedule.date_time) {
+        // Replace space with 'T' to create ISO format: "2025-11-10T16:41:26"
+        const dateStr = existingSchedule.date_time.replace(' ', 'T');
+        // Parse and format for datetime-local input (YYYY-MM-DDTHH:mm)
+        // Take only first 16 characters to get YYYY-MM-DDTHH:mm format
+        datetimeValue = dateStr.slice(0, 16);
+      }
+
       return {
         name: existingSchedule.name || '',
         type: existingSchedule.type || 'once',
-        datetime: existingSchedule.date_time
-          ? new Date(existingSchedule.date_time).toISOString().slice(0, 16)
-          : '',
+        datetime: datetimeValue,
         time: existingSchedule.time || '',
         daysOfWeek: existingSchedule.days_of_week || [],
         dayOfMonth: existingSchedule.day_of_month || 1,
