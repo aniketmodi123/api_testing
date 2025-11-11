@@ -323,6 +323,7 @@ export default function RequestPanel({ activeRequest }) {
     saveApi,
     saveTestCase,
     deleteTestCase,
+    bulkDeleteTestCases,
   } = useApi();
 
   const [method, setMethod] = useState(
@@ -516,6 +517,9 @@ export default function RequestPanel({ activeRequest }) {
     if (selectedNode) {
       setMethod(selectedNode.method || 'GET');
 
+      // Clear test results when switching files
+      clearTestResults();
+
       // Set URL directly from node without modifications
       if (selectedNode.url) {
         setUrl(selectedNode.url);
@@ -566,7 +570,7 @@ export default function RequestPanel({ activeRequest }) {
           .catch(err => console.error('Error loading test cases:', err));
       }
     }
-  }, [selectedNode, getApi, getTestCases]);
+  }, [selectedNode, getApi, getTestCases, clearTestResults]);
 
   const [activeTab, setActiveTab] = useState('api');
   const [responseTab, setResponseTab] = useState('body');
@@ -657,6 +661,40 @@ export default function RequestPanel({ activeRequest }) {
       console.error('Error running single test:', error);
     } finally {
       setIsSending(false);
+    }
+  };
+
+  // Function to delete all or selected test cases
+  const handleDeleteTestCases = async () => {
+    if (!selectedNode?.id || !testCases || testCases.length === 0) {
+      return;
+    }
+
+    // Determine which cases to delete
+    const casesToDelete =
+      selectedTestCases.length > 0
+        ? selectedTestCases
+        : testCases.map(tc => tc.id || tc.case_id);
+
+    const count = casesToDelete.length;
+    const message =
+      selectedTestCases.length > 0
+        ? `Are you sure you want to delete ${count} selected test case${count > 1 ? 's' : ''}?`
+        : `Are you sure you want to delete all ${count} test case${count > 1 ? 's' : ''}?`;
+
+    const confirmDelete = window.confirm(message);
+    if (!confirmDelete) return;
+
+    try {
+      await bulkDeleteTestCases(casesToDelete);
+      // Clear selected test cases after deletion
+      setSelectedTestCases([]);
+      // Refresh test cases list
+      await getTestCases(selectedNode.id);
+      alert(`Successfully deleted ${count} test case${count > 1 ? 's' : ''}`);
+    } catch (error) {
+      console.error('Error deleting test cases:', error);
+      alert(`Failed to delete test cases: ${error.message || 'Unknown error'}`);
     }
   };
 
@@ -1952,6 +1990,16 @@ export default function RequestPanel({ activeRequest }) {
                 </Button>
                 {activeApi && testCases && testCases.length > 0 && (
                   <>
+                    <Button
+                      variant="danger"
+                      className={styles.deleteAllButton}
+                      onClick={handleDeleteTestCases}
+                      disabled={isSending}
+                    >
+                      {selectedTestCases.length > 0
+                        ? `Delete Selected (${selectedTestCases.length})`
+                        : 'Delete All'}
+                    </Button>
                     <Button
                       variant="secondary"
                       className={styles.runSelectedTestsButton}

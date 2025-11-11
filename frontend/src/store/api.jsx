@@ -432,6 +432,32 @@ export const useApi = create((set, get) => ({
   },
 
   /**
+   * Bulk delete multiple test cases
+   * @param {Array<number>} caseIds - Array of test case IDs
+   */
+  bulkDeleteTestCases: async caseIds => {
+    try {
+      set({ isLoading: true, error: null });
+      const result = await apiService.bulkDeleteTestCases(caseIds);
+
+      // Remove deleted cases from list
+      set(state => ({
+        testCases: state.testCases.filter(tc => !caseIds.includes(tc.id)),
+        selectedTestCase: caseIds.includes(state.selectedTestCase?.id)
+          ? null
+          : state.selectedTestCase,
+      }));
+
+      return result;
+    } catch (error) {
+      set({ error: error.message || 'Failed to bulk delete test cases' });
+      throw error;
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  /**
    * Run test cases and store results
    * @param {number} fileId - File ID
    * @param {number|Array} caseId - Test case ID(s) or null for all

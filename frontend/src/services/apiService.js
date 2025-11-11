@@ -429,6 +429,26 @@ export const apiService = {
   },
 
   /**
+   * Bulk delete multiple test cases
+   * @param {Array<number>} caseIds - Array of test case IDs to delete
+   * @returns {Promise} Promise with bulk deletion result
+   */
+  async bulkDeleteTestCases(caseIds) {
+    try {
+      const response = await api.delete('/cases/bulk', {
+        data: caseIds,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error bulk deleting test cases:', error);
+      throw error;
+    }
+  },
+
+  /**
    * Run a test case and get results
    * @param {number} fileId - File ID containing the API
    * @param {number|Array} caseId - Test case ID(s) to run (optional, runs all cases if not provided)
