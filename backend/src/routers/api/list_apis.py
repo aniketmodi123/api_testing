@@ -41,6 +41,7 @@ async def get_file_api(
         query = select(Api).where(Api.file_id == file_id)
 
         if include_cases:
+            # Load cases and we'll sort them after loading
             query = query.options(selectinload(Api.cases))
 
         result = await db.execute(query)
@@ -91,7 +92,9 @@ async def get_file_api(
 
         if include_cases and hasattr(api, 'cases'):
             cases_data = []
-            for case in api.cases:
+            # Sort cases by name
+            sorted_cases = sorted(api.cases, key=lambda case: case.name.lower() if case.name else "")
+            for case in sorted_cases:
                 cases_data.append({
                     "id": case.id,
                     "name": case.name,
@@ -176,7 +179,9 @@ async def get_bulk_testing_tree(
 
                 # Add test cases
                 if hasattr(api, 'cases') and api.cases:
-                    for case in api.cases:
+                    # Sort cases by name
+                    sorted_cases = sorted(api.cases, key=lambda case: case.name.lower() if case.name else "")
+                    for case in sorted_cases:
                         node_data["test_cases"].append({
                             "id": case.id,
                             "name": case.name,

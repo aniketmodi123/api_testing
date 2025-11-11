@@ -572,6 +572,7 @@ export default function RequestPanel({ activeRequest }) {
   const [responseTab, setResponseTab] = useState('body');
   const [isSending, setIsSending] = useState(false);
   const [response, setResponse] = useState(null);
+  const [excelCopied, setExcelCopied] = useState(false);
   const [selectedTestCases, setSelectedTestCases] = useState([]);
   const [defaultValidationSchema, setDefaultValidationSchema] = useState({
     status: 200,
@@ -2131,6 +2132,8 @@ export default function RequestPanel({ activeRequest }) {
                           const excelData =
                             transformTestResultsToExcel(testResults);
                           await copyTableToClipboard(excelData);
+                          setExcelCopied(true);
+                          setTimeout(() => setExcelCopied(false), 2000);
                         } catch (err) {
                           console.error('Error creating Excel data:', err);
                           alert(
@@ -2139,7 +2142,7 @@ export default function RequestPanel({ activeRequest }) {
                         }
                       }}
                     >
-                      Copy Excel
+                      {excelCopied ? '✓ Copied!' : '📋 Copy Excel'}
                     </Button>
                     <Button
                       variant="secondary"
