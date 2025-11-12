@@ -23,6 +23,7 @@ export const useApi = create((set, get) => ({
   // Actions
   setLoading: isLoading => set({ isLoading }),
   setError: error => set({ error }),
+  setActiveApi: activeApi => set({ activeApi }),
 
   /**
    * Create a new API in a file
@@ -102,6 +103,12 @@ export const useApi = create((set, get) => ({
         if (includeCases && result.data.test_cases) {
           set({ testCases: result.data.test_cases });
         }
+      } else {
+        // Clear previously active API/test cases when no data found
+        set({
+          activeApi: null,
+          ...(includeCases ? { testCases: [] } : {}),
+        });
       }
 
       return result;
