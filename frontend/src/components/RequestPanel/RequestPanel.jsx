@@ -346,6 +346,9 @@ export default function RequestPanel({ activeRequest }) {
   // State for parameters
   const [params, setParams] = useState([]);
 
+  // State for headers
+  const [headers, setHeaders] = useState([]);
+
   // Function to get folder headers with caching
   const getFolderHeaders = async headerNodeId => {
     if (!headerNodeId) return {};
@@ -504,6 +507,22 @@ export default function RequestPanel({ activeRequest }) {
         );
       } else {
         setParams([]);
+      }
+
+      // Initialize headers from activeApi
+      const apiHeaders = extractValue(activeApi, 'headers', {});
+      if (Array.isArray(apiHeaders)) {
+        setHeaders(apiHeaders);
+      } else if (typeof apiHeaders === 'object' && apiHeaders !== null) {
+        setHeaders(
+          Object.entries(apiHeaders).map(([key, value]) => ({
+            key,
+            value,
+            description: key === 'Content-Type' ? 'Content type header' : '',
+          }))
+        );
+      } else {
+        setHeaders([]);
       }
     } else {
       // No active API, set defaults
@@ -1207,19 +1226,32 @@ export default function RequestPanel({ activeRequest }) {
                 params.forEach(p => {
                   if (p.key) paramsObj[p.key] = p.value;
                 });
+
+                // Convert headers array to object
+                const headersObj = {};
+                headers.forEach(h => {
+                  if (h.key) headersObj[h.key] = h.value;
+                });
+
+                console.log('💾 RequestPanel - Saving API with headers:', {
+                  headersArray: headers,
+                  headersObj,
+                  paramsObj,
+                });
+
                 const apiData = activeApi
                   ? {
                       // Update existing API
                       ...activeApi,
                       method: method,
                       endpoint: url,
-                      headers: extractValue(activeApi, 'headers', {}),
+                      headers: headersObj,
                       params: paramsObj,
                       body: normalizeBody(bodyContent, bodyType),
                       bodyType: bodyType,
                       extra_meta: {
                         ...extractValue(activeApi, 'extra_meta', {}),
-                        headers: extractValue(activeApi, 'headers', {}),
+                        headers: headersObj,
                         params: paramsObj,
                         body: normalizeBody(bodyContent, bodyType),
                         expected: validationSchemaData, // Add validation schema to extra_meta
@@ -1232,12 +1264,12 @@ export default function RequestPanel({ activeRequest }) {
                       endpoint: url,
                       description: '',
                       is_active: true,
-                      headers: {},
+                      headers: headersObj,
                       params: paramsObj,
                       body: normalizeBody(bodyContent, bodyType),
                       bodyType: bodyType,
                       extra_meta: {
-                        headers: {},
+                        headers: headersObj,
                         params: paramsObj,
                         body: normalizeBody(bodyContent, bodyType),
                         expected: validationSchemaData, // Add validation schema to extra_meta
@@ -1718,106 +1750,87 @@ export default function RequestPanel({ activeRequest }) {
                 <div className={styles.paramDescription}>DESCRIPTION</div>
               </div>
 
-              {/* Render API headers if available */}
-              {activeApi &&
-                (() => {
-                  const headers = extractValue(activeApi, 'headers', null);
-
-                  if (headers) {
-                    if (Array.isArray(headers)) {
-                      return headers.map((header, index) => (
-                        <div
-                          className={styles.paramRow}
-                          key={`header-${index}`}
-                        >
-                          <div className={styles.paramCheckbox}>
-                            <input type="checkbox" defaultChecked />
-                          </div>
-                          <div className={styles.paramKey}>
-                            <input
-                              type="text"
-                              defaultValue={header.key || header.name || ''}
-                            />
-                          </div>
-                          <div className={styles.paramValue}>
-                            <input
-                              type="text"
-                              defaultValue={header.value || ''}
-                            />
-                          </div>
-                          <div className={styles.paramDescription}>
-                            <input
-                              type="text"
-                              defaultValue={header.description || ''}
-                            />
-                          </div>
-                        </div>
-                      ));
-                    } else if (typeof headers === 'object') {
-                      return Object.entries(headers).map(
-                        ([key, value], index) => (
-                          <div
-                            className={styles.paramRow}
-                            key={`header-${index}`}
-                          >
-                            <div className={styles.paramCheckbox}>
-                              <input type="checkbox" defaultChecked />
-                            </div>
-                            <div className={styles.paramKey}>
-                              <input type="text" defaultValue={key} />
-                            </div>
-                            <div className={styles.paramValue}>
-                              <input type="text" defaultValue={value} />
-                            </div>
-                            <div className={styles.paramDescription}>
-                              <input
-                                type="text"
-                                defaultValue={
-                                  key === 'Content-Type'
-                                    ? 'Content type header'
-                                    : ''
-                                }
-                              />
-                            </div>
-                          </div>
-                        )
-                      );
-                    }
-                  }
-                  return null;
-                })()}
-
-              {/* If no headers in API, show default Content-Type */}
-              {(!activeApi || !extractValue(activeApi, 'headers')) && (
-                <div className={styles.paramRow}>
+              {/* Render headers from state */}
+              {headers.map((header, idx) => (
+                <div className={styles.paramRow} key={idx}>
                   <div className={styles.paramCheckbox}>
                     <input type="checkbox" defaultChecked />
                   </div>
                   <div className={styles.paramKey}>
-                    <input type="text" defaultValue="Content-Type" />
+                    <input
+                      type="text"
+                      value={header.key}
+                      onChange={e => {
+                        const newHeaders = [...headers];
+                        newHeaders[idx].key = e.target.value;
+                        setHeaders(newHeaders);
+                      }}
+                      placeholder="Key"
+                    />
                   </div>
                   <div className={styles.paramValue}>
-                    <input type="text" defaultValue="application/json" />
+                    <input
+                      type="text"
+                      value={header.value}
+                      onChange={e => {
+                        const newHeaders = [...headers];
+                        newHeaders[idx].value = e.target.value;
+                        setHeaders(newHeaders);
+                      }}
+                      placeholder="Value"
+                    />
                   </div>
                   <div className={styles.paramDescription}>
-                    <input type="text" defaultValue="Content type header" />
+                    <input
+                      type="text"
+                      value={header.description}
+                      onChange={e => {
+                        const newHeaders = [...headers];
+                        newHeaders[idx].description = e.target.value;
+                        setHeaders(newHeaders);
+                      }}
+                      placeholder="Description"
+                    />
                   </div>
                 </div>
-              )}
+              ))}
 
-              {/* Empty row for new header */}
+              {/* Empty row for adding new header */}
               <div className={styles.paramRow}>
                 <div className={styles.paramCheckbox}>
                   <input type="checkbox" disabled />
                 </div>
                 <div className={styles.paramKey}>
-                  <input type="text" placeholder="Key" />
+                  <input
+                    type="text"
+                    defaultValue={''}
+                    onBlur={e => {
+                      if (e.target.value) {
+                        setHeaders([
+                          ...headers,
+                          { key: e.target.value, value: '', description: '' },
+                        ]);
+                        e.target.value = '';
+                      }
+                    }}
+                    placeholder="Key"
+                  />
                 </div>
                 <div className={styles.paramValue}>
-                  <input type="text" placeholder="Value" />
+                  <input
+                    type="text"
+                    defaultValue={''}
+                    disabled
+                    placeholder="Value"
+                  />
                 </div>
                 <div className={styles.paramDescription}>
-                  <input type="text" placeholder="Description" />
+                  <input
+                    type="text"
+                    defaultValue={''}
+                    disabled
+                    placeholder="Description"
+                  />
                 </div>
               </div>
             </div>

@@ -46,7 +46,7 @@ async def get_workspace_with_tree(
         await db.commit()
 
         # Use shared workspace tree response function
-        data, err = await get_workspace_tree_response(db, workspace_id, include_apis=include_apis)
+        data, err = await get_workspace_tree_response(db, workspace_id, include_apis=True)
         if not data:
             return create_response(206, error_message=err or "Workspace not found or access denied")
         return create_response(200, value_correction(data))
