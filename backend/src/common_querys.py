@@ -182,7 +182,7 @@ async def get_folder_path_to_root(db: AsyncSession, folder_id: int) -> List[Dict
 
         # Get folder info
         result = await db.execute(
-            select(Node.id, Node.name, Node.parent_id, Node.workspace_id)
+            select(Node.id, Node.name, Node.parent_id, Node.workspace_id, Node.type)
             .where(and_(Node.id == current_id))
         )
         folder_data = result.first()
@@ -192,7 +192,8 @@ async def get_folder_path_to_root(db: AsyncSession, folder_id: int) -> List[Dict
                 "id": folder_data.id,
                 "name": folder_data.name,
                 "parent_id": folder_data.parent_id,
-                "workspace_id": folder_data.workspace_id
+                "workspace_id": folder_data.workspace_id,
+                "type": folder_data.type
             })
             current_id = folder_data.parent_id
         else:
@@ -201,14 +202,14 @@ async def get_folder_path_to_root(db: AsyncSession, folder_id: int) -> List[Dict
     return path
 
 
-async def get_headers_for_folders(db: AsyncSession, folder_ids: List[int]) -> Dict[int, Dict[str, Any]]:
+async def get_headers_for_folders(db: AsyncSession, folder_ids: dict) -> Dict[int, Dict[str, Any]]:
     """Get headers for multiple folders"""
     if not folder_ids:
         return {}
 
     result = await db.execute(
         select(Header.folder_id, Header.content, Header.id, Header.created_at)
-        .where(Header.folder_id.in_(folder_ids))
+        .where(Header.folder_id.in_(folder_ids["folder"]))
     )
     headers_data = result.fetchall()
 
@@ -217,6 +218,19 @@ async def get_headers_for_folders(db: AsyncSession, folder_ids: List[int]) -> Di
         headers_map[header_row.folder_id] = {
             "id": header_row.id,
             "content": header_row.content,
+            "created_at": header_row.created_at
+        }
+
+    result = await db.execute(
+        select(Api.file_id, Api.extra_meta, Api.id, Api.created_at)
+        .where(Api.file_id.in_(folder_ids["file"]))
+    )
+    headers_data = result.fetchall()
+
+    for header_row in headers_data:
+        headers_map[header_row.file_id] = {
+            "id": header_row.file_id,
+            "content": header_row.extra_meta.get("headers", {}) if header_row.extra_meta else {},
             "created_at": header_row.created_at
         }
 
@@ -283,7 +297,15 @@ async def get_headers(db: AsyncSession, folder_id: int):
             return {}, [], {}, {}
 
         # Get folder IDs for header lookup
-        folder_ids = [folder["id"] for folder in folder_path]
+        folder_ids = {
+            "folder": [],
+            "file": []
+        }
+        for folder in folder_path:
+            if folder["type"] == "folder":
+                folder_ids["folder"].append(folder["id"])
+            else:
+                folder_ids["file"].append(folder["id"])
 
         # Get headers for all folders in the path
         headers_map = await get_headers_for_folders(db, folder_ids)
