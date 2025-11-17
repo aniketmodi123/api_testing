@@ -402,7 +402,8 @@ export default function BulkResults({ results, isRunning }) {
         {/* Modal for viewing detailed results */}
         {focusedResult && (
           <TestResultFocusModal
-            result={focusedResult}
+            testResult={focusedResult}
+            isOpen={!!focusedResult}
             onClose={() => setFocusedResult(null)}
           />
         )}

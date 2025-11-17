@@ -710,7 +710,6 @@ export default function RequestPanel({ activeRequest }) {
       setSelectedTestCases([]);
       // Refresh test cases list
       await getTestCases(selectedNode.id);
-      alert(`Successfully deleted ${count} test case${count > 1 ? 's' : ''}`);
     } catch (error) {
       console.error('Error deleting test cases:', error);
       alert(`Failed to delete test cases: ${error.message || 'Unknown error'}`);
