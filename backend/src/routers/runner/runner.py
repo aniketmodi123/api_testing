@@ -54,7 +54,7 @@ async def _run_case(
                     resolved_url,
                     headers=merged_headers,
                     params=params,
-                    json=body if method in ("POST", "PUT", "PATCH") else None,
+                    json=body,
                     timeout=timeout,
                 )
                 duration_ms = round((time.perf_counter() - t0) * 1000, 2)
