@@ -265,7 +265,12 @@ async def run_engine_once():
 # ------------- engine loop -------------
 async def run_engine():
     while True:
-        logs("scheduler tick")
-        await run_engine_once()
-        logs(f"scheduler tick done, waiting {CHECK_INTERVAL}s")
+        try:
+            logs("scheduler tick")
+            await run_engine_once()
+            logs(f"scheduler tick done, waiting {CHECK_INTERVAL}s")
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logs(f"scheduler tick failed: {e}", type="error")
         await asyncio.sleep(CHECK_INTERVAL)
