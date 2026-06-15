@@ -1,3 +1,7 @@
+"""
+What this file does: Exposes the POST /node/create route for creating folder or file nodes within a workspace.
+"""
+
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,7 +21,7 @@ async def create_node(
     username: str = Header(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Create a new folder or file node"""
+    """POST /node/create — create a folder or file node; reject duplicate names in the same parent, return updated workspace tree."""
     try:
         # Get user
         user = await get_user_by_username(db, username)

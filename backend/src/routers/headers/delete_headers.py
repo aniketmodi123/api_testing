@@ -1,3 +1,7 @@
+"""
+What this file does: Exposes DELETE /{folder_id}/headers for removing a folder's header record.
+"""
+
 from fastapi import APIRouter, Depends, Header as FastAPIHeader
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,7 +23,7 @@ async def delete_folder_headers(
     username: str = FastAPIHeader(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Delete the folder's header (no header_id needed since only one header per folder)"""
+    """DELETE /{folder_id}/headers — delete the folder's header record."""
     try:
         user = await get_user_by_username(db, username)
         if not user:

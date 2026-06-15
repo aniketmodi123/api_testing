@@ -1,13 +1,16 @@
+import { useState } from 'react';
 import { useAuth } from '../../../store/session.jsx';
 import EnvironmentSwitcher from '../../EnvironmentSwitcher';
+import ImportCurlModal from '../../ImportExport/ImportCurlModal';
 import WorkspaceSelector from '../../WorkspaceSelector/WorkspaceSelector.jsx';
 import Logo from './components/Logo.jsx';
 import LogoutButton from './components/LogoutButton.jsx';
 import ThemeToggle from './components/ThemeToggle.jsx';
 import UserProfile from './components/UserProfile.jsx';
 
-export default function Header() {
+export default function Header({ onCurlImport }) {
   const { user, logout } = useAuth();
+  const [showCurlModal, setShowCurlModal] = useState(false);
 
   const styles = {
     header: {
@@ -39,7 +42,18 @@ export default function Header() {
     // AuthGuard will handle navigation after logout
   };
 
+  const handleCurlImport = parsed => {
+    if (onCurlImport) onCurlImport(parsed);
+  };
+
   return (
+    <>
+    {showCurlModal && (
+      <ImportCurlModal
+        onClose={() => setShowCurlModal(false)}
+        onImport={handleCurlImport}
+      />
+    )}
     <header style={styles.header}>
       <div style={styles.leftSection}>
         <Logo />
@@ -51,6 +65,23 @@ export default function Header() {
         )}
       </div>
       <div style={styles.actionsContainer}>
+        {user && (
+          <button
+            onClick={() => setShowCurlModal(true)}
+            style={{
+              padding: '4px 10px',
+              fontSize: '12px',
+              background: 'var(--p0-primary, var(--primary))',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+            }}
+            title="Import cURL command"
+          >
+            Import cURL
+          </button>
+        )}
         <ThemeToggle />
         {user && (
           <div style={styles.userContainer}>
@@ -60,5 +91,6 @@ export default function Header() {
         )}
       </div>
     </header>
+    </>
   );
 }

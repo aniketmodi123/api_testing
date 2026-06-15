@@ -1,3 +1,7 @@
+"""
+What this file does: Exposes the DELETE /logout route for blacklisting the caller's JWT token.
+"""
+
 from fastapi import APIRouter, Header
 from utils import ExceptionHandler, blacklist_token, create_response
 from fastapi import APIRouter
@@ -10,6 +14,7 @@ async def logout_user(
     username:str = Header(...),
     authorization:str = Header(...)
 ):
+    """DELETE /logout — blacklist the provided JWT token so it cannot be reused."""
     try:
         if authorization in ['', None]:
             return create_response(400, error_message="Authorization token not found.")

@@ -1,3 +1,7 @@
+"""
+What this file does: Exposes POST routes for resolving {{variable}} placeholders across all fields of a complete API data structure.
+"""
+
 from fastapi import APIRouter, Depends, Header as FastAPIHeader, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Dict, Any, Optional
@@ -11,7 +15,11 @@ router = APIRouter()
 
 
 class ApiDataResolveRequest(BaseModel):
-    """Schema for API data variable resolution"""
+    """Request body for resolving {{variable}} placeholders in a complete API data structure.
+    Attributes:
+        api_data: Full API data dict (url, method, headers, body, params, expected) containing placeholders.
+        environment_id: Environment to resolve from; required — active environment lookup not yet implemented.
+    """
     api_data: Dict[str, Any] = Field(..., description="Complete API data with potential variables")
     environment_id: Optional[int] = Field(None, description="Specific environment ID (uses active if not provided)")
 
@@ -52,12 +60,7 @@ async def resolve_api_data_variables(
     username: str = FastAPIHeader(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """
-    Resolve variables in complete API data structure
-
-    This function takes any API data (url, body, headers, params, expected, etc.)
-    and replaces all {{variable_name}} patterns with actual values from the environment.
-    """
+    """POST /environment/workspace/{workspace_id}/environments/resolve-api — substitute {{variable}} placeholders in all fields of api_data using the specified environment."""
     try:
         # Get user
         user = await get_user_by_username(db, username)
@@ -115,9 +118,7 @@ async def resolve_api_data_with_specific_environment(
     username: str = FastAPIHeader(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """
-    Resolve variables in API data using a specific environment
-    """
+    """POST /environment/workspace/{workspace_id}/environments/{environment_id}/resolve-api — inject environment_id into request and delegate to resolve_api_data_variables."""
     try:
         # Override environment_id in request
         request_data.environment_id = environment_id

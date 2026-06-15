@@ -1,0 +1,60 @@
+.wrapper {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.input {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 13px;
+  padding: 6px 10px;
+  border: 1px solid var(--p0-border, var(--border));
+  border-radius: 4px;
+  background: var(--p0-bg, var(--background));
+  color: var(--text);
+  font-family: var(--font-mono, monospace);
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--p0-primary, var(--primary));
+}
+
+/* Highlight overlay sits on top of the input — pointer-events none so input stays clickable */
+.highlights {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-family: var(--font-mono, monospace);
+  white-space: pre;
+  overflow: hidden;
+  pointer-events: none;
+  color: transparent; /* only the tokens show color */
+}
+
+.token {
+  color: var(--p0-primary, #6366f1);
+  background: rgba(99, 102, 241, 0.12);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.tooltip {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  background: var(--p0-surface-2, #2e2e2e);
+  color: var(--text);
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 100;
+  border: 1px solid var(--p0-border, var(--border));
+}

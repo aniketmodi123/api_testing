@@ -1,3 +1,7 @@
+"""
+What this file does: Exposes GET /environment/workspace/{workspace_id}/environments/{environment_id}/variables for reading stored environment variables.
+"""
+
 from fastapi import APIRouter, Depends, Header as FastAPIHeader
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,7 +25,7 @@ async def get_environment_variables(
     username: str = FastAPIHeader(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Get environment variables (similar to headers)"""
+    """GET /environment/workspace/{workspace_id}/environments/{environment_id}/variables — return the key-value variables stored in an environment."""
     try:
         # Get user
         user = await get_user_by_username(db, username)

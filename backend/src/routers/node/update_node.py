@@ -1,3 +1,7 @@
+"""
+What this file does: Exposes PUT /node/{node_id} for renaming or reparenting a node within a workspace.
+"""
+
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,7 +33,7 @@ async def update_node(
     username: str = Header(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Update/rename/move a node"""
+    """PUT /node/{node_id} — rename or reparent a node; reject circular references and duplicate names in the target location."""
     try:
         # Get user
         user = await get_user_by_username(db, username)

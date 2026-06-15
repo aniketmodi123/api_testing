@@ -1,5 +1,8 @@
 .workspaceSelector {
   position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .selectorButton {
@@ -225,4 +228,39 @@
 .deleteButton:disabled {
   background-color: #ffcccc;
   cursor: not-allowed;
+}
+
+.workspaceItemName {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-right: 4px;
+}
+
+.membersToggleBtn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  color: var(--text-muted);
+  line-height: 1;
+  flex-shrink: 0;
+}
+.membersToggleBtn:hover { background: var(--hover-background); }
+
+.membersPanelPopover {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 300px;
+  max-width: 380px;
+  background: var(--surface-panel, var(--background));
+  border: 1px solid var(--border-color, var(--border));
+  border-radius: 8px;
+  padding: 12px 16px;
+  z-index: 1000;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
 }

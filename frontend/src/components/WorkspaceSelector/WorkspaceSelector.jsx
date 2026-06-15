@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import lookingGif from '../../assets/looking.gif';
 import { useWorkspace } from '../../store/workspace';
+import MembersPanel from '../Workspace/MembersPanel';
+import { RoleBadge } from '../common';
 import styles from './WorkspaceSelector.module.css';
 
 export default function WorkspaceSelector() {
@@ -17,6 +19,7 @@ export default function WorkspaceSelector() {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showMembers, setShowMembers] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [workspaceToDelete, setWorkspaceToDelete] = useState(null);
   const [newWorkspaceName, setNewWorkspaceName] = useState('');
@@ -134,8 +137,29 @@ export default function WorkspaceSelector() {
         <span className={styles.workspaceName}>
           {activeWorkspace ? activeWorkspace.name : 'Select Workspace'}
         </span>
+        {activeWorkspace?.is_shared && (
+          <RoleBadge role={activeWorkspace.member_role || 'viewer'} />
+        )}
         <span className={styles.dropdownIcon}>▼</span>
       </button>
+      {activeWorkspace && (
+        <button
+          className={styles.membersToggleBtn}
+          title="Workspace members"
+          onClick={() => setShowMembers(v => !v)}
+        >
+          👥
+        </button>
+      )}
+
+      {showMembers && activeWorkspace && (
+        <div className={styles.membersPanelPopover}>
+          <MembersPanel
+            workspaceId={activeWorkspace.id}
+            isOwner={!activeWorkspace.is_shared}
+          />
+        </div>
+      )}
 
       {isDropdownOpen && (
         <div ref={dropdownRef} className={styles.dropdown}>
@@ -266,14 +290,19 @@ export default function WorkspaceSelector() {
                   className={`${styles.workspaceItem} ${activeWorkspace?.id === workspace.id ? styles.active : ''}`}
                   onClick={() => handleSelect(workspace)}
                 >
-                  {workspace.name}
-                  <button
-                    className={styles.deleteWorkspaceButton}
-                    onClick={e => handleDeleteClick(e, workspace)}
-                    title="Delete workspace"
-                  >
-                    ×
-                  </button>
+                  <span className={styles.workspaceItemName}>{workspace.name}</span>
+                  {workspace.is_shared && (
+                    <RoleBadge role={workspace.member_role || 'viewer'} />
+                  )}
+                  {!workspace.is_shared && (
+                    <button
+                      className={styles.deleteWorkspaceButton}
+                      onClick={e => handleDeleteClick(e, workspace)}
+                      title="Delete workspace"
+                    >
+                      ×
+                    </button>
+                  )}
                 </div>
               ))
             ) : (

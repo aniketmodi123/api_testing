@@ -1,3 +1,7 @@
+"""
+What this file does: Exposes POST /file/{file_id}/api/save for creating or updating the API record attached to a file node.
+"""
+
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,7 +26,7 @@ async def save_api(
     username: str = Header(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Create or update API in a file"""
+    """POST /file/{file_id}/api/save — upsert the API for a file node, merging extra_meta on update."""
     try:
         # Get user
         user = await get_user_by_username(db, username)

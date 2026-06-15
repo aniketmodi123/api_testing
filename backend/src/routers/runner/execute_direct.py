@@ -1,3 +1,7 @@
+"""
+What this file does: Exposes POST /api/execute-direct and /api/execute-with-validation for firing external HTTP requests with variable resolution, inherited folder headers, and optional assertion evaluation.
+"""
+
 from typing import Dict, Any
 from fastapi import APIRouter, Depends, Header as FastAPIHeader, HTTPException
 import httpx, time, json
@@ -9,9 +13,11 @@ from utils import (
     ExceptionHandler,
     create_response,
     resolve_variables,
+    merge_scopes,
     handle_http_error,
     get_environment_variables
 )
+from routers.variables.global_variables import get_global_variables_for_user
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from common_querys import get_user_by_username, verify_node_ownership, get_headers
@@ -19,10 +25,7 @@ from config import get_db
 from models import Environment, Node
 
 def resolve_docker_url(url: str) -> str:
-    """
-    Resolve URL for Docker container networking.
-    When running inside Docker, localhost refers to the host machine.
-    """
+    """What it does: Replace 'localhost' with 'host.docker.internal' so the container can reach the host machine."""
     if 'localhost' in url:
         # Replace localhost with host.docker.internal for Docker networking
         return url.replace('localhost', 'host.docker.internal')
@@ -34,7 +37,11 @@ router = APIRouter()
 
 
 async def test_connectivity(url: str) -> Dict[str, Any]:
-    """Test connectivity to a URL with different approaches"""
+    """
+    What it does: Probe the URL and its localhost/Docker variants to identify which form is reachable from this container.
+    Returns:
+        dict[str, Any]: Mapping of tested URL → result dict with status ("success"/"failed"), status_code when successful, and error message when failed.
+    """
     results = {}
 
     # Test different URL variations
@@ -69,7 +76,7 @@ async def test_url_connectivity(
     x_username: str = FastAPIHeader(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Test connectivity to a specific URL"""
+    """POST /api/test-connectivity — probe the URL and its localhost/Docker variants; return reachability results for each form."""
     try:
         user = await get_user_by_username(db, x_username)
         if not user:
@@ -97,14 +104,7 @@ async def execute_api_direct(
     username: str = FastAPIHeader(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """
-    Execute API call with full backend processing:
-    1. Resolve environment variables
-    2. Fetch and merge folder headers
-    3. Apply authentication
-    4. Make external API call
-    5. Return response with metadata
-    """
+    """POST /api/execute-direct — resolve variables (global → env), merge folder headers, and fire the external HTTP request; return response with timing and resolved metadata."""
     try:
         # Verify user permissions
         user = await get_user_by_username(db, username)
@@ -125,51 +125,60 @@ async def execute_api_direct(
 
         workspace_id = file_node.workspace_id
 
-        # 1. Get environment variables
+        # 1. Get global variables (lowest priority)
+        global_vars = await get_global_variables_for_user(username)
+
+        # 2. Get environment variables (overrides global)
         env_variables = {}
         if request.environment_id:
-            # Get specific environment variables using the new function
             env_variables = await get_environment_variables(request.environment_id)
         else:
-            # Get active environment variables - find active environment
             env_query = select(Environment).where(
                 Environment.workspace_id == workspace_id,
                 Environment.is_active == True
             )
             env_result = await db.execute(env_query)
             active_environment = env_result.scalar_one_or_none()
-
             if active_environment:
                 env_variables = await get_environment_variables(active_environment.id)
 
-        # 2. Get merged headers using get_headers (includes parent folders and file)
+        # Merge scopes: global < env
+        merged_variables = merge_scopes(global_vars, env_variables)
+
+        # 3. Get merged headers using get_headers (includes parent folders and file)
         folder_path, folder_ids, headers_map, merge_result = await get_headers(db, request.file_id)
         merged_headers = merge_result.get("merged_headers", {})
 
 
-        # 3. Resolve variables in all request parts
-        resolved_url = resolve_variables(request.url, env_variables)
-        resolved_headers = resolve_variables(merged_headers, env_variables)
-        resolved_params = resolve_variables(request.params, env_variables)
+        # 4. Resolve variables in all request parts using merged scope
+        resolved_url = resolve_variables(request.url, merged_variables)
+        resolved_headers = resolve_variables(merged_headers, merged_variables)
+        resolved_params = resolve_variables(request.params, merged_variables)
         resolved_body = None
 
         if request.body is not None:
             if isinstance(request.body, str):
-                resolved_body = resolve_variables(request.body, env_variables)
+                resolved_body = resolve_variables(request.body, merged_variables)
             elif isinstance(request.body, dict):
-                resolved_body = resolve_variables(request.body, env_variables)
+                resolved_body = resolve_variables(request.body, merged_variables)
             elif isinstance(request.body, list):
-                resolved_body = resolve_variables(request.body, env_variables)
+                resolved_body = resolve_variables(request.body, merged_variables)
             else:
                 resolved_body = request.body
 
-        # 4. Merge headers (merged + request + defaults)
-        # Use resolve_variables from utils for request.headers
+        # 5. Merge headers (merged + request + defaults)
+        # Determine default Content-Type based on body_type
+        body_type = (request.body_type or 'JSON').upper()
+        if body_type in ('FORM-DATA', 'URL-ENCODED'):
+            default_content_type = 'application/x-www-form-urlencoded'
+        else:
+            default_content_type = 'application/json'
+
         final_headers = {
-            'Content-Type': 'application/json',
+            'Content-Type': default_content_type,
             'User-Agent': 'API-Testing-Tool/1.0',
-            **resolved_headers,  # Merged headers from get_headers (lowest priority)
-            **resolve_variables(request.headers, env_variables),  # Request headers (highest priority)
+            **resolved_headers,
+            **resolve_variables(request.headers, merged_variables),
         }
 
         # Add ngrok headers if needed
@@ -208,7 +217,14 @@ async def execute_api_direct(
 
             # Add body for non-GET requests
             if request.method.upper() != 'GET' and resolved_body is not None:
-                if isinstance(resolved_body, (dict, list)):
+                if body_type in ('FORM-DATA', 'URL-ENCODED'):
+                    # Send as URL-encoded form data
+                    if isinstance(resolved_body, str):
+                        request_data['content'] = resolved_body.encode('utf-8')
+                        final_headers['Content-Type'] = 'application/x-www-form-urlencoded'
+                    else:
+                        request_data['data'] = resolved_body
+                elif isinstance(resolved_body, (dict, list)):
                     request_data['json'] = resolved_body
                 else:
                     request_data['content'] = str(resolved_body)
@@ -243,7 +259,7 @@ async def execute_api_direct(
                 "execution_time": round(execution_time, 3),
                 "resolved_url": final_url,
                 "resolved_headers": final_headers,
-                "variables_used": env_variables,
+                "variables_used": merged_variables,
                 # "folder_headers": folder_headers,  # Removed: not defined, merged headers are in resolved_headers
                 "request_details": {
                     "method": request.method.upper(),
@@ -273,7 +289,7 @@ async def execute_api_with_validation(
     username: str = FastAPIHeader(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Execute API call with validation against expected results"""
+    """POST /api/execute-with-validation — call execute_api_direct then run evaluate_expect against request.expected; return response enriched with validation pass/fail details."""
     try:
         # 1. First, execute the API using the working execute_api_direct function
         api_response = await execute_api_direct(request, username, db)

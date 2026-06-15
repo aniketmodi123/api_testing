@@ -1,4 +1,7 @@
-# Create Environment endpoint
+"""
+What this file does: Exposes POST /environment/workspace/{workspace_id}/environments for creating a new environment within a workspace.
+"""
+
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
@@ -18,7 +21,7 @@ async def create_environment(
     username: str = Header(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Create a new environment in a workspace"""
+    """POST /environment/workspace/{workspace_id}/environments — create a new environment; deactivate others when is_active is True."""
     try:
         # Get user
         user = await get_user_by_username(db, username)

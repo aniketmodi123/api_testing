@@ -1,8 +1,21 @@
+"""
+What this file does: Defines all Pydantic request and response schemas used across the API.
+"""
+
 from datetime import datetime
 from pydantic import BaseModel, Field, validator, EmailStr, root_validator
 from typing import Optional, List, Dict, Any, Literal, Union
 
+
 class PaginationRes(BaseModel):
+    """Carry pagination metadata alongside a paginated response.
+
+    Attributes:
+        page: Current page number (1-indexed).
+        rows: Number of items on the current page.
+        total_rows: Total number of items across all pages.
+    """
+
     page: int
     rows: int
     total_rows: int
@@ -10,52 +23,129 @@ class PaginationRes(BaseModel):
     class Config:
         from_attributes = True
 
-# Pydantic models for request/response
+
 class UserSignUp(BaseModel):
+    """Carry credentials for a new user registration request.
+
+    Attributes:
+        email: Valid email address used as the login identifier.
+        password: Plain-text password; hashed server-side before storage.
+    """
+
     email: EmailStr
     password: str
 
+
 class UserSignIn(BaseModel):
+    """Carry credentials for a login request.
+
+    Attributes:
+        email: Login email or username string.
+        password: Plain-text password to verify.
+    """
+
     email: str
     password: str
 
+
 class UserUpdate(BaseModel):
+    """Carry optional fields for updating a user's profile.
+
+    Attributes:
+        username: New display name; ``None`` leaves the current value unchanged.
+        email: New email address; ``None`` leaves the current value unchanged.
+    """
+
     username: Optional[str] = None
     email: Optional[EmailStr] = None
 
+
 class UserResponse(BaseModel):
+    """Represent a user's public profile data returned after authentication.
+
+    Attributes:
+        id: User primary key.
+        username: Display name.
+        email: Login email.
+        god: ``True`` when the user has superuser privileges.
+        created_at: Account creation timestamp as a string.
+    """
+
     id: int
     username: str
     email: str
     god: bool
     created_at: str
 
+
 class TokenResponse(BaseModel):
+    """Carry a JWT access token and the authenticated user's profile.
+
+    Attributes:
+        access_token: Signed JWT string for use in subsequent requests.
+        token_type: Token scheme — always ``"bearer"``.
+        user: Profile of the authenticated user.
+    """
+
     access_token: str
     token_type: str
     user: UserResponse
 
+
 class MessageResponse(BaseModel):
+    """Carry a plain human-readable message in a response body.
+
+    Attributes:
+        message: Descriptive text of the outcome.
+    """
+
     message: str
 
 
-# Forget Password Schemas
 class ForgetPasswordRequest(BaseModel):
+    """Carry the email address for initiating a password reset flow.
+
+    Attributes:
+        email: Registered email to send the OTP to.
+    """
+
     email: EmailStr
 
+
 class VerifyOTPRequest(BaseModel):
+    """Carry the email and OTP code for verifying a password reset attempt.
+
+    Attributes:
+        email: Email the OTP was sent to.
+        otp_code: Exactly 6-digit OTP string.
+    """
+
     email: EmailStr
     otp_code: str = Field(..., min_length=6, max_length=6, description="6-digit OTP code")
 
+
 class ResetPasswordRequest(BaseModel):
+    """Carry the credentials required to complete a password reset.
+
+    Attributes:
+        email: Email address of the account being reset.
+        otp_code: 6-digit OTP code from the reset email.
+        new_password: Replacement password; minimum 8 characters.
+    """
+
     email: EmailStr
     otp_code: str = Field(..., min_length=6, max_length=6, description="6-digit OTP code")
     new_password: str = Field(..., min_length=8, description="New password (minimum 8 characters)")
 
 
-
-# Request schemas
 class WorkspaceCreateRequest(BaseModel):
+    """Carry the name and optional description for creating a new workspace.
+
+    Attributes:
+        name: Workspace display name; 1–255 characters, leading/trailing whitespace stripped.
+        description: Optional free-text description; ``None`` when not provided.
+    """
+
     name: str = Field(..., min_length=1, max_length=255, description="Workspace name")
     description: Optional[str] = Field(None, max_length=1000, description="Workspace description")
 
@@ -67,6 +157,13 @@ class WorkspaceCreateRequest(BaseModel):
 
 
 class WorkspaceUpdateRequest(BaseModel):
+    """Carry optional fields for updating an existing workspace.
+
+    Attributes:
+        name: New display name; ``None`` leaves the current value unchanged.
+        description: New description; ``None`` leaves the current value unchanged.
+    """
+
     name: Optional[str] = Field(None, min_length=1, max_length=255, description="Updated workspace name")
     description: Optional[str] = Field(None, max_length=1000, description="Updated workspace description")
 
@@ -79,8 +176,18 @@ class WorkspaceUpdateRequest(BaseModel):
         return v
 
 
-# Response schemas
 class NodeResponse(BaseModel):
+    """Represent a single folder or file node in a workspace tree response.
+
+    Attributes:
+        id: Node primary key.
+        name: Node display name.
+        type: ``"folder"`` or ``"file"``.
+        parent_id: Parent folder id; ``None`` for root-level nodes.
+        created_at: Creation timestamp.
+        children: Nested child nodes; empty list when the node has no children.
+    """
+
     id: int
     name: str
     type: str  # 'folder' or 'file'
@@ -97,6 +204,16 @@ NodeResponse.model_rebuild()
 
 
 class WorkspaceResponse(BaseModel):
+    """Represent a workspace summary without its file tree.
+
+    Attributes:
+        id: Workspace primary key.
+        name: Display name.
+        description: Optional description; ``None`` when not set.
+        created_at: Creation timestamp.
+        user_id: Owner's user id; ``None`` when not included in the response.
+    """
+
     id: int
     name: str
     description: Optional[str] = None
@@ -108,6 +225,17 @@ class WorkspaceResponse(BaseModel):
 
 
 class WorkspaceWithTreeResponse(BaseModel):
+    """Represent a workspace together with its full hierarchical file tree.
+
+    Attributes:
+        id: Workspace primary key.
+        name: Display name.
+        description: Optional description; ``None`` when not set.
+        created_at: Creation timestamp.
+        file_tree: Hierarchical list of root NodeResponse items.
+        total_nodes: Total count of all nodes (folders + files) in the workspace.
+    """
+
     id: int
     name: str
     description: Optional[str] = None
@@ -120,28 +248,44 @@ class WorkspaceWithTreeResponse(BaseModel):
 
 
 class WorkspaceListResponse(BaseModel):
+    """Carry a list of workspace summaries.
+
+    Attributes:
+        workspaces: List of WorkspaceResponse items.
+    """
+
     workspaces: List[WorkspaceResponse]
 
     class Config:
         from_attributes = True
 
 
-# Base response wrapper (if you're using a standard response format)
 class ApiResponse(BaseModel):
+    """Wrap any API response in a standard envelope with status and optional payload.
+
+    Attributes:
+        response_code: HTTP-equivalent status code.
+        data: Response payload; ``None`` when the response carries no data.
+        message: Human-readable success message; ``None`` when not applicable.
+        error_message: Human-readable error description; ``None`` on success.
+    """
+
     response_code: int
     data: Optional[Any] = None
     message: Optional[str] = None
     error_message: Optional[str] = None
 
 
-# file/folder
-
-# Node Management Schemas - Add these to your existing schemas.py
-
-
-
-# Node Request Schemas
 class NodeCreateRequest(BaseModel):
+    """Carry the fields required to create a new folder or file node.
+
+    Attributes:
+        workspace_id: Target workspace for the new node.
+        name: Node display name; 1–255 characters, invalid filesystem characters rejected.
+        type: ``"folder"`` creates a directory node; ``"file"`` creates an API container node.
+        parent_id: Parent folder id; ``None`` creates the node at the workspace root.
+    """
+
     workspace_id: int = Field(..., description="ID of the workspace")
     name: str = Field(..., min_length=1, max_length=255, description="Node name")
     type: Literal["folder", "file"] = Field(..., description="Node type: 'folder' or 'file'")
@@ -160,6 +304,13 @@ class NodeCreateRequest(BaseModel):
 
 
 class NodeUpdateRequest(BaseModel):
+    """Carry optional fields for renaming or moving a node.
+
+    Attributes:
+        name: New display name; ``None`` leaves the current name unchanged.
+        parent_id: New parent folder id for moving; ``None`` leaves the current parent unchanged.
+    """
+
     name: Optional[str] = Field(None, min_length=1, max_length=255, description="Updated node name")
     parent_id: Optional[int] = Field(None, description="New parent node ID (for moving)")
 
@@ -168,7 +319,6 @@ class NodeUpdateRequest(BaseModel):
         if v is not None:
             if not v or not v.strip():
                 raise ValueError('Node name cannot be empty')
-            # Remove invalid characters for file/folder names
             invalid_chars = ['<', '>', ':', '"', '/', '\\', '|', '?', '*']
             for char in invalid_chars:
                 if char in v:
@@ -177,8 +327,19 @@ class NodeUpdateRequest(BaseModel):
         return v
 
 
-# Node Response Schemas
 class NodeDetailResponse(BaseModel):
+    """Represent a node with workspace context and nested children.
+
+    Attributes:
+        id: Node primary key.
+        workspace_id: Owning workspace id.
+        name: Display name.
+        type: ``"folder"`` or ``"file"``.
+        parent_id: Parent folder id; ``None`` for root nodes.
+        created_at: Creation timestamp.
+        children: Nested child NodeDetailResponse items; empty list when none.
+    """
+
     id: int
     workspace_id: int
     name: str
@@ -192,6 +353,17 @@ class NodeDetailResponse(BaseModel):
 
 
 class NodeBasicResponse(BaseModel):
+    """Represent a node's core fields without children.
+
+    Attributes:
+        id: Node primary key.
+        workspace_id: Owning workspace id.
+        name: Display name.
+        type: ``"folder"`` or ``"file"``.
+        parent_id: Parent folder id; ``None`` for root nodes.
+        created_at: Creation timestamp.
+    """
+
     id: int
     workspace_id: int
     name: str
@@ -204,6 +376,19 @@ class NodeBasicResponse(BaseModel):
 
 
 class NodeWithChildrenResponse(BaseModel):
+    """Represent a node with a flat list of its immediate children.
+
+    Attributes:
+        id: Node primary key.
+        workspace_id: Owning workspace id.
+        name: Display name.
+        type: ``"folder"`` or ``"file"``.
+        parent_id: Parent folder id; ``None`` for root nodes.
+        created_at: Creation timestamp.
+        children: Immediate child nodes (not recursively nested); empty list when none.
+        children_count: Count of immediate children.
+    """
+
     id: int
     workspace_id: int
     name: str
@@ -221,8 +406,15 @@ class NodeWithChildrenResponse(BaseModel):
 NodeDetailResponse.model_rebuild()
 
 
-# Path/Breadcrumb Response
 class NodePathResponse(BaseModel):
+    """Represent a single step in a breadcrumb path from root to a node.
+
+    Attributes:
+        id: Node primary key.
+        name: Display name at this path step.
+        type: ``"folder"`` or ``"file"``.
+    """
+
     id: int
     name: str
     type: str
@@ -232,6 +424,19 @@ class NodePathResponse(BaseModel):
 
 
 class NodeWithPathResponse(BaseModel):
+    """Represent a node together with its full breadcrumb path and immediate children.
+
+    Attributes:
+        id: Node primary key.
+        workspace_id: Owning workspace id.
+        name: Display name.
+        type: ``"folder"`` or ``"file"``.
+        parent_id: Parent folder id; ``None`` for root nodes.
+        created_at: Creation timestamp.
+        path: Ordered list from root to this node.
+        children: Immediate child nodes; empty list when none.
+    """
+
     id: int
     workspace_id: int
     name: str
@@ -245,42 +450,52 @@ class NodeWithPathResponse(BaseModel):
         from_attributes = True
 
 
-# Header Management Schemas - Add these to your existing schemas.py
-
-
-
-
-# ===========================================
-# HEADER MANAGEMENT SCHEMAS
-# ===========================================
-
 class HeaderCreateRequest(BaseModel):
+    """Carry a JSON dict of HTTP headers to attach to a folder node.
+
+    Attributes:
+        content: Non-empty JSON object mapping header names to values.
+    """
+
     content: Dict[str, Any] = Field(..., description="Header content as JSON object")
+
     @validator('content')
     def validate_content(cls, v):
         if not v:
             raise ValueError('Header content cannot be empty')
-        # Basic validation for header structure
         if not isinstance(v, dict):
             raise ValueError('Header content must be a JSON object')
         return v
 
 
 class HeaderUpdateRequest(BaseModel):
+    """Carry a replacement JSON dict of HTTP headers for updating a folder's header set.
+
+    Attributes:
+        content: Non-empty JSON object mapping header names to values.
+    """
+
     content: Dict[str, Any] = Field(..., description="Updated header content as JSON object")
 
     @validator('content')
     def validate_content(cls, v):
         if not v:
             raise ValueError('Header content cannot be empty')
-
         if not isinstance(v, dict):
             raise ValueError('Header content must be a JSON object')
-
         return v
 
 
 class HeaderResponse(BaseModel):
+    """Represent a single folder's header record.
+
+    Attributes:
+        id: Header record primary key.
+        folder_id: Node id of the folder this header set belongs to.
+        content: JSON dict of header key→value pairs.
+        created_at: Creation timestamp.
+    """
+
     id: int
     folder_id: int
     content: Dict[str, Any]
@@ -291,6 +506,14 @@ class HeaderResponse(BaseModel):
 
 
 class HeaderListResponse(BaseModel):
+    """Carry a list of header records with folder context.
+
+    Attributes:
+        headers: List of HeaderResponse items.
+        total_count: Total number of header records in the list.
+        folder_info: Dict containing folder metadata; empty dict when not provided.
+    """
+
     headers: List[HeaderResponse]
     total_count: int = 0
     folder_info: Dict[str, Any] = {}
@@ -300,6 +523,16 @@ class HeaderListResponse(BaseModel):
 
 
 class FolderHeadersSummaryResponse(BaseModel):
+    """Summarise the headers defined directly on a single folder node.
+
+    Attributes:
+        folder_id: Node id of the folder.
+        folder_name: Display name of the folder.
+        workspace_id: Owning workspace id.
+        headers_count: Number of header key-value pairs on this folder.
+        headers: List of HeaderResponse items; empty list when no headers are set.
+    """
+
     folder_id: int
     folder_name: str
     workspace_id: int
@@ -310,9 +543,8 @@ class FolderHeadersSummaryResponse(BaseModel):
         from_attributes = True
 
 
-# Common header templates/examples that you might want to use
 class CommonHeaderTemplates(BaseModel):
-    """Common header templates for API testing"""
+    """Provide static helper methods for common HTTP header template dicts."""
 
     @staticmethod
     def get_auth_bearer_template():
@@ -350,26 +582,22 @@ class CommonHeaderTemplates(BaseModel):
         }
 
 
-# Header validation helpers
 class HeaderValidationHelper:
-    """Helper class for header validation"""
+    """Provide static methods for validating and normalising HTTP header dicts."""
 
     @staticmethod
     def validate_http_headers(headers: Dict[str, Any]) -> List[str]:
-        """Validate HTTP headers and return list of warnings/errors"""
+        """Validate HTTP headers and return list of warnings/errors."""
         warnings = []
 
         for key, value in headers.items():
-            # Check for valid header names (basic validation)
             if not isinstance(key, str) or not key.strip():
                 warnings.append(f"Invalid header name: {key}")
                 continue
 
-            # Check for common header name patterns
             if ' ' in key:
                 warnings.append(f"Header name contains spaces: {key}")
 
-            # Check for valid header values
             if not isinstance(value, (str, int, float, bool)):
                 warnings.append(f"Invalid header value type for {key}: {type(value)}")
 
@@ -377,7 +605,7 @@ class HeaderValidationHelper:
 
     @staticmethod
     def normalize_headers(headers: Dict[str, Any]) -> Dict[str, str]:
-        """Normalize headers to string values"""
+        """Normalize headers to string values."""
         normalized = {}
         for key, value in headers.items():
             if isinstance(key, str) and key.strip():
@@ -385,8 +613,14 @@ class HeaderValidationHelper:
         return normalized
 
 
-# Header search and filter schemas
 class HeaderSearchRequest(BaseModel):
+    """Carry optional filters for searching header records.
+
+    Attributes:
+        query: Free-text search string; ``None`` returns all headers.
+        header_name: Filter by a specific header key name; ``None`` disables this filter.
+    """
+
     query: Optional[str] = Field(None, min_length=1, max_length=100, description="Search query for header content")
     header_name: Optional[str] = Field(None, description="Filter by specific header name")
 
@@ -394,15 +628,15 @@ class HeaderSearchRequest(BaseModel):
         from_attributes = True
 
 
-# Add these schemas to your existing schemas.py
-
-
-
-# ===========================================
-# HEADER INHERITANCE SCHEMAS
-# ===========================================
-
 class FolderInPath(BaseModel):
+    """Represent a single folder entry in a header inheritance path.
+
+    Attributes:
+        id: Folder node primary key.
+        name: Folder display name.
+        has_headers: ``True`` when this folder has headers defined; ``False`` otherwise.
+    """
+
     id: int
     name: str
     has_headers: bool
@@ -412,6 +646,13 @@ class FolderInPath(BaseModel):
 
 
 class HeaderContribution(BaseModel):
+    """Represent a single header key-value pair contributed by a folder.
+
+    Attributes:
+        key: Header name.
+        value: Header value.
+    """
+
     key: str
     value: Any
 
@@ -420,6 +661,14 @@ class HeaderContribution(BaseModel):
 
 
 class HeaderOverride(BaseModel):
+    """Represent a header key whose value was overridden by a child folder.
+
+    Attributes:
+        key: Header name that was overridden.
+        old_value: Value from the parent folder.
+        new_value: Value from the child folder that replaced it.
+    """
+
     key: str
     old_value: Any
     new_value: Any
@@ -429,6 +678,15 @@ class HeaderOverride(BaseModel):
 
 
 class FolderHeaderContribution(BaseModel):
+    """Describe the headers a single folder added or overrode in an inheritance chain.
+
+    Attributes:
+        folder_id: Node id of the contributing folder.
+        folder_name: Display name of the folder.
+        headers_added: New headers introduced by this folder; empty list when none.
+        headers_overridden: Headers this folder replaced from a parent; empty list when none.
+    """
+
     folder_id: int
     folder_name: str
     headers_added: List[HeaderContribution] = []
@@ -439,6 +697,22 @@ class FolderHeaderContribution(BaseModel):
 
 
 class CompleteHeadersResponse(BaseModel):
+    """Carry the merged set of inherited headers for a folder, with full provenance detail.
+
+    Attributes:
+        folder_id: Target folder node id.
+        folder_name: Target folder display name.
+        workspace_id: Owning workspace id.
+        complete_headers: Final merged header dict after all inheritance is applied.
+        headers_count: Number of keys in complete_headers.
+        inheritance_path: Ordered list of folders from root to target.
+        folders_with_headers: Count of folders in the path that have headers defined.
+        inheritance_details: Per-folder breakdown of which keys were added or overridden;
+                             ``None`` when detail was not requested.
+        raw_headers_by_folder: Unmerged header dict keyed by folder id string;
+                               ``None`` when not requested.
+    """
+
     folder_id: int
     folder_name: str
     workspace_id: int
@@ -454,6 +728,19 @@ class CompleteHeadersResponse(BaseModel):
 
 
 class FolderHeaderPreview(BaseModel):
+    """Represent one level of a folder hierarchy for header inheritance preview.
+
+    Attributes:
+        level: Depth level in the folder tree (0 = root).
+        folder_id: Node id of this folder.
+        folder_name: Display name.
+        has_headers: ``True`` when this folder has headers defined.
+        headers: Header dict for this folder; empty dict when none.
+        headers_count: Number of header keys on this folder.
+        header_id: Primary key of the Header record; ``None`` when no headers are set.
+        created_at: Header creation timestamp; ``None`` when no headers are set.
+    """
+
     level: int
     folder_id: int
     folder_name: str
@@ -468,6 +755,16 @@ class FolderHeaderPreview(BaseModel):
 
 
 class HeaderInheritancePreviewResponse(BaseModel):
+    """Carry a preview of header inheritance across the ancestor chain of a folder.
+
+    Attributes:
+        target_folder_id: Node id of the folder being previewed.
+        target_folder_name: Display name of the target folder.
+        inheritance_path: Ordered list of FolderHeaderPreview items from root to target.
+        total_levels: Number of levels in the inheritance path.
+        folders_with_headers: Count of folders in the path that have headers defined.
+    """
+
     target_folder_id: int
     target_folder_name: str
     inheritance_path: List[FolderHeaderPreview]
@@ -478,8 +775,18 @@ class HeaderInheritancePreviewResponse(BaseModel):
         from_attributes = True
 
 
-# Pydantic schemas for API management
 class ApiCreateRequest(BaseModel):
+    """Carry the fields required to create a new API definition on a file node.
+
+    Attributes:
+        name: API display name; 1–255 characters.
+        method: HTTP method string (e.g. ``"GET"``, ``"POST"``).
+        endpoint: URL path template (e.g. ``"/api/v1/users/{id}"``).
+        description: Optional documentation text; ``None`` when not provided.
+        is_active: ``True`` includes the API in test runs; ``False`` excludes it.
+        extra_meta: Optional JSON dict for additional metadata; ``None`` when not needed.
+    """
+
     name: str = Field(..., min_length=1, max_length=255, description="API name")
     method: str = Field(..., description="HTTP method (GET, POST, PUT, DELETE, PATCH)")
     endpoint: str = Field(..., description="API endpoint path")
@@ -497,12 +804,25 @@ class ApiCreateRequest(BaseModel):
     def validate_endpoint(cls, v):
         if not v or not v.strip():
             raise ValueError('Endpoint cannot be empty')
-
         endpoint = v.strip()
         return endpoint
 
 
 class ApiUpdateRequest(BaseModel):
+    """Carry optional fields for updating an existing API definition.
+
+    Attributes:
+        name: New display name; ``None`` leaves current value unchanged.
+        method: New HTTP method; ``None`` leaves current value unchanged.
+        endpoint: New URL path template; ``None`` leaves current value unchanged.
+        description: New documentation text; ``None`` leaves current value unchanged.
+        is_active: New active flag; ``None`` leaves current value unchanged.
+        headers: New request headers dict; ``None`` leaves current value unchanged.
+        body: New request body dict; ``None`` leaves current value unchanged.
+        params: New query parameters dict; ``None`` leaves current value unchanged.
+        extra_meta: New metadata dict; ``None`` leaves current value unchanged.
+    """
+
     name: Optional[str] = Field(None, min_length=1, max_length=255, description="API name")
     method: Optional[str] = Field(None, description="HTTP method")
     endpoint: Optional[str] = Field(None, description="API endpoint path")
@@ -512,7 +832,6 @@ class ApiUpdateRequest(BaseModel):
     body: Optional[Dict[str, Any]] = Field(None, description="API request body")
     params: Optional[Dict[str, Any]] = Field(None, description="API request parameters")
     extra_meta: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
-
 
     @validator('name', pre=True, always=True)
     def validate_name(cls, v):
@@ -527,14 +846,22 @@ class ApiUpdateRequest(BaseModel):
         if v is not None:
             if not v or not v.strip():
                 raise ValueError('Endpoint cannot be empty')
-
             endpoint = v.strip()
             return endpoint
         return v
 
 
-# Pydantic schemas for API cases
 class ApiCaseCreateRequest(BaseModel):
+    """Carry the fields required to create a new test case for an API.
+
+    Attributes:
+        name: Test case display name; 1–255 characters.
+        headers: Optional request headers dict; ``None`` uses no case-level headers.
+        body: Optional request body dict; ``None`` sends no body.
+        params: Optional query/path parameter dict; ``None`` sends no parameters.
+        expected: Optional assertion criteria dict; ``None`` performs no assertions.
+    """
+
     name: str = Field(..., min_length=1, max_length=255, description="Test case name")
     headers: Optional[Dict[str, Any]] = Field(None, description="Request headers")
     body: Optional[Dict[str, Any]] = Field(None, description="Request body data")
@@ -549,6 +876,17 @@ class ApiCaseCreateRequest(BaseModel):
 
 
 class ApiCaseUpdateRequest(BaseModel):
+    """Carry optional fields for updating an existing test case.
+
+    Attributes:
+        name: New display name; ``None`` leaves current value unchanged.
+        headers: New headers dict; ``None`` leaves current value unchanged.
+        body: New body dict; ``None`` leaves current value unchanged.
+        params: New parameters dict; ``None`` leaves current value unchanged.
+        expected: New assertion criteria; ``None`` leaves current value unchanged.
+        response: Alternate field for expected response; ``None`` leaves current value unchanged.
+    """
+
     name: Optional[str] = Field(None, min_length=1, max_length=255, description="Test case name")
     headers: Optional[Dict[str, Any]] = Field(None, description="Request headers")
     body: Optional[Dict[str, Any]] = Field(None, description="Request body data")
@@ -564,21 +902,47 @@ class ApiCaseUpdateRequest(BaseModel):
             return v.strip()
         return v
 
+
 class UpdateTestCaseRequest(BaseModel):
+    """Carry optional fields for a partial test case update.
+
+    Attributes:
+        name: New display name; ``None`` leaves current value unchanged.
+        headers: New headers dict; ``None`` leaves current value unchanged.
+        body: New body dict; ``None`` leaves current value unchanged.
+        params: New parameters dict; ``None`` leaves current value unchanged.
+        expected: New assertion criteria; ``None`` leaves current value unchanged.
+    """
+
     name: Optional[str] = None
-    headers: Optional[Dict[Any, Any]] = None  # Added headers
+    headers: Optional[Dict[Any, Any]] = None
     body: Optional[Dict[Any, Any]] = None
     params: Optional[Dict[Any, Any]] = None
     expected: Optional[Dict[Any, Any]] = None
 
 
-
 class Send_OTP_Request(BaseModel):
+    """Carry the user identifier and intended use case for OTP generation.
+
+    Attributes:
+        user: Username or email to send the OTP to.
+        use_for: ``"login"`` generates an OTP for login verification;
+                 ``"password_reset"`` → generates an OTP for a password reset flow.
+    """
+
     user: str
     use_for: Literal['login', 'password_reset']
 
 
 class ChangePassword(BaseModel):
+    """Carry the current and new passwords for an authenticated password change.
+
+    Attributes:
+        old_password: Current password to verify before changing.
+        new_password: Desired new password; minimum 6 characters.
+        new_password_again: Confirmation of new_password; must match new_password.
+    """
+
     old_password: str
     new_password: str
     new_password_again: str
@@ -594,6 +958,15 @@ class ChangePassword(BaseModel):
 
 
 class ForgotPassword(BaseModel):
+    """Carry the OTP and new password credentials to complete a forgot-password reset.
+
+    Attributes:
+        otp: Numeric OTP code from the reset email.
+        email: Account email address being reset.
+        new_password: Desired new password; minimum 6 characters.
+        new_password_again: Confirmation of new_password.
+    """
+
     otp: int
     email: EmailStr
     new_password: str
@@ -609,12 +982,16 @@ class ForgotPassword(BaseModel):
         return value.strip()
 
 
-# ===========================================
-# ENVIRONMENT MANAGEMENT SCHEMAS
-# ===========================================
-
 class EnvironmentVariableData(BaseModel):
-    """Individual variable data structure for JSON storage"""
+    """Represent the stored data for a single environment variable.
+
+    Attributes:
+        value: Variable value string; ``None`` when the variable has no value set.
+        description: Optional explanation; ``None`` when not provided.
+        is_enabled: ``True`` when the variable is active and will be substituted;
+                    ``False`` to disable without deleting.
+    """
+
     value: Optional[str] = Field(None, description="Variable value")
     description: Optional[str] = Field(None, max_length=500, description="Variable description")
     is_enabled: bool = Field(True, description="Whether variable is enabled")
@@ -624,6 +1001,15 @@ class EnvironmentVariableData(BaseModel):
 
 
 class EnvironmentCreate(BaseModel):
+    """Carry the fields required to create a new environment.
+
+    Attributes:
+        name: Environment display name; 1–255 characters.
+        description: Optional description; ``None`` when not provided.
+        is_active: ``True`` immediately activates this environment in the workspace.
+        variables: Initial key→value variable pairs; empty dict when not provided.
+    """
+
     name: str = Field(..., min_length=1, max_length=255, description="Environment name")
     description: Optional[str] = Field(None, max_length=1000, description="Environment description")
     is_active: bool = Field(False, description="Whether this is the active environment")
@@ -637,6 +1023,15 @@ class EnvironmentCreate(BaseModel):
 
 
 class EnvironmentUpdate(BaseModel):
+    """Carry optional fields for updating an existing environment.
+
+    Attributes:
+        name: New display name; ``None`` leaves current value unchanged.
+        description: New description; ``None`` leaves current value unchanged.
+        is_active: New active flag; ``None`` leaves current value unchanged.
+        variables: Replacement variable dict; ``None`` leaves current variables unchanged.
+    """
+
     name: Optional[str] = Field(None, min_length=1, max_length=255, description="Environment name")
     description: Optional[str] = Field(None, max_length=1000, description="Environment description")
     is_active: Optional[bool] = Field(None, description="Whether this is the active environment")
@@ -652,6 +1047,19 @@ class EnvironmentUpdate(BaseModel):
 
 
 class EnvironmentResponse(BaseModel):
+    """Represent a full environment record including its variables.
+
+    Attributes:
+        id: Primary key.
+        workspace_id: Owning workspace id.
+        name: Display name.
+        description: Optional description; ``None`` when not set.
+        is_active: ``True`` when this environment is currently active.
+        variables: JSON dict of variable key→value pairs; empty dict when none defined.
+        created_at: Creation timestamp.
+        updated_at: Last modification timestamp.
+    """
+
     id: int
     workspace_id: int
     name: str
@@ -665,11 +1073,13 @@ class EnvironmentResponse(BaseModel):
         from_attributes = True
 
 
-# BULK VARIABLE MANAGEMENT SCHEMAS (similar to headers)
-# ===========================================
-
 class VariablesSetRequest(BaseModel):
-    """Schema for setting/creating multiple environment variables at once"""
+    """Carry a set of key-value pairs to create or replace environment variables.
+
+    Attributes:
+        variables: Non-empty dict mapping variable names to string values.
+    """
+
     variables: Dict[str, str] = Field(..., description="Variables as simple key-value pairs")
 
     @validator('variables')
@@ -682,7 +1092,12 @@ class VariablesSetRequest(BaseModel):
 
 
 class VariablesUpdateRequest(BaseModel):
-    """Schema for updating multiple environment variables at once"""
+    """Carry a set of key-value pairs to update existing environment variables.
+
+    Attributes:
+        variables: Non-empty dict mapping variable names to updated string values.
+    """
+
     variables: Dict[str, str] = Field(..., description="Updated variables as simple key-value pairs")
 
     @validator('variables')
@@ -692,8 +1107,19 @@ class VariablesUpdateRequest(BaseModel):
         if not isinstance(v, dict):
             raise ValueError('Variables must be a JSON object')
         return v
+
+
 class VariablesResponse(BaseModel):
-    """Schema for variable response"""
+    """Represent the current variable set for an environment.
+
+    Attributes:
+        environment_id: Primary key of the environment.
+        environment_name: Display name of the environment.
+        variables: Current key→value variable dict.
+        created_at: Environment creation timestamp.
+        updated_at: Last variable modification timestamp.
+    """
+
     environment_id: int
     environment_name: str
     variables: Dict[str, Any]
@@ -705,6 +1131,14 @@ class VariablesResponse(BaseModel):
 
 
 class EnvironmentListResponse(BaseModel):
+    """Carry a list of environments with the active one highlighted.
+
+    Attributes:
+        environments: All environments for the workspace.
+        total_count: Total number of environments.
+        active_environment: The currently active environment; ``None`` when none is active.
+    """
+
     environments: List[EnvironmentResponse]
     total_count: int = 0
     active_environment: Optional[EnvironmentResponse] = None
@@ -713,9 +1147,16 @@ class EnvironmentListResponse(BaseModel):
         from_attributes = True
 
 
-# Environment Variable Resolution for API Testing
 class ResolvedVariables(BaseModel):
-    """Variables resolved from active environment for API testing"""
+    """Carry the resolved variable set from the active environment for test execution.
+
+    Attributes:
+        variables: Dict of resolved key→value pairs ready for substitution.
+        environment_name: Name of the environment that provided the variables; ``None`` when no environment is active.
+        environment_id: Primary key of the source environment; ``None`` when no environment is active.
+        resolved_count: Number of variables successfully resolved.
+    """
+
     variables: Dict[str, str] = Field({}, description="Resolved key-value pairs")
     environment_name: Optional[str] = Field(None, description="Source environment name")
     environment_id: Optional[int] = Field(None, description="Source environment ID")
@@ -726,7 +1167,13 @@ class ResolvedVariables(BaseModel):
 
 
 class VariableResolutionRequest(BaseModel):
-    """Request schema for resolving variables in text"""
+    """Carry a template text and optional environment id for variable substitution.
+
+    Attributes:
+        text: Text containing ``{{VAR_NAME}}`` placeholders to resolve.
+        environment_id: Specific environment to use; ``None`` uses the workspace's active environment.
+    """
+
     text: str = Field(..., description="Text containing variables to resolve (e.g., '{{API_KEY}}')")
     environment_id: Optional[int] = Field(None, description="Specific environment ID (uses active if not provided)")
 
@@ -735,7 +1182,17 @@ class VariableResolutionRequest(BaseModel):
 
 
 class VariableResolutionResponse(BaseModel):
-    """Response schema for variable resolution"""
+    """Carry the result of resolving ``{{VAR}}`` placeholders in a text string.
+
+    Attributes:
+        original_text: Input text before substitution.
+        resolved_text: Text after all known variables have been substituted.
+        variables_found: All variable keys detected in the original text.
+        variables_resolved: Keys that were successfully substituted.
+        variables_missing: Keys that were found but had no matching environment variable.
+        environment_used: Name of the environment used; ``None`` when no environment was active.
+    """
+
     original_text: str = Field(..., description="Original text with variables")
     resolved_text: str = Field(..., description="Text with variables resolved")
     variables_found: List[str] = Field([], description="List of variable keys found in text")
@@ -747,8 +1204,15 @@ class VariableResolutionResponse(BaseModel):
         from_attributes = True
 
 
-# Node Move/Copy Schemas
 class NodeMoveRequest(BaseModel):
+    """Carry the target location for moving a node to a different workspace or folder.
+
+    Attributes:
+        target_workspace_id: Workspace to move the node into.
+        target_folder_id: Folder within the target workspace; ``None`` moves to the workspace root.
+        new_name: Name the node will have at the destination.
+    """
+
     target_workspace_id: int = Field(..., description="ID of the target workspace")
     target_folder_id: Optional[int] = Field(None, description="ID of the target folder (null for root)")
     new_name: str = Field(..., description="New name for the moved node")
@@ -758,6 +1222,14 @@ class NodeMoveRequest(BaseModel):
 
 
 class NodeCopyRequest(BaseModel):
+    """Carry the target location for copying a node to a different workspace or folder.
+
+    Attributes:
+        target_workspace_id: Workspace to copy the node into.
+        target_folder_id: Folder within the target workspace; ``None`` copies to the workspace root.
+        new_name: Name the copied node will have at the destination.
+    """
+
     target_workspace_id: int = Field(..., description="ID of the target workspace")
     target_folder_id: Optional[int] = Field(None, description="ID of the target folder (null for root)")
     new_name: str = Field(..., description="New name for the copied node")
@@ -767,6 +1239,22 @@ class NodeCopyRequest(BaseModel):
 
 
 class ApiExecuteRequest(BaseModel):
+    """Carry all parameters needed to execute a single API request directly.
+
+    Attributes:
+        file_id: File node id containing the API definition.
+        environment_id: Environment to use for variable substitution; ``None`` uses the active environment.
+        method: HTTP method (default ``"GET"``).
+        url: Full request URL.
+        headers: Request headers dict; empty dict when none.
+        params: Query parameter dict; empty dict when none.
+        body: Request body; ``None`` sends no body.
+        body_type: Body format — ``"json"``, ``"form-data"``, ``"url-encoded"``, ``"raw"``, ``"xml"``,
+                   ``"none"``; ``None`` when not specified.
+        options: Additional execution options dict; empty dict when none.
+        expected: Assertion criteria dict; ``None`` skips assertions.
+    """
+
     file_id: int = Field(..., description="File ID containing the API")
     environment_id: Optional[int] = Field(None, description="Environment ID for variable resolution")
     method: str = Field("GET", description="HTTP method")
@@ -774,42 +1262,78 @@ class ApiExecuteRequest(BaseModel):
     headers: Dict[str, Any] = Field(default_factory=dict, description="Request headers")
     params: Dict[str, Any] = Field(default_factory=dict, description="Query parameters")
     body: Any = Field(None, description="Request body")
+    body_type: Optional[str] = Field(None, description="Body type: JSON, form-data, url-encoded, raw, XML, none")
     options: Dict[str, Any] = Field(default_factory=dict, description="Additional options")
     expected: Optional[Dict[str, Any]] = Field(None, description="Expected response criteria for validation")
 
 
 class BulkSelectedItem(BaseModel):
+    """Carry a file id and explicit list of case ids for a targeted bulk run.
+
+    Attributes:
+        file_id: File node id of the API.
+        cases: List of ApiCase ids to include in the run.
+    """
+
     file_id: int
     cases: List[int]
 
+
 class BulkPayloadSelected(BaseModel):
+    """Carry a bulk run payload targeting specific cases within specific APIs.
+
+    Attributes:
+        type: Always ``"selected"`` — identifies this as a case-level selection payload.
+        apis: List of BulkSelectedItem entries defining which cases to run.
+    """
+
     type: Literal["selected"]
     apis: List[BulkSelectedItem]
 
+
 class BulkPayloadApi(BaseModel):
+    """Carry a bulk run payload targeting all cases within a set of APIs.
+
+    Attributes:
+        type: Always ``"api"`` — identifies this as an API-level selection payload.
+        apis: List of API ids whose cases will all be included in the run.
+    """
+
     type: Literal["api"]
     apis: List[int]
 
+
 BulkPayload = Union[BulkPayloadSelected, BulkPayloadApi]
 
-# -----------------------------
-# Schedule create schema
-# -----------------------------
+
 class ScheduleCreate(BaseModel):
+    """Carry all fields required to create a new bulk test schedule.
+
+    Attributes:
+        name: Schedule display name; 1–255 characters.
+        type: ``"once"`` single run at date_time; ``"minutely"`` → every N minutes (min 20);
+              ``"hourly"`` → every N hours; ``"daily"`` → daily at time;
+              ``"weekly"`` → on days_of_week at time; ``"monthly"`` → on day_of_month at time.
+        date_time: Exact run datetime; required for ``"once"``, ignored otherwise.
+        time: ``"HH:MM"`` run time; required for hourly/daily/weekly/monthly.
+        days_of_week: Day abbreviation list (e.g. ``["Mon", "Wed"]``); required for ``"weekly"``.
+        day_of_month: Day number 1–31; required for ``"monthly"``.
+        enabled: ``True`` activates the schedule immediately after creation.
+        interval_count: Repetition interval; required for ``"minutely"`` (min 20), optional for ``"hourly"``.
+        payload: Bulk run target selection — either BulkPayloadSelected or BulkPayloadApi.
+    """
+
     name: str = Field(..., min_length=1, max_length=255)
     type: Literal["once", "minutely", "hourly", "daily", "weekly", "monthly"]
 
-    # Generic / optional fields
-    date_time: Optional[datetime] = None         # for "once"
-    time: Optional[str] = None                   # "HH:MM" for hourly/daily/weekly/monthly
-    days_of_week: Optional[List[str]] = None     # for weekly (["Mon","Wed"] or full names)
-    day_of_month: Optional[int] = None          # for monthly
+    date_time: Optional[datetime] = None
+    time: Optional[str] = None
+    days_of_week: Optional[List[str]] = None
+    day_of_month: Optional[int] = None
     enabled: bool = True
 
-    # Repeating cadence
-    interval_count: Optional[int] = None        # minutes: min 20; hourly: every N hours (keep minute from `time`)
+    interval_count: Optional[int] = None
 
-    # Original bulk payload
     payload: BulkPayload
 
     @validator("time")
@@ -847,8 +1371,6 @@ class ScheduleCreate(BaseModel):
         elif t == "hourly":
             if interval is not None and interval < 1:
                 raise ValueError("interval_count must be >= 1 when provided for type=hourly")
-            # keep minute component from `time` (default 00:00 if not provided)
-            # we already validate `time` above when t in hourly/daily/weekly/monthly
 
         elif t == "daily":
             if not time:
@@ -867,3 +1389,199 @@ class ScheduleCreate(BaseModel):
                 raise ValueError("day_of_month must be in 1..31 for type=monthly")
 
         return values
+
+
+class BulkImportItemApi(BaseModel):
+    """Carry the API definition fields within a bulk import item.
+
+    Attributes:
+        name: API display name.
+        method: HTTP method; defaults to ``"GET"``.
+        endpoint: URL path template.
+        description: Optional documentation text; ``None`` when not provided.
+    """
+
+    name: str
+    method: str = "GET"
+    endpoint: str
+    description: Optional[str] = None
+
+
+class BulkImportItemCase(BaseModel):
+    """Carry a single test case definition within a bulk import item.
+
+    Attributes:
+        name: Test case display name.
+        headers: Optional request headers dict; ``None`` when not specified.
+        params: Optional query parameters dict; ``None`` when not specified.
+        body: Optional request body dict; ``None`` when not specified.
+        expected: Optional assertion criteria dict; ``None`` when not specified.
+    """
+
+    name: str
+    headers: Optional[Dict[str, Any]] = None
+    params: Optional[Dict[str, Any]] = None
+    body: Optional[Dict[str, Any]] = None
+    expected: Optional[Dict[str, Any]] = None
+
+
+class BulkImportItem(BaseModel):
+    """Represent a single folder or file node entry in a bulk import request.
+
+    Attributes:
+        temp_id: Client-generated temporary id used to wire parent-child relationships.
+        name: Node display name.
+        type: ``"folder"`` or ``"file"``.
+        parent_temp_id: temp_id of the parent folder; ``None`` for root-level items.
+        api: API definition; ``None`` for folder items.
+        cases: List of test case definitions; ``None`` for folder items or files with no cases.
+    """
+
+    temp_id: str
+    name: str
+    type: Literal["folder", "file"]
+    parent_temp_id: Optional[str] = None
+    api: Optional[BulkImportItemApi] = None
+    cases: Optional[List[BulkImportItemCase]] = None
+
+
+class BulkImportRequest(BaseModel):
+    """Carry the workspace id and ordered item list for a bulk import operation.
+
+    Attributes:
+        workspace_id: Target workspace to import into.
+        items: Flat list of BulkImportItem entries; order determines parent-before-child resolution.
+    """
+
+    workspace_id: int
+    items: List[BulkImportItem]
+
+
+class AlertCreate(BaseModel):
+    """Carry the fields required to create a notification alert for a schedule.
+
+    Attributes:
+        type: ``"email"`` sends SMTP notification; ``"webhook"`` → sends HTTP POST payload.
+        target: Email address when type is ``"email"``; webhook URL when type is ``"webhook"``.
+        on_failure: ``True`` triggers alert when the run has failing cases.
+        on_success: ``True`` triggers alert when all cases pass.
+        on_partial: ``True`` triggers alert when some cases pass and some fail.
+    """
+
+    type: Literal["email", "webhook"]
+    target: str
+    on_failure: bool = True
+    on_success: bool = False
+    on_partial: bool = True
+
+
+class AlertUpdate(BaseModel):
+    """Carry optional fields for updating an existing schedule alert.
+
+    Attributes:
+        type: New notification type; ``None`` leaves current value unchanged.
+        target: New target address or URL; ``None`` leaves current value unchanged.
+        on_failure: New failure trigger flag; ``None`` leaves current value unchanged.
+        on_success: New success trigger flag; ``None`` leaves current value unchanged.
+        on_partial: New partial trigger flag; ``None`` leaves current value unchanged.
+    """
+
+    type: Optional[Literal["email", "webhook"]] = None
+    target: Optional[str] = None
+    on_failure: Optional[bool] = None
+    on_success: Optional[bool] = None
+    on_partial: Optional[bool] = None
+
+
+class AlertResponse(BaseModel):
+    """Represent a single schedule alert configuration record.
+
+    Attributes:
+        id: Primary key.
+        schedule_id: Owning schedule id.
+        type: ``"email"`` or ``"webhook"``.
+        target: Email address or webhook URL.
+        on_failure: ``True`` when this alert fires on run failure.
+        on_success: ``True`` when this alert fires on run success.
+        on_partial: ``True`` when this alert fires on partial pass/fail.
+        created_at: Creation timestamp.
+    """
+
+    id: int
+    schedule_id: int
+    type: str
+    target: str
+    on_failure: bool
+    on_success: bool
+    on_partial: bool
+    created_at: Any
+
+    class Config:
+        from_attributes = True
+
+
+class InviteCreate(BaseModel):
+    """Carry the email and role for sending a workspace membership invitation.
+
+    Attributes:
+        email: Email address of the person being invited.
+        role: ``"viewer"`` (default) read-only; ``"editor"`` → modify content;
+              ``"admin"`` → editor + can invite others.
+    """
+
+    email: EmailStr
+    role: Literal["viewer", "editor", "admin"] = "viewer"
+
+
+class MemberRoleUpdate(BaseModel):
+    """Carry the new role for updating an existing workspace member.
+
+    Attributes:
+        role: ``"viewer"`` read-only; ``"editor"`` → modify content; ``"admin"`` → editor + invite.
+    """
+
+    role: Literal["viewer", "editor", "admin"]
+
+
+class MemberResponse(BaseModel):
+    """Represent a joined workspace member with their user identity and role.
+
+    Attributes:
+        user_id: Member's user primary key.
+        username: Member's display name.
+        email: Member's email address.
+        role: Assigned role — ``"viewer"``, ``"editor"``, or ``"admin"``.
+        joined_at: Timestamp when the invite was accepted; ``None`` while still pending.
+    """
+
+    user_id: int
+    username: str
+    email: str
+    role: str
+    joined_at: Any
+
+    class Config:
+        from_attributes = True
+
+
+class InviteResponse(BaseModel):
+    """Represent a pending workspace invite record.
+
+    Attributes:
+        id: Invite primary key.
+        email: Email the invite was sent to.
+        role: Role to be granted on acceptance.
+        expires_at: Timestamp after which the invite link is no longer valid.
+        accepted: ``True`` once the invite has been accepted; ``False`` while pending.
+        created_at: Creation timestamp.
+    """
+
+    id: int
+    email: str
+    role: str
+    expires_at: Any
+    accepted: bool
+    created_at: Any
+
+    class Config:
+        from_attributes = True

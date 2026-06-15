@@ -1,3 +1,7 @@
+"""
+What this file does: Exposes DELETE /node/{node_id} for recursively deleting a node and all its children, APIs, and test cases.
+"""
+
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,7 +24,7 @@ async def delete_node(
     username: str = Header(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Delete a node and all its children, and return the updated workspace tree."""
+    """DELETE /node/{node_id} — recursively delete a node plus all child nodes, associated APIs, and test cases; return updated workspace tree."""
     try:
         # Get user
         user = await get_user_by_username(db, username)

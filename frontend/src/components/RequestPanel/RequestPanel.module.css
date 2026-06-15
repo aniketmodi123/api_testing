@@ -3,10 +3,51 @@
   flex-direction: column;
   height: 100%;
   width: 100%;
-  padding: 15px;
+  padding: 0;
   overflow: hidden;
   box-sizing: border-box;
-  gap: 0; /* Remove default gap between flex items */
+  background: var(--p0-bg);
+}
+
+/* react-resizable-panels vertical group fills remaining height */
+.panelGroup {
+  flex: 1;
+  min-height: 0;
+}
+
+.requestTabsPanel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 12px 12px 0;
+}
+
+.responsePanel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--p0-bg);
+}
+
+.responsePanelInner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  border-top: 1px solid var(--p0-border);
+}
+
+.verticalResizeHandle {
+  height: 4px;
+  background: var(--p0-border);
+  cursor: row-resize;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.verticalResizeHandle:hover,
+.verticalResizeHandle[data-resize-handle-active] {
+  background: var(--p0-primary);
 }
 
 @media (max-width: 768px) {
@@ -33,9 +74,14 @@
 /* URL Bar */
 .urlBar {
   display: flex;
-  margin-bottom: 10px;
+  margin-bottom: 0;
   align-items: center;
-  height: 34px;
+  height: 40px;
+  padding: 0 12px;
+  gap: 6px;
+  background: var(--p0-surface);
+  border-bottom: 1px solid var(--p0-border);
+  flex-shrink: 0;
 }
 
 @media (max-width: 768px) {
@@ -488,10 +534,9 @@
 }
 
 .responseBody {
-  padding: 10px;
-  font-family: monospace;
-  font-size: 13px;
-  white-space: pre-wrap;
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
 }
 
 .structuredResponse {
@@ -2237,4 +2282,186 @@
   font-size: 1.1rem;
   color: var(--text-muted);
   font-weight: 500;
+}
+
+/* Auth Tab */
+.authContent {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.authTypeRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.authLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--p0-text-muted);
+  min-width: 80px;
+  font-family: var(--p0-font-ui);
+}
+
+.authTypeSelect {
+  background: var(--p0-surface-2);
+  border: 1px solid var(--p0-border);
+  color: var(--p0-text);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-family: var(--p0-font-ui);
+}
+
+.authFields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.authFieldLabel {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--p0-text-muted);
+  font-family: var(--p0-font-ui);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.authFieldInput {
+  background: var(--p0-surface-2);
+  border: 1px solid var(--p0-border);
+  color: var(--p0-text);
+  border-radius: 4px;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-family: var(--p0-font-mono);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.authFieldInput:focus {
+  outline: none;
+  border-color: var(--p0-primary);
+}
+
+.authHint {
+  font-size: 11px;
+  color: var(--p0-text-muted);
+  font-family: var(--p0-font-ui);
+  margin: 0;
+}
+
+/* CodeMirror in body */
+.bodyCodeMirror {
+  flex: 1;
+  font-family: var(--p0-font-mono) !important;
+  font-size: 13px !important;
+  border: 1px solid var(--p0-border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+/* CodeMirror in response */
+.responseCodeMirror {
+  font-family: var(--p0-font-mono) !important;
+  font-size: 12px !important;
+}
+
+/* WebSocket label (Phase 7b) */
+.wsLabel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #f59e0b;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 4px;
+  padding: 2px 8px;
+  flex-shrink: 0;
+  letter-spacing: 0.04em;
+}
+
+/* GraphQL editor (Phase 7a) */
+.gqlPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 0;
+}
+
+.gqlPanelRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.gqlLabel {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.gqlSchemaBtn {
+  background: none;
+  border: 1px solid var(--p0-border);
+  border-radius: 4px;
+  padding: 2px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  color: var(--p0-primary, #6366f1);
+}
+.gqlSchemaBtn:hover:not(:disabled) { background: rgba(99,102,241,0.08); }
+.gqlSchemaBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Raw response */
+.rawResponsePre {
+  font-family: var(--p0-font-mono);
+  font-size: 12px;
+  color: var(--p0-text);
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0;
+  padding: 8px;
+}
+
+/* Response actions row */
+.responseActions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.copyResponseBtn {
+  font-size: 11px;
+}
+
+/* Phase 0 — override tabs with new tokens */
+.tabs {
+  background: var(--p0-surface);
+  border-bottom: 1px solid var(--p0-border);
+}
+
+.tab {
+  color: var(--p0-text-muted);
+  font-family: var(--p0-font-ui);
+  font-size: 12px;
+  padding: 7px 14px;
+}
+
+.tab:hover {
+  color: var(--p0-text);
+  background: var(--p0-surface-2);
+}
+
+.tab.active {
+  color: var(--p0-primary);
+  border-bottom-color: var(--p0-primary);
 }

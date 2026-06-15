@@ -170,7 +170,7 @@ const baseQueryWithAuth = async (args, api, extraOptions) => {
 export const apiSlice = createApi({
   reducerPath: 'api',
   baseQuery: baseQueryWithAuth,
-  tagTypes: ['Workspace', 'User', 'Environment', 'Node', 'ApiCase', 'Header'],
+  tagTypes: ['Workspace', 'User', 'Environment', 'Node', 'ApiCase', 'Header', 'GlobalVariable', 'BulkTestSchedule', 'BulkTestExecution', 'ScheduleAlert', 'WorkspaceMember'],
   endpoints: builder => ({
     // Authentication endpoints
     signIn: builder.mutation({
@@ -736,6 +736,106 @@ export const apiSlice = createApi({
         },
       }),
     }),
+
+    // Global Variables (Phase 2)
+    getGlobalVariables: builder.query({
+      query: () => '/variables/global',
+      providesTags: ['GlobalVariable'],
+    }),
+
+    upsertGlobalVariables: builder.mutation({
+      query: (variables) => ({
+        url: '/variables/global',
+        method: 'POST',
+        body: { variables },
+      }),
+      invalidatesTags: ['GlobalVariable'],
+    }),
+
+    deleteGlobalVariable: builder.mutation({
+      query: (key) => ({
+        url: `/variables/global/${encodeURIComponent(key)}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['GlobalVariable'],
+    }),
+
+    // Schedule Alerts (Phase 5)
+    getScheduleAlerts: builder.query({
+      query: ({ scheduleId, username }) => ({
+        url: `/schedules/${scheduleId}/alerts`,
+        headers: { username },
+      }),
+      providesTags: (result, error, { scheduleId }) => [{ type: 'ScheduleAlert', id: scheduleId }],
+    }),
+    createScheduleAlert: builder.mutation({
+      query: ({ scheduleId, username, ...body }) => ({
+        url: `/schedules/${scheduleId}/alerts`,
+        method: 'POST',
+        body,
+        headers: { username },
+      }),
+      invalidatesTags: (result, error, { scheduleId }) => [{ type: 'ScheduleAlert', id: scheduleId }],
+    }),
+    updateScheduleAlert: builder.mutation({
+      query: ({ scheduleId, alertId, username, ...body }) => ({
+        url: `/schedules/${scheduleId}/alerts/${alertId}`,
+        method: 'PUT',
+        body,
+        headers: { username },
+      }),
+      invalidatesTags: (result, error, { scheduleId }) => [{ type: 'ScheduleAlert', id: scheduleId }],
+    }),
+    deleteScheduleAlert: builder.mutation({
+      query: ({ scheduleId, alertId, username }) => ({
+        url: `/schedules/${scheduleId}/alerts/${alertId}`,
+        method: 'DELETE',
+        headers: { username },
+      }),
+      invalidatesTags: (result, error, { scheduleId }) => [{ type: 'ScheduleAlert', id: scheduleId }],
+    }),
+
+    // Bulk Import (Phase 3)
+    bulkImportNodes: builder.mutation({
+      query: ({ workspaceId, items }) => ({
+        url: '/node/bulk-import',
+        method: 'POST',
+        body: { workspace_id: workspaceId, items },
+      }),
+      invalidatesTags: ['Node', 'Workspace'],
+    }),
+
+    // Workspace Collaboration (Phase 6)
+    getWorkspaceMembers: builder.query({
+      query: workspaceId => `/workspace/${workspaceId}/members`,
+      providesTags: (result, error, workspaceId) => [{ type: 'WorkspaceMember', id: workspaceId }],
+    }),
+
+    inviteWorkspaceMember: builder.mutation({
+      query: ({ workspaceId, email, role }) => ({
+        url: `/workspace/${workspaceId}/invite`,
+        method: 'POST',
+        body: { email, role },
+      }),
+      invalidatesTags: (result, error, { workspaceId }) => [{ type: 'WorkspaceMember', id: workspaceId }],
+    }),
+
+    updateMemberRole: builder.mutation({
+      query: ({ workspaceId, userId, role }) => ({
+        url: `/workspace/${workspaceId}/members/${userId}`,
+        method: 'PUT',
+        body: { role },
+      }),
+      invalidatesTags: (result, error, { workspaceId }) => [{ type: 'WorkspaceMember', id: workspaceId }],
+    }),
+
+    removeWorkspaceMember: builder.mutation({
+      query: ({ workspaceId, userId }) => ({
+        url: `/workspace/${workspaceId}/members/${userId}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: (result, error, { workspaceId }) => [{ type: 'WorkspaceMember', id: workspaceId }],
+    }),
   }),
 });
 
@@ -802,4 +902,24 @@ export const {
   useGetRunningBulkTestExecutionsQuery,
   useDeleteBulkTestExecutionMutation,
   useBulkRunCasesMutation,
+
+  // Global Variable hooks (Phase 2)
+  useGetGlobalVariablesQuery,
+  useUpsertGlobalVariablesMutation,
+  useDeleteGlobalVariableMutation,
+
+  // Bulk Import hook (Phase 3)
+  useBulkImportNodesMutation,
+
+  // Schedule Alert hooks (Phase 5)
+  useGetScheduleAlertsQuery,
+  useCreateScheduleAlertMutation,
+  useUpdateScheduleAlertMutation,
+  useDeleteScheduleAlertMutation,
+
+  // Collaboration hooks (Phase 6)
+  useGetWorkspaceMembersQuery,
+  useInviteWorkspaceMemberMutation,
+  useUpdateMemberRoleMutation,
+  useRemoveWorkspaceMemberMutation,
 } = apiSlice;

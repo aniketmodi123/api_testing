@@ -1,3 +1,7 @@
+"""
+What this file does: Exposes DELETE /environment/workspace/{workspace_id}/environments/{environment_id}/variables for clearing all variables from an environment.
+"""
+
 from fastapi import APIRouter, Depends, Header as FastAPIHeader
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,7 +25,7 @@ async def delete_environment_variables(
     username: str = FastAPIHeader(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Delete environment variables (similar to headers)"""
+    """DELETE /environment/workspace/{workspace_id}/environments/{environment_id}/variables — clear all variables from an environment by setting the field to None."""
     try:
         # Get user
         user = await get_user_by_username(db, username)

@@ -1,3 +1,7 @@
+"""
+What this file does: Exposes POST /{folder_id}/headers for creating a folder-level header record.
+"""
+
 from fastapi import APIRouter, Depends, Header as FastAPIHeader
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,7 +29,7 @@ async def set_folder_headers(
     username: str = FastAPIHeader(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Set/create folder-level headers"""
+    """POST /{folder_id}/headers — create a header record for the folder; reject if one already exists."""
     try:
         # Get user
         user = await get_user_by_username(db, username)

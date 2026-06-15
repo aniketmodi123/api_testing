@@ -1,3 +1,7 @@
+"""
+What this file does: Exposes GET /file/{file_id}/api/cases for listing and searching test cases for a file's API.
+"""
+
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,7 +26,7 @@ async def list_test_cases_for_file_api(
     db: AsyncSession = Depends(get_db),
     search: Optional[str] = None
 ):
-    """List all test cases for API in a specific file"""
+    """GET /file/{file_id}/api/cases — list all test cases for the file's API, optionally filtered by case name search term."""
     try:
         # Get user
         user = await get_user_by_username(db, username)

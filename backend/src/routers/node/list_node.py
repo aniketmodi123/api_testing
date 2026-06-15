@@ -1,3 +1,7 @@
+"""
+What this file does: Exposes GET /node/{node_id} for retrieving a node's details, direct children, and breadcrumb path.
+"""
+
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,7 +24,7 @@ async def get_node_with_children(
     username: str = Header(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Get node details with its direct children and breadcrumb path"""
+    """GET /node/{node_id} — return node metadata, direct children list, and ancestor breadcrumb path."""
     try:
         # Get user
         user = await get_user_by_username(db, username)

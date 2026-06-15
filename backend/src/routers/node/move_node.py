@@ -1,3 +1,7 @@
+"""
+What this file does: Exposes POST /node/{node_id}/move for moving a node to a new workspace/folder via copy-then-delete.
+"""
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
@@ -19,10 +23,7 @@ async def move_node(
     request: NodeCopyRequest,  # reuse the copy request schema
     db: AsyncSession = Depends(get_db)
 ):
-    """
-    Move a node (file or folder) to a different location by copy-then-delete.
-    Returns the full workspace tree structure (like list_workspace_tree).
-    """
+    """POST /node/{node_id}/move — copy the node to the target location with a unique name, then delete the original."""
     try:
         # 1. Get the node to move
         result = await db.execute(select(Node).where(Node.id == node_id))

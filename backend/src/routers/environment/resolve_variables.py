@@ -1,4 +1,7 @@
-# Variable Resolution for API Testing
+"""
+What this file does: Exposes routes for resolving {{variable}} placeholders in text using active or specified environment variables.
+"""
+
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -16,7 +19,13 @@ router = APIRouter()
 
 
 def extract_variables_from_text(text: str) -> Set[str]:
-    """Extract variable names from text using {{variable_name}} pattern"""
+    """
+    What it does: Return all unique {{variable_name}} placeholders found in the text.
+    Args:
+        text: Input string to scan; empty string returns an empty set.
+    Returns:
+        set[str]: Variable names without the surrounding braces; empty set when none are found.
+    """
     # Pattern to match {{variable_name}} - handles letters, numbers, underscores, hyphens
     pattern = r'\{\{([a-zA-Z_][a-zA-Z0-9_\-]*)\}\}'
     matches = re.findall(pattern, text)
@@ -29,7 +38,7 @@ async def get_active_environment_variables(
     username: str = Header(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Get variables from the active environment in a workspace"""
+    """GET /environment/workspace/{workspace_id}/environments/active/variables — return variables from the currently active environment; returns empty dict when none is active."""
     try:
         # Get user
         user = await get_user_by_username(db, username)
@@ -90,7 +99,7 @@ async def get_environment_variables_resolved(
     username: str = Header(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Get variables from a specific environment"""
+    """GET /environment/workspace/{workspace_id}/environments/{environment_id}/variables/resolved — return the key-value variables for a specific environment."""
     try:
         # Get user
         user = await get_user_by_username(db, username)
@@ -145,7 +154,7 @@ async def resolve_variables_in_request(
     username: str = Header(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Resolve variables in text using active environment or specified environment"""
+    """POST /environment/workspace/{workspace_id}/environments/resolve — substitute {{variable}} placeholders in text using the specified or active environment."""
     try:
         # Get user
         user = await get_user_by_username(db, username)
@@ -242,7 +251,7 @@ async def resolve_variables_with_specific_environment(
     username: str = Header(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Resolve variables in text using a specific environment"""
+    """POST /environment/workspace/{workspace_id}/environments/{environment_id}/resolve — resolve {{variable}} placeholders using the specified environment by delegating to resolve_variables_in_request."""
     try:
         # Override the environment_id in the request
         resolution_request.environment_id = environment_id

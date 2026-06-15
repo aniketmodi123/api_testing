@@ -1,3 +1,7 @@
+"""
+What this file does: Exposes POST /node/{node_id}/copy for deep-copying a node tree to a target workspace/folder; also exports copy_node_recursive for use in move_node.
+"""
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -22,7 +26,18 @@ async def copy_node_recursive(
     db: AsyncSession
 ) -> Node:
     """
-    Recursively copy a node and all its children
+    What it does: Deep-copy a node into a target workspace/folder, duplicating its API and test cases for file nodes and recursing into children for folder nodes.
+    Args:
+        source_node: The Node to copy.
+        target_workspace_id: Workspace that will own the copy.
+        target_parent_id: Parent folder id in the target workspace; None places the copy at the root.
+        new_name: Name to assign to the copied root node.
+    Returns:
+        Node: The newly created root copy with its DB id populated via flush.
+    Steps:
+        - Step 1: Create a new Node with new_name, target_workspace_id, and target_parent_id; flush to obtain its id
+        - Step 2: If source is a file — copy the associated Api record and all its ApiCase children under the new node
+        - Step 3: If source is a folder — fetch all direct children and recursively copy each into the new folder
     """
     # Create the copied node
     copied_node = Node(
@@ -92,11 +107,7 @@ async def copy_node(
     request: NodeCopyRequest,
     db: AsyncSession = Depends(get_db)
 ):
-    """
-    Copy a node (file or folder) to a different location.
-    Handles name conflicts by appending 'copy', 'copy 2', etc.
-    Returns the full workspace tree structure (like list_workspace_tree).
-    """
+    """POST /node/{node_id}/copy — deep-copy a node to the target workspace/folder with a unique name; return updated workspace tree."""
     try:
         # Get the node to copy
         result = await db.execute(select(Node).where(Node.id == node_id))

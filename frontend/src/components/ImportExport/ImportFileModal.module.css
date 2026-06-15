@@ -1,0 +1,111 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: var(--p0-surface, var(--surface));
+  border: 1px solid var(--p0-border, var(--border));
+  border-radius: 8px;
+  width: 480px;
+  max-width: 95vw;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+}
+
+.title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.dropzone {
+  border: 2px dashed var(--p0-border, var(--border));
+  border-radius: 6px;
+  padding: 32px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.dropzone:hover,
+.dropzone.active {
+  border-color: var(--p0-primary, var(--primary));
+  background: rgba(99, 102, 241, 0.04);
+}
+
+.dropzone input {
+  display: none;
+}
+
+.dropLabel {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.fileName {
+  font-size: 12px;
+  color: var(--p0-primary, var(--primary));
+  margin-top: 8px;
+}
+
+.info {
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--p0-surface-2, var(--surface-2));
+  border-radius: 4px;
+  padding: 8px 12px;
+}
+
+.error {
+  color: var(--error, #ef4444);
+  font-size: 12px;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.cancelBtn {
+  padding: 8px 16px;
+  background: none;
+  border: 1px solid var(--p0-border, var(--border));
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.cancelBtn:hover {
+  background: var(--p0-surface-2, var(--surface-2));
+}
+
+.importBtn {
+  padding: 8px 16px;
+  background: var(--p0-primary, var(--primary));
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.importBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.importBtn:hover:not(:disabled) {
+  opacity: 0.9;
+}

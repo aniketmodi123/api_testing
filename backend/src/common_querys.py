@@ -1,17 +1,22 @@
+"""
+What this file does: Provides shared async query helpers and ownership-verification utilities
+used across all routers; access-control behaviour is governed by ROLE_ORDER.
+"""
+
 from datetime import datetime
 import re
 from typing import Any, Dict, List, Optional
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models import Header, Node, User, VerifyLogin, Workspace, Environment, Workspace, Api
+from models import Header, Node, User, VerifyLogin, Workspace, Environment, Api, WorkspaceMember
 
 from sqlalchemy.orm import selectinload
 
 
 # --------------- Audit logs --------------
 async def log_failed_attempt(db: AsyncSession, user_name: str):
-    """Log a failed login attempt in VerifyLogin table."""
+    """Record a failed login attempt in the audit log."""
     user_attempt = VerifyLogin(
         user_name=user_name,
         timestamp=datetime.now(),
@@ -20,8 +25,9 @@ async def log_failed_attempt(db: AsyncSession, user_name: str):
     db.add(user_attempt)
     await db.flush()
 
+
 async def log_success_attempt(db: AsyncSession, user_name: str):
-    """Log a successful login attempt in VerifyLogin table."""
+    """Record a successful login attempt in the audit log."""
     user_attempt = VerifyLogin(
         user_name=user_name,
         timestamp=datetime.now(),
@@ -31,47 +37,105 @@ async def log_success_attempt(db: AsyncSession, user_name: str):
     await db.flush()
 
 
-
-# Helper function to get user by username
 async def get_user_by_username(db: AsyncSession, username: str) -> Optional[User]:
-    """Get user by username from header"""
+    """Fetch a user record by email address from the Authorization header.
+
+    Args:
+        username: The email string passed in the ``username`` request header.
+
+    Returns:
+        User: The matching user record.
+        None: Returned when no user with that email exists.
+    """
     result = await db.execute(select(User).where(User.email == username))
     return result.scalar_one_or_none()
 
 
-# Helper function to verify workspace ownership
+# Role order for Phase 6 membership checks
+ROLE_ORDER: dict[str, int] = {"viewer": 0, "editor": 1, "admin": 2, "owner": 3}
+
+
+async def can_access_workspace(
+    db: AsyncSession, workspace_id: int, user_id: int, min_role: str = "viewer"
+) -> bool:
+    """Check whether a user has at least the required role in a workspace.
+
+    Args:
+        workspace_id: Target workspace to check.
+        user_id: User being checked.
+        min_role: ``"viewer"`` (default) read-only; ``"editor"`` → can modify;
+                  ``"admin"`` → can invite; ``"owner"`` → owner only, never matched by members.
+
+    Returns:
+        bool: ``True`` if the user is the workspace owner or has a joined membership
+              with a role rank >= min_role; ``False`` otherwise.
+
+    Steps:
+        - Step 1: Fetch workspace owner_id; return ``False`` when workspace does not exist
+        - Step 2: Return ``True`` immediately when the caller is the workspace owner
+        - Step 3: Return ``False`` when min_role is ``"owner"`` — members can never satisfy this
+        - Step 4: Fetch the member row for this user; return ``False`` when not found or not yet joined (joined_at IS NULL)
+        - Step 5: Compare the member's role rank against min_role rank using ROLE_ORDER
+    """
+    # Step 1: Fetch workspace owner
+    owner_result = await db.execute(select(Workspace.user_id).where(Workspace.id == workspace_id))
+    owner_id = owner_result.scalar_one_or_none()
+    if owner_id is None:
+        return False
+    # Step 2: Owner always passes
+    if owner_id == user_id:
+        return True
+    # Step 3: "owner" min_role can never be satisfied by a member
+    if min_role == "owner":
+        return False
+    # Step 4: Fetch joined member row
+    member_result = await db.execute(
+        select(WorkspaceMember.role).where(
+            and_(
+                WorkspaceMember.workspace_id == workspace_id,
+                WorkspaceMember.user_id == user_id,
+                WorkspaceMember.joined_at.isnot(None),
+            )
+        )
+    )
+    role = member_result.scalar_one_or_none()
+    if role is None:
+        return False
+    # Step 5: Compare role ranks
+    return ROLE_ORDER.get(role, -1) >= ROLE_ORDER.get(min_role, 0)
+
+
 async def verify_workspace_ownership(db: AsyncSession, workspace_id: int, user_id: int) -> bool:
-    """Verify that the workspace belongs to the user"""
-    result = await db.execute(
-        select(Workspace).where(
-            and_(
-                Workspace.id == workspace_id,
-                Workspace.user_id == user_id
-            )
-        )
-    )
-    return result.scalar_one_or_none() is not None
+    """Verify that the user owns or is a member of the workspace.
+
+    Returns:
+        bool: ``True`` when the user is the owner or has any joined membership role.
+    """
+    return await can_access_workspace(db, workspace_id, user_id, min_role="viewer")
 
 
-# Helper function to verify node ownership through workspace
 async def verify_node_ownership(db: AsyncSession, node_id: int, user_id: int) -> Optional[Node]:
-    """Verify that the node belongs to a workspace owned by the user"""
-    result = await db.execute(
-        select(Node)
-        .join(Workspace, Node.workspace_id == Workspace.id)
-        .where(
-            and_(
-                Node.id == node_id,
-                Workspace.user_id == user_id
-            )
-        )
-    )
-    return result.scalar_one_or_none()
+    """Verify that a node belongs to a workspace the user can access.
+
+    Returns:
+        Node: The node when the user has at least viewer access to its workspace.
+        None: Returned when the node does not exist or the user has no access.
+    """
+    node_result = await db.execute(select(Node).where(Node.id == node_id))
+    node = node_result.scalar_one_or_none()
+    if not node:
+        return None
+    has_access = await can_access_workspace(db, node.workspace_id, user_id, min_role="viewer")
+    return node if has_access else None
 
 
-# Helper function to check if parent is valid
 async def validate_parent_node(db: AsyncSession, parent_id: int, workspace_id: int) -> bool:
-    """Validate that parent node exists, is a folder, and belongs to the same workspace"""
+    """Check that a parent node exists, is a folder, and belongs to the given workspace.
+
+    Returns:
+        bool: ``True`` when the parent is valid; ``True`` also when parent_id is ``None``
+              (root-level placement is always valid).
+    """
     if parent_id is None:
         return True
 
@@ -87,35 +151,55 @@ async def validate_parent_node(db: AsyncSession, parent_id: int, workspace_id: i
     return result.scalar_one_or_none() is not None
 
 
-# Helper function to check for circular reference
 async def check_circular_reference(db: AsyncSession, node_id: int, new_parent_id: int) -> bool:
-    """Check if moving a node would create a circular reference"""
+    """Detect whether placing node_id under new_parent_id would create a circular reference.
+
+    Returns:
+        bool: ``True`` when a cycle would be created; ``False`` when the move is safe.
+              Also returns ``False`` when new_parent_id is ``None``.
+
+    Steps:
+        - Step 1: Return ``False`` immediately when new_parent_id is ``None``
+        - Step 2: Walk up the ancestor chain from new_parent_id, tracking visited ids
+        - Step 3: Return ``True`` when node_id appears in the ancestor chain (cycle detected)
+        - Step 4: Return ``False`` when the walk reaches the root without finding node_id
+    """
     if new_parent_id is None:
         return False
 
-    # Get all descendant nodes
+    # Step 2: Walk ancestor chain
     current_parent = new_parent_id
     visited = set()
 
     while current_parent is not None and current_parent not in visited:
         if current_parent == node_id:
-            return True  # Circular reference detected
+            return True  # Step 3: Circular reference detected
 
         visited.add(current_parent)
         result = await db.execute(select(Node.parent_id).where(Node.id == current_parent))
         parent_row = result.scalar_one_or_none()
         current_parent = parent_row if parent_row else None
 
-    return False
+    return False  # Step 4: No cycle found
 
 
-# Helper function to build node path (breadcrumb)
 async def get_node_path(db: AsyncSession, node_id: int) -> List[dict]:
-    """Get the path from root to the current node"""
+    """Build the ordered breadcrumb path from the workspace root to a given node.
+
+    Returns:
+        list[dict]: Ordered list of ``{id, name, type}`` dicts from root (index 0) to
+                    the target node (last index); empty list when the node does not exist.
+
+    Steps:
+        - Step 1: Start at node_id, walk up parent_id links until root or a cycle is detected
+        - Step 2: Insert each ancestor at position 0 to build root-first ordering
+        - Step 3: Return the completed path list
+    """
     path = []
     current_id = node_id
     visited = set()
 
+    # Step 1 & 2: Walk up and prepend each ancestor
     while current_id is not None and current_id not in visited:
         visited.add(current_id)
         result = await db.execute(
@@ -134,28 +218,35 @@ async def get_node_path(db: AsyncSession, node_id: int) -> List[dict]:
         else:
             break
 
-    return path
+    return path  # Step 3
 
 
-# Helper function to verify folder ownership and type
 async def verify_folder_ownership(db: AsyncSession, folder_id: int, user_id: int) -> Optional[Node]:
-    """Verify that the folder belongs to a workspace owned by the user and is actually a folder"""
-    result = await db.execute(
-        select(Node)
-        .join(Workspace, Node.workspace_id == Workspace.id)
-        .where(
-            and_(
-                Node.id == folder_id,
-                Workspace.user_id == user_id
-            )
-        )
-    )
-    return result.scalar_one_or_none()
+    """Verify that a folder node belongs to a workspace the user can access.
+
+    Returns:
+        Node: The folder node when the user has at least viewer access.
+        None: Returned when the node does not exist or the user has no access.
+    """
+    node_result = await db.execute(select(Node).where(Node.id == folder_id))
+    node = node_result.scalar_one_or_none()
+    if not node:
+        return None
+    has_access = await can_access_workspace(db, node.workspace_id, user_id, min_role="viewer")
+    return node if has_access else None
 
 
-# Helper function to verify header ownership
 async def verify_header_ownership(db: AsyncSession, header_id: int, user_id: int) -> Optional[Header]:
-    """Verify that the header belongs to a folder in a workspace owned by the user"""
+    """Verify that a header record belongs to a folder in a workspace owned by the user.
+
+    Returns:
+        Header: The header record when ownership is confirmed.
+        None: Returned when the header does not exist or the user does not own the workspace.
+
+    Notes:
+        - This check uses direct workspace ownership (user_id == Workspace.user_id) rather
+          than the broader member-aware can_access_workspace, so members cannot modify headers.
+    """
     result = await db.execute(
         select(Header)
         .join(Node, Header.folder_id == Node.id)
@@ -172,15 +263,26 @@ async def verify_header_ownership(db: AsyncSession, header_id: int, user_id: int
 
 
 async def get_folder_path_to_root(db: AsyncSession, folder_id: int) -> List[Dict[str, Any]]:
-    """Get the path from current folder to root (including current folder)"""
+    """Build the ordered path from the workspace root down to the given folder.
+
+    Returns:
+        list[dict]: Ordered list of ``{id, name, parent_id, workspace_id, type}`` dicts
+                    from root (index 0) to the target folder (last index); empty list when
+                    the folder does not exist.
+
+    Steps:
+        - Step 1: Start at folder_id, walk up parent_id links until root or cycle detected
+        - Step 2: Insert each ancestor at position 0 to maintain root-first ordering
+        - Step 3: Return the completed path list
+    """
     path = []
     current_id = folder_id
     visited = set()
 
+    # Step 1 & 2: Walk up and prepend each ancestor
     while current_id is not None and current_id not in visited:
         visited.add(current_id)
 
-        # Get folder info
         result = await db.execute(
             select(Node.id, Node.name, Node.parent_id, Node.workspace_id, Node.type)
             .where(and_(Node.id == current_id))
@@ -199,14 +301,30 @@ async def get_folder_path_to_root(db: AsyncSession, folder_id: int) -> List[Dict
         else:
             break
 
-    return path
+    return path  # Step 3
 
 
 async def get_headers_for_folders(db: AsyncSession, folder_ids: dict) -> Dict[int, Dict[str, Any]]:
-    """Get headers for multiple folders"""
+    """Fetch header records for a mixed set of folder and file node ids.
+
+    Args:
+        folder_ids: Dict with keys ``"folder"`` (list of folder node ids) and
+                    ``"file"`` (list of file node ids); empty lists are safe to pass.
+
+    Returns:
+        dict: Mapping of node_id → ``{id, content, created_at}`` for folders and
+              ``{id, content, created_at}`` sourced from Api.extra_meta headers for files.
+              Returns empty dict when folder_ids is falsy.
+
+    Steps:
+        - Step 1: Return empty dict when folder_ids is falsy
+        - Step 2: Query Header records for all folder node ids; build node_id → header dict
+        - Step 3: Query Api.extra_meta for all file node ids; extract headers key; merge into dict
+    """
     if not folder_ids:
         return {}
 
+    # Step 2: Fetch folder-level headers
     result = await db.execute(
         select(Header.folder_id, Header.content, Header.id, Header.created_at)
         .where(Header.folder_id.in_(folder_ids["folder"]))
@@ -221,6 +339,7 @@ async def get_headers_for_folders(db: AsyncSession, folder_ids: dict) -> Dict[in
             "created_at": header_row.created_at
         }
 
+    # Step 3: Fetch file-level headers from Api.extra_meta
     result = await db.execute(
         select(Api.file_id, Api.extra_meta, Api.id, Api.created_at)
         .where(Api.file_id.in_(folder_ids["file"]))
@@ -238,14 +357,29 @@ async def get_headers_for_folders(db: AsyncSession, folder_ids: dict) -> Dict[in
 
 
 def merge_headers_with_priority(folder_path: List[Dict], headers_map: Dict[int, Dict]) -> Dict[str, Any]:
-    """
-    Merge headers from root to leaf, with child headers overriding parent headers
-    Priority: Root (lowest) -> ... -> Leaf (highest)
+    """Merge headers from root to leaf so that child headers override parent headers.
+
+    Args:
+        folder_path: Ordered list of folder dicts from root (index 0) to target (last);
+                     each dict must have ``id`` and ``name`` keys.
+        headers_map: Mapping of folder_id → header data dict as returned by
+                     ``get_headers_for_folders``.
+
+    Returns:
+        dict: ``{merged_headers: dict, inheritance_info: list}`` where merged_headers is the
+              final combined header dict and inheritance_info records which folder contributed
+              or overrode each key.
+
+    Steps:
+        - Step 1: Iterate folders from root to leaf (left to right in folder_path)
+        - Step 2: For each folder that has headers, apply its keys over merged_headers
+        - Step 3: Track added vs overridden keys per folder for inheritance_info
+        - Step 4: Return the merged result dict
     """
     merged_headers = {}
     inheritance_info = []
 
-    # Process folders from root to leaf (left to right in path)
+    # Step 1 & 2: Process root to leaf
     for folder_info in folder_path:
         folder_id = folder_info["id"]
         folder_name = folder_info["name"]
@@ -254,7 +388,7 @@ def merge_headers_with_priority(folder_path: List[Dict], headers_map: Dict[int, 
             header_data = headers_map[folder_id]
             header_content = header_data["content"]
 
-            # Track which keys come from which folder
+            # Step 3: Track contributions per folder
             folder_contribution = {
                 "folder_id": folder_id,
                 "folder_name": folder_name,
@@ -264,14 +398,12 @@ def merge_headers_with_priority(folder_path: List[Dict], headers_map: Dict[int, 
 
             for key, value in header_content.items():
                 if key in merged_headers:
-                    # Key already exists, this folder overrides it
                     folder_contribution["headers_overridden"].append({
                         "key": key,
                         "old_value": merged_headers[key],
                         "new_value": value
                     })
                 else:
-                    # New key from this folder
                     folder_contribution["headers_added"].append({
                         "key": key,
                         "value": value
@@ -279,17 +411,26 @@ def merge_headers_with_priority(folder_path: List[Dict], headers_map: Dict[int, 
 
                 merged_headers[key] = value  # Override or add
 
-            # Only add to inheritance_info if this folder contributed something
             if folder_contribution["headers_added"] or folder_contribution["headers_overridden"]:
                 inheritance_info.append(folder_contribution)
 
-    return {
+    return {  # Step 4
         "merged_headers": merged_headers,
         "inheritance_info": inheritance_info
     }
 
 
 async def get_headers(db: AsyncSession, folder_id: int):
+    """Compute the complete inherited header set for a folder node.
+
+    Returns:
+        tuple: ``(folder_path, folder_ids, headers_map, merge_result)`` — the full path list,
+               categorised node id dict, per-node header map, and merged header result.
+               Returns ``({}, [], {}, {})`` when the folder does not exist.
+
+    Raises:
+        Exception: When any DB query fails; the original exception is re-raised.
+    """
     try:
         folder_path = await get_folder_path_to_root(db, folder_id)
 
@@ -317,14 +458,26 @@ async def get_headers(db: AsyncSession, folder_id: int):
         raise Exception(str(e))
 
 
-
-
 async def get_unique_name(base_name: str, target_workspace_id: int, target_folder_id: int | None, db: AsyncSession) -> str:
-    """
-    Generate a unique name for the copied/moved node in the target location.
-    If 'name' exists, try 'name copy', 'name copy 2', etc.
+    """Generate a unique node name at the target location, appending a copy suffix if needed.
+
+    Args:
+        base_name: Desired node name to check for uniqueness.
+        target_workspace_id: Workspace to check for name collisions.
+        target_folder_id: Parent folder id; ``None`` checks the workspace root.
+
+    Returns:
+        str: The original name when it is available, otherwise ``"<name> copy"``,
+             ``"<name> copy 2"``, ``"<name> copy 3"``, etc.
+
+    Steps:
+        - Step 1: Check whether base_name already exists at the target location
+        - Step 2: Return base_name immediately when it is available
+        - Step 3: Parse any existing copy suffix from the name using a regex
+        - Step 4: Increment the suffix counter and retry until a unique name is found
     """
     async def name_exists(name):
+        """What it does: Check if a node with this name already exists at the target location."""
         query = select(Node).where(
             Node.workspace_id == target_workspace_id,
             Node.name == name
@@ -340,8 +493,10 @@ async def get_unique_name(base_name: str, target_workspace_id: int, target_folde
     _re_copy = re.compile(r"^(.*?)( copy(?: (\d+))?)?$", re.IGNORECASE)
     n = 1
     while True:
+        # Step 1 & 2: Check and return if unique
         if not await name_exists(name):
             return name
+        # Step 3 & 4: Parse suffix and increment counter
         m = _re_copy.match(name)
         if m:
             base = m.group(1)
@@ -355,9 +510,28 @@ async def get_unique_name(base_name: str, target_workspace_id: int, target_folde
             name = f"{base_name} copy"
 
 
-
 def build_file_tree(nodes: List[Node], include_apis: bool = False, apis_dict: Optional[dict] = None) -> List[dict]:
-    """Build hierarchical file tree from flat node list, optionally including APIs and test cases"""
+    """Build a hierarchical file tree from a flat list of nodes.
+
+    Args:
+        nodes: Flat list of Node ORM objects to organise into a tree.
+        include_apis: ``False`` (default) builds structure only; ``True`` → attaches API
+                      method and test case children to file nodes.
+        apis_dict: Mapping of file_id → list of Api objects; required when include_apis is
+                   ``True``; ``None`` is safe when include_apis is ``False``.
+
+    Returns:
+        list[dict]: Ordered list of root-level node dicts with nested ``children``;
+                    files appear before folders within each level.
+
+    Steps:
+        - Step 1: Build a flat dict of node_id → node dict from the input list
+        - Step 2: Attach API method and test case children to file nodes when include_apis is True
+        - Step 3: Wire parent-child relationships by populating each parent's ``children`` list
+        - Step 4: Sort children at every level — files first, then folders
+        - Step 5: Return the list of root-level nodes
+    """
+    # Step 1: Build flat node dict
     node_dict = {node.id: {
         "id": node.id,
         "name": node.name,
@@ -368,7 +542,7 @@ def build_file_tree(nodes: List[Node], include_apis: bool = False, apis_dict: Op
         "children": []
     } for node in nodes}
 
-    # Add APIs as children to their respective file nodes if requested
+    # Step 2: Attach API data to file nodes
     if include_apis and apis_dict:
         for node_data in node_dict.values():
             if node_data["type"] == "file":
@@ -385,6 +559,7 @@ def build_file_tree(nodes: List[Node], include_apis: bool = False, apis_dict: Op
                                 }
                             )
 
+    # Step 3: Wire parent-child relationships
     root_nodes = []
     for node_data in node_dict.values():
         if node_data["parent_id"] is None:
@@ -394,10 +569,10 @@ def build_file_tree(nodes: List[Node], include_apis: bool = False, apis_dict: Op
             if parent:
                 parent["children"].append(node_data)
 
-    # Sort children: files first, then folders, for every node recursively
+    # Step 4: Sort children files-first at every level
     def sort_children(node):
+        """What it does: Sort a node's typed children files-first, then recurse into folders."""
         if node["children"]:
-            # Only sort children that have a 'type' key (i.e., nodes, not API cases)
             node_children_with_type = [c for c in node["children"] if "type" in c]
             node_children_without_type = [c for c in node["children"] if "type" not in c]
             node_children_with_type.sort(key=lambda x: x["type"] == "folder")
@@ -407,14 +582,28 @@ def build_file_tree(nodes: List[Node], include_apis: bool = False, apis_dict: Op
     for root in root_nodes:
         sort_children(root)
 
-    return root_nodes
+    return root_nodes  # Step 5
 
 
 async def get_workspace_tree_response(db, workspace_id, include_apis=True):
+    """Fetch a workspace and build the full tree response dict.
+
+    Args:
+        workspace_id: Target workspace id.
+        include_apis: ``True`` (default) loads APIs and test cases; ``False`` returns structure only.
+
+    Returns:
+        tuple: ``(data_dict, None)`` on success where data_dict contains workspace metadata
+               and file_tree; ``(None, error_message_str)`` when the workspace is not found.
+
+    Steps:
+        - Step 1: Fetch workspace with eagerly loaded nodes; return error tuple when not found
+        - Step 2: When include_apis is True, query all active APIs with their cases
+        - Step 3: Build apis_dict mapping file_id → list of Api objects
+        - Step 4: Build the hierarchical file tree via build_file_tree
+        - Step 5: Assemble and return the data dict with counts
     """
-    Fetch workspace, nodes, apis, and build the tree response dict (for create, delete, move, copy, etc).
-    Returns (data, message) tuple.
-    """
+    # Step 1: Fetch workspace
     result = await db.execute(
         select(Workspace)
         .options(selectinload(Workspace.nodes))
@@ -428,6 +617,7 @@ async def get_workspace_tree_response(db, workspace_id, include_apis=True):
     total_apis = 0
     total_test_cases = 0
 
+    # Step 2 & 3: Load APIs and build apis_dict
     if include_apis:
         apis_result = await db.execute(
             select(Api)
@@ -448,8 +638,10 @@ async def get_workspace_tree_response(db, workspace_id, include_apis=True):
             total_apis += 1
             total_test_cases += len(api.cases) if api.cases else 0
 
+    # Step 4: Build file tree
     file_tree = build_file_tree(workspace.nodes, include_apis, apis_dict) if workspace.nodes else []
 
+    # Step 5: Assemble response dict
     data = {
         "id": workspace.id,
         "name": workspace.name,
@@ -465,9 +657,20 @@ async def get_workspace_tree_response(db, workspace_id, include_apis=True):
 
 
 async def get_workspace_variables(db: AsyncSession, workspace_id: int) -> dict:
-    """Get all enabled variables from the active environment in a workspace"""
+    """Fetch all enabled variable key-value pairs from the active environment in a workspace.
+
+    Returns:
+        dict: Variable key→value mapping from the active environment's variables JSON.
+              Returns empty dict when no environment is active, the environment has no variables,
+              or any DB error occurs.
+
+    Steps:
+        - Step 1: Query the active environment for the workspace
+        - Step 2: Return empty dict when no active environment or no variables are defined
+        - Step 3: Build and return the variables dict from the environment's JSON column
+    """
     try:
-        # Get active environment
+        # Step 1: Get active environment
         active_env_query = select(Environment).where(
             Environment.workspace_id == workspace_id,
             Environment.is_active == True
@@ -475,10 +678,11 @@ async def get_workspace_variables(db: AsyncSession, workspace_id: int) -> dict:
         active_env_result = await db.execute(active_env_query)
         active_environment = active_env_result.scalar_one_or_none()
 
+        # Step 2: Return empty when no active environment or no variables
         if not active_environment or not active_environment.variables:
             return {}
 
-        # Get all enabled variables with actual values (including secrets for execution)
+        # Step 3: Build variables dict
         variables_dict = {}
         for key, var_data in active_environment.variables.items():
             if var_data is not None:
@@ -487,8 +691,3 @@ async def get_workspace_variables(db: AsyncSession, workspace_id: int) -> dict:
         return variables_dict
     except Exception as e:
         return {}
-
-
-
-
-

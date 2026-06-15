@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import AssertionBuilder from '../AssertionBuilder';
 import { useApi } from '../../store/api';
 import { Button, JsonEditor } from '../common';
 import styles from './TestCaseForm.module.css';
@@ -409,14 +410,12 @@ const TestCaseForm = ({
           </div>
 
           <div className={styles.formGroup}>
-            <label htmlFor="expected">Expected Response (JSON)</label>
-            <JsonEditor
-              value={jsonStrings.expected}
-              onChange={value => handleJsonChange('expected', value)}
-              placeholder="{}"
-              minHeight={160}
-              className={styles.jsonEditor}
-              required
+            <AssertionBuilder
+              value={formData.expected}
+              onChange={val => {
+                setFormData(prev => ({ ...prev, expected: val }));
+                setJsonStrings(prev => ({ ...prev, expected: JSON.stringify(val, null, 2) }));
+              }}
             />
           </div>
 

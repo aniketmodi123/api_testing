@@ -1,3 +1,7 @@
+"""
+What this file does: Exposes GET /{folder_id}/headers/complete and /inheritance-preview for resolving inherited folder headers up to the workspace root.
+"""
+
 from fastapi import APIRouter, Depends, Header as FastAPIHeader
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,13 +24,7 @@ async def get_complete_folder_headers(
     include_inheritance_details: bool = FastAPIHeader(False, alias="include-details"),
     db: AsyncSession = Depends(get_db)
 ):
-    """
-    Get complete headers for a folder by inheriting from all parent folders.
-    Child folder headers override parent folder headers for duplicate keys.
-
-    Path: folder1 -> folder2 -> folder3 -> folder4
-    Priority: folder1 (lowest) -> folder2 -> folder3 -> folder4 (highest)
-    """
+    """GET /{folder_id}/headers/complete — return merged headers inherited from all ancestor folders, with child headers taking priority."""
     try:
         # Get user
         user = await get_user_by_username(db, username)
@@ -82,10 +80,7 @@ async def get_headers_inheritance_preview(
     username: str = FastAPIHeader(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """
-    Get a preview of header inheritance without merging.
-    Shows what headers each folder contributes separately.
-    """
+    """GET /{folder_id}/headers/inheritance-preview — return per-folder header contributions along the ancestor path without merging."""
     try:
         # Get user
         user = await get_user_by_username(db, username)

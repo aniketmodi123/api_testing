@@ -1,0 +1,113 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: var(--p0-surface, var(--surface));
+  border: 1px solid var(--p0-border, var(--border));
+  border-radius: 8px;
+  width: 560px;
+  max-width: 95vw;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+}
+
+.title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.label {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  display: block;
+}
+
+.textarea {
+  width: 100%;
+  min-height: 140px;
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  padding: 10px;
+  border: 1px solid var(--p0-border, var(--border));
+  border-radius: 4px;
+  background: var(--p0-bg, var(--background));
+  color: var(--text);
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.textarea:focus {
+  outline: none;
+  border-color: var(--p0-primary, var(--primary));
+}
+
+.preview {
+  background: var(--p0-surface-2, var(--surface-2));
+  border: 1px solid var(--p0-border, var(--border));
+  border-radius: 4px;
+  padding: 10px;
+  font-size: 12px;
+  font-family: var(--font-mono, monospace);
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.error {
+  color: var(--error, #ef4444);
+  font-size: 12px;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.cancelBtn {
+  padding: 8px 16px;
+  background: none;
+  border: 1px solid var(--p0-border, var(--border));
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.cancelBtn:hover {
+  background: var(--p0-surface-2, var(--surface-2));
+}
+
+.importBtn {
+  padding: 8px 16px;
+  background: var(--p0-primary, var(--primary));
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.importBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.importBtn:hover:not(:disabled) {
+  opacity: 0.9;
+}

@@ -1,3 +1,7 @@
+"""
+What this file does: Exposes the DELETE /workspace/{workspace_id} route for deleting a workspace and all its cascaded contents.
+"""
+
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,7 +23,7 @@ async def delete_workspace(
     username: str = Header(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Delete workspace and all its contents"""
+    """DELETE /workspace/{workspace_id} — permanently delete the workspace and all its cascaded data."""
     try:
         # Get user
         user = await get_user_by_username(db, username)

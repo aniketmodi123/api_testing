@@ -1,3 +1,7 @@
+"""
+What this file does: Exposes GET /workspace/{workspace_id} for loading a workspace with its full node tree, marking it as the active workspace.
+"""
+
 from fastapi import APIRouter, Depends, Header, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,7 +23,7 @@ async def get_workspace_with_tree(
     username: str = Header(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Get workspace details with file tree structure, optionally including APIs and test cases for bulk testing"""
+    """GET /workspace/{workspace_id} — mark workspace as active, return its full node tree with optional API and test-case data."""
     try:
         # Get user
         user = await get_user_by_username(db, username)

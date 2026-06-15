@@ -1,3 +1,7 @@
+"""
+What this file does: Exposes POST /change-password and POST /forgot-password routes for updating user passwords with OTP verification.
+"""
+
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Header, status, Depends
 from sqlalchemy import select
@@ -23,6 +27,19 @@ LOCK_DURATION = 10
 
 
 async def verify_and_consume_otp(db, username: str, otp: int) -> None:
+    """
+    What it does: Validate the OTP for a user and consume it on success, enforcing attempt limits and expiry.
+    Raises:
+        HTTPException: When OTP record is missing or already consumed (400), OTP is expired (400),
+                       account is locked out (403), max attempts reached (403), or OTP is wrong (400).
+    Steps:
+        - Step 1: Query OTPAttempt for username; raise 400 if record is missing or OTP already consumed
+        - Step 2: Raise 400 if expire_at has passed
+        - Step 3: Raise 403 if locked_until is in the future
+        - Step 4: Raise 403 and clear OTP when failed_attempts has already reached MAX_ATTEMPTS
+        - Step 5: Raise 400 and increment failed_attempts when OTP doesn't match; apply lock when attempts now equal MAX_ATTEMPTS
+        - Step 6: Consume OTP on success — reset failed_attempts and set otp to None
+    """
     now = datetime.now()
     res = await db.execute(select(OTPAttempt).where(OTPAttempt.user_name == username))
     rec = res.scalars().first()
@@ -61,14 +78,7 @@ async def change_password(
     username: str = Header(...),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Change password for admin/consumer:
-      - validate new passwords match
-      - verify user exists and is active
-      - check old password
-      - hash & save new password
-      - blacklist token
-    """
+    """POST /change-password — verify old password, hash and save the new one, then blacklist the current token."""
     try:
         if request.new_password != request.new_password_again:
             return create_response(400, error_message="please enter same passwords")
@@ -109,6 +119,7 @@ async def forgot_password(
     request: ForgotPassword,
     db: AsyncSession = Depends(get_db)
 ):
+    """POST /forgot-password — verify and consume OTP, then reset the user's password."""
     try:
         await verify_and_consume_otp(db, request.email, request.otp)
         if request.new_password != request.new_password_again:

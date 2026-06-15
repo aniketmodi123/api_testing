@@ -1,3 +1,7 @@
+"""
+What this file does: Bootstraps the FastAPI application — configures CORS and auth middleware, registers exception handlers, and mounts all feature routers.
+"""
+
 import time
 from fastapi.responses import JSONResponse
 import pytz
@@ -8,15 +12,21 @@ from exception_handler import unified_exception_handler
 from models import Base
 from datetime import datetime
 from routers.runner import run_case, execute_direct, bulk_run_cases
+from routers.runner import graphql_introspect, ws_proxy
 from routers.workspace import list_workspace_tree
 from routers.sso import create_user, forget_password, login, logout, otp_generation, update_user, delete_user, user_profile
-from routers.workspace import create_workspace, update_workspace, list_workspace, list_workspace_tree,delete_workspace
+from routers.workspace import create_workspace, update_workspace, list_workspace, list_workspace_tree, delete_workspace
+from routers.workspace import members as workspace_members
 from routers.node import create_node, update_node, list_node, delete_node, move_node, copy_node
+from routers.node import bulk_import as bulk_import_node
+from routers.variables import global_variables
 from routers.headers import complete_headers, set_headers,list_headers,delete_headers, update_headers
 from routers.api import list_apis, save_api
 from routers.api_cases import delete_case, get_case, list_search_api_case, create_dup_case, save_api_case
 from routers.environment import create_environment, list_environments, resolve_variables, save_variables,delete_variables, list_variables
 from routers.shedulers import shedule_test
+from routers.shedulers import alerts as schedule_alerts
+from routers.history import router as history_router
 from security import AuthMiddleware
 
 FASTAPI_CONFIG = {
@@ -45,7 +55,13 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup_event():
-    # Set the timezone for the application
+    """Run DB table creation and connectivity check on application startup."""
+    import os
+    if not os.environ.get("SECRET_ENC_KEY"):
+        raise RuntimeError(
+            "SECRET_ENC_KEY env var is not set. "
+            "Generate one: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
+        )
     datetime.now(pytz.timezone('Asia/Kolkata'))
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -54,7 +70,7 @@ async def startup_event():
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint for monitoring."""
+    """GET /health — return service and database health status; raises 503 when DB is unreachable."""
     try:
         # Quick database connectivity check
         await check_db_connection()
@@ -79,7 +95,7 @@ async def health_check():
 
 @app.get("/")
 async def root():
-    """Root endpoint with basic API information."""
+    """GET / — return service name, version, and key endpoint links."""
     return {
         "message": "API Testing Backend",
         "version": "1.0",
@@ -91,6 +107,7 @@ async def root():
 
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next):
+    """Attach X-Process-Time header and normalise 404/500/204 status codes to project conventions."""
     start_time = time.time()
     response = await call_next(request)
     process_time = time.time() - start_time
@@ -128,6 +145,7 @@ app.include_router(update_workspace.router, prefix="/workspace", tags=["workspac
 app.include_router(list_workspace.router, prefix="/workspace", tags=["workspace"])
 app.include_router(delete_workspace.router, prefix="/workspace", tags=["workspace"])
 app.include_router(list_workspace_tree.router, prefix="/workspace", tags=["workspace"])
+app.include_router(workspace_members.router, prefix="/workspace", tags=["workspace"])
 
 
 # file/folder
@@ -137,6 +155,10 @@ app.include_router(list_node.router, prefix="/node", tags=["node"])
 app.include_router(delete_node.router, prefix="/node", tags=["node"])
 app.include_router(move_node.router, prefix="/node", tags=["node"])
 app.include_router(copy_node.router, prefix="/node", tags=["node"])
+app.include_router(bulk_import_node.router, prefix="", tags=["node"])
+
+# global variables (Phase 2)
+app.include_router(global_variables.router, prefix="", tags=["Global Variables"])
 
 
 # headers
@@ -170,6 +192,12 @@ app.include_router(delete_variables.router, prefix="/environment", tags=["Variab
 app.include_router(run_case.router, tags=["Runner"])
 app.include_router(execute_direct.router, prefix="/api", tags=["API Execution"])
 app.include_router(bulk_run_cases.router, tags=["Runner"])
+app.include_router(graphql_introspect.router, prefix="/api", tags=["GraphQL"])
+app.include_router(ws_proxy.router, prefix="/api", tags=["WebSocket"])
 
 # schedules
 app.include_router(shedule_test.router, tags=["Schedules"])
+app.include_router(schedule_alerts.router, tags=["Schedule Alerts"])
+
+# history
+app.include_router(history_router)

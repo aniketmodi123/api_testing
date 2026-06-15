@@ -1,3 +1,7 @@
+"""
+What this file does: Exposes the POST /sign_up route for registering new user accounts.
+"""
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,9 +22,7 @@ router = APIRouter()
 
 @router.post("/sign_up")
 async def sign_up(user_data: UserSignUp, db: AsyncSession = Depends(get_db)):
-    """
-    Register a new user account.
-    """
+    """POST /sign_up — create a new user account; reject if email is already registered."""
     try:
         # Check if email already exists
         stmt = select(User).where(User.email == user_data.email)

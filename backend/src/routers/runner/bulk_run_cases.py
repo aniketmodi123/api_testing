@@ -1,3 +1,7 @@
+"""
+What this file does: Exposes POST /bulk_run_cases for concurrently executing test cases across multiple APIs, returning results mapped into the workspace node tree.
+"""
+
 from datetime import datetime
 from operator import and_
 import asyncio
@@ -6,14 +10,29 @@ from fastapi import APIRouter, Depends, Header
 from pydantic import BaseModel
 
 class BulkRunnerApi(BaseModel):
+    """Run all test cases for a list of file IDs.
+    Attributes:
+        type: Must be ``"api"``.
+        apis: List of file node IDs whose APIs to run.
+    """
     type: str  # should be 'api'
     apis: List[int]
 
 class BulkRunnerSelectedApi(BaseModel):
+    """Per-file selection of test cases for bulk run.
+    Attributes:
+        file_id: File node ID to target.
+        cases: Optional list of ApiCase IDs to run; None runs all cases for the file.
+    """
     file_id: int
     cases: Optional[List[int]] = None
 
 class BulkRunnerSelected(BaseModel):
+    """Run selected test cases across multiple files.
+    Attributes:
+        type: Must be ``"selected"``.
+        apis: List of per-file selections specifying which cases to run.
+    """
     type: str  # should be 'selected'
     apis: List[BulkRunnerSelectedApi]
 
@@ -30,6 +49,11 @@ router = APIRouter()
 
 
 async def verify_nodes(db: AsyncSession, node_id: list[int], user_id: int):
+    """
+    What it does: Return the Node rows for the given IDs that belong to workspaces owned by user_id.
+    Returns:
+        list[Node]: Nodes the user owns; excludes any IDs belonging to other users.
+    """
     result = await db.execute(
         select(Node)
         .join(Workspace, Node.workspace_id == Workspace.id)
@@ -45,6 +69,7 @@ async def bulk_run_cases(
     workspace_id: int = Header(...),
     db: AsyncSession = Depends(get_db),
 ):
+    """POST /bulk_run_cases — run test cases across multiple APIs concurrently and return results mapped into the workspace node tree."""
     try:
         # ---- Verify User ----
         user = await get_user_by_username(db, username)

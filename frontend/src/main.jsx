@@ -1,5 +1,6 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
+import { Provider } from 'react-redux';
 import {
   Navigate,
   Route,
@@ -24,6 +25,7 @@ import { WorkspaceProvider } from './store/workspace.jsx';
 import './styles/global.css';
 
 import { ApiProvider } from './store/api.jsx';
+import { store } from './store/reduxStore';
 
 // Suppress non-error console logs in production unless explicitly enabled
 if (import.meta.env.PROD && import.meta.env.VITE_ENABLE_DEBUG_LOGS !== 'true') {
@@ -38,6 +40,7 @@ if (import.meta.env.PROD && import.meta.env.VITE_ENABLE_DEBUG_LOGS !== 'true') {
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
+    <Provider store={store}>
     <ThemeProvider>
       <AuthProvider>
         <WorkspaceProvider>
@@ -156,5 +159,6 @@ createRoot(document.getElementById('root')).render(
         </WorkspaceProvider>
       </AuthProvider>
     </ThemeProvider>
+    </Provider>
   </React.StrictMode>
 );

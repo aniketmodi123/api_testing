@@ -1,3 +1,7 @@
+"""
+What this file does: Exposes POST /file/{file_id}/api/cases/save (single) and POST /file/{file_id}/api/cases/bulk for creating or updating API test cases.
+"""
+
 from typing import Optional, List
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy import select, and_
@@ -24,7 +28,7 @@ async def save_api_case(
     username: str = Header(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Create or update test case for API in a specific file"""
+    """POST /file/{file_id}/api/cases/save — create a new test case or update an existing one when case_id is provided; validates expected schema before saving."""
     try:
         # Validate expected response spec
         if request.expected is not None:
@@ -165,7 +169,7 @@ async def bulk_create_api_cases(
     username: str = Header(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Create multiple test cases for API in a file in one request"""
+    """POST /file/{file_id}/api/cases/bulk — create multiple test cases in one transaction; reject duplicates within payload or against existing cases."""
     try:
         # Get user
         user = await get_user_by_username(db, username)

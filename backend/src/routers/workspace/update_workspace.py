@@ -1,3 +1,7 @@
+"""
+What this file does: Exposes the PUT /workspace/{workspace_id} route for updating workspace name and description.
+"""
+
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,7 +26,7 @@ async def update_workspace(
     username: str = Header(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Update workspace details"""
+    """PUT /workspace/{workspace_id} — update name and/or description for a workspace owned by the caller."""
     try:
         # Get user
         user = await get_user_by_username(db, username)

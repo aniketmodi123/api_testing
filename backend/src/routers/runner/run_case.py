@@ -1,3 +1,7 @@
+"""
+What this file does: Exposes POST /run for executing all (or selected) test cases for a file's API with resolved variables and inherited folder headers.
+"""
+
 from typing import Optional
 from fastapi import APIRouter, Depends, Header
 from pydantic import BaseModel
@@ -24,6 +28,11 @@ router = APIRouter()
 
 
 class RunnerReq(BaseModel):
+    """Request body for POST /run.
+    Attributes:
+        file_id: ID of the file node whose API to run.
+        case_id: Optional list of ApiCase IDs to run; None runs all cases for the API.
+    """
     file_id: int
     case_id: Optional[list[int]] = None
 
@@ -34,6 +43,7 @@ async def get_file_api(
     username: str = Header(...),
     db: AsyncSession = Depends(get_db)
 ):
+    """POST /run — resolve workspace variables and folder headers, then execute the specified (or all) test cases for a file's API."""
     try:
         user = await get_user_by_username(db, username)
         if not user:

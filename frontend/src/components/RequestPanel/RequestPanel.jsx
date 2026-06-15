@@ -1,15 +1,32 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from 'react-resizable-panels';
+import CodeMirror from '@uiw/react-codemirror';
+import { json as jsonLang } from '@codemirror/lang-json';
+import { oneDark } from '@codemirror/theme-one-dark';
 import thinkingGif from '../../assets/think_emoji.gif';
 import { BackendApiCallService } from '../../services/backendApiCallService';
 import { useApi } from '../../store/api';
 import { useEnvironment } from '../../store/environment';
 import { useNode } from '../../store/node';
+import { useWorkspace } from '../../store/workspace';
+import { useTheme } from '../ThemeProvider';
 import { TestCaseForm } from '../TestCaseForm';
 import TestResultsGrid from '../TestResultsGrid';
-import { Button, JsonEditor, VariableInput } from '../common';
+import { Button, JsonEditor, VariableInput, VariableAwareInput } from '../common';
+import WebSocketPanel from '../WebSocketPanel/WebSocketPanel';
+import { api as backendApi } from '../../api';
 import styles from './RequestPanel.module.css';
 import './buttonStyles.css';
 import './dropdown.css';
+
+async function saveHistory(payload) {
+  try {
+    await backendApi.post('/history', payload);
+  } catch (err) {
+    // History save failure is non-critical
+    console.warn('Failed to save history:', err);
+  }
+}
 
 // Utility function to check if URL is an ngrok URL and add required headers
 const addNgrokHeadersIfNeeded = (url, existingHeaders = {}) => {
@@ -176,7 +193,7 @@ async function copyTableToClipboard(excelData) {
 }
 
 // Reusable copy button component
-const CopyButton = ({ textToCopy, className }) => {
+const CopyButton = ({ textToCopy, className, label }) => {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -193,33 +210,17 @@ const CopyButton = ({ textToCopy, className }) => {
       size="small"
       className={className || ''}
       onClick={handleCopy}
-      title="Copy to clipboard"
+      title={label || 'Copy to clipboard'}
     >
-      {copied ? (
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <path
-            d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"
-            fill="currentColor"
-          />
+      {label ? (
+        copied ? '✓ Copied' : label
+      ) : copied ? (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z" fill="currentColor" />
         </svg>
       ) : (
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <path
-            d="M16 1H4C2.9 1 2 1.9 2 3V17H4V3H16V1ZM19 5H8C6.9 5 6 5.9 6 7V21C6 22.1 6.9 23 8 23H19C20.1 23 21 22.1 21 21V7C21 5.9 20.1 5 19 5ZM19 21H8V7H19V21Z"
-            fill="currentColor"
-          />
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M16 1H4C2.9 1 2 1.9 2 3V17H4V3H16V1ZM19 5H8C6.9 5 6 5.9 6 7V21C6 22.1 6.9 23 8 23H19C20.1 23 21 22.1 21 21V7C21 5.9 20.1 5 19 5ZM19 21H8V7H19V21Z" fill="currentColor" />
         </svg>
       )}
     </Button>
@@ -292,23 +293,72 @@ const extractValue = (obj, key, defaultValue = '') => {
   }
 };
 
-function normalizeBody(bodyContent, bodyType) {
+function normalizeBody(bodyContent, bodyType, gqlOpts = null) {
   if (bodyType === 'none') return null;
-  if (bodyType === 'JSON') {
-    try {
-      // For API /save endpoint, we should keep it as a string
-      // This helps with the body serialization when sending to backend
-      return bodyContent;
-    } catch {
-      return bodyContent; // Already a string
-    }
+  if (bodyType === 'graphql' && gqlOpts) {
+    let variables = {};
+    try { variables = JSON.parse(gqlOpts.variables || '{}'); } catch {}
+    return JSON.stringify({ query: gqlOpts.query || '', variables });
   }
-  return bodyContent; // Keep as string for all body types
+  return bodyContent;
 }
 
-export default function RequestPanel({ activeRequest }) {
+// Reusable key-value table for form-data and url-encoded bodies
+function KeyValueBodyTable({ rows, setRows, onSerialize }) {
+  const serialize = updatedRows => {
+    const params = new URLSearchParams();
+    updatedRows.forEach(r => { if (r.key) params.append(r.key, r.value); });
+    onSerialize(params.toString());
+  };
+
+  const updateRow = (idx, field, val) => {
+    const next = rows.map((r, i) => i === idx ? { ...r, [field]: val } : r);
+    setRows(next);
+    serialize(next);
+  };
+
+  const addRow = () => {
+    const next = [...rows, { key: '', value: '' }];
+    setRows(next);
+  };
+
+  const removeRow = idx => {
+    const next = rows.filter((_, i) => i !== idx);
+    setRows(next.length ? next : [{ key: '', value: '' }]);
+    serialize(next);
+  };
+
+  return (
+    <div className="kvTable">
+      {rows.map((row, idx) => (
+        <div key={idx} className="kvRow">
+          <input
+            type="text"
+            value={row.key}
+            onChange={e => updateRow(idx, 'key', e.target.value)}
+            placeholder="Key"
+            className="kvInput"
+          />
+          <input
+            type="text"
+            value={row.value}
+            onChange={e => updateRow(idx, 'value', e.target.value)}
+            placeholder="Value"
+            className="kvInput"
+          />
+          <button className="kvRemove" onClick={() => removeRow(idx)}>×</button>
+        </div>
+      ))}
+      <button className="kvAdd" onClick={addRow}>+ Add row</button>
+    </div>
+  );
+}
+
+export default function RequestPanel({ activeRequest, onMethodChange }) {
   const { selectedNode, getNodeById } = useNode();
   const { variables, activeEnvironment } = useEnvironment();
+  const { isDarkMode } = useTheme();
+  const { activeWorkspace } = useWorkspace();
   const {
     getApi,
     getTestCases,
@@ -338,7 +388,15 @@ export default function RequestPanel({ activeRequest }) {
   const [bodyContent, setBodyContent] = useState('');
   const [bodyType, setBodyType] = useState('JSON');
   const [validationSchema, setValidationSchema] = useState('');
-  const [requestHeight, setRequestHeight] = useState(200); // Default height for request section
+  // Form-data and url-encoded rows for Phase 1 key-value table UI
+  const [formDataRows, setFormDataRows] = useState([{ key: '', value: '' }]);
+  const [urlEncodedRows, setUrlEncodedRows] = useState([{ key: '', value: '' }]);
+  // GraphQL state (Phase 7a)
+  const [gqlQuery, setGqlQuery] = useState('');
+  const [gqlVariables, setGqlVariables] = useState('{}');
+  const [gqlSchemaLoading, setGqlSchemaLoading] = useState(false);
+  const [gqlSchemaError, setGqlSchemaError] = useState(null);
+  // requestHeight removed — vertical resize handled by react-resizable-panels in Home layout
 
   // Local cache for folder headers to avoid repeated backend calls
   const [folderHeadersCache, setFolderHeadersCache] = useState(new Map());
@@ -380,31 +438,7 @@ export default function RequestPanel({ activeRequest }) {
   const [editingApiInModal, setEditingApiInModal] = useState(false);
   const [modalApiData, setModalApiData] = useState(null);
 
-  // Handle resizing between request and response sections
-  const startResize = useCallback(
-    e => {
-      e.preventDefault();
-      const startY = e.clientY;
-      const startHeight = requestHeight;
-
-      const doDrag = e => {
-        const newHeight = startHeight + (e.clientY - startY);
-        // Set min and max height constraints
-        if (newHeight >= 100 && newHeight <= window.innerHeight - 200) {
-          setRequestHeight(newHeight);
-        }
-      };
-
-      const stopDrag = () => {
-        document.removeEventListener('mousemove', doDrag);
-        document.removeEventListener('mouseup', stopDrag);
-      };
-
-      document.addEventListener('mousemove', doDrag);
-      document.addEventListener('mouseup', stopDrag);
-    },
-    [requestHeight]
-  );
+  // Vertical resize is now handled by react-resizable-panels — startResize removed
 
   // Update the panel when selectedNode changes
   // Add effect for handling dropdown close on outside click
@@ -593,6 +627,8 @@ export default function RequestPanel({ activeRequest }) {
 
   const [activeTab, setActiveTab] = useState('api');
   const [responseTab, setResponseTab] = useState('body');
+  const [authType, setAuthType] = useState('none');
+  const [bearerToken, setBearerToken] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [response, setResponse] = useState(null);
   const [excelCopied, setExcelCopied] = useState(false);
@@ -732,7 +768,8 @@ export default function RequestPanel({ activeRequest }) {
         url: url,
         headers: extractValue(activeApi, 'headers', {}),
         params: paramsObj,
-        body: method !== 'GET' ? normalizeBody(bodyContent, bodyType) : null,
+        body: method !== 'GET' ? normalizeBody(bodyContent, bodyType, bodyType === 'graphql' ? { query: gqlQuery, variables: gqlVariables } : null) : null,
+        bodyType: bodyType,
       });
 
       // Format response for display to match UI expectations
@@ -753,10 +790,25 @@ export default function RequestPanel({ activeRequest }) {
       };
 
       setResponse(formattedResponse);
-
-      // Switch to the response tab
-      setActiveTab('response');
       setResponseTab('body');
+
+      // Auto-save history (fire-and-forget)
+      saveHistory({
+        file_id: selectedNode?.id ?? null,
+        workspace_id: activeWorkspace?.id ?? null,
+        method,
+        url,
+        headers: extractValue(activeApi, 'headers', {}),
+        params: paramsObj,
+        body: method !== 'GET' ? normalizeBody(bodyContent, bodyType, bodyType === 'graphql' ? { query: gqlQuery, variables: gqlVariables } : null) : null,
+        response_status: formattedResponse.status,
+        response_body:
+          typeof formattedResponse.body === 'object'
+            ? JSON.stringify(formattedResponse.body)
+            : String(formattedResponse.body ?? ''),
+        response_headers: formattedResponse.headers,
+        execution_time_ms: response.data?.execution_time ?? 0,
+      });
     } catch (error) {
       console.error('❌ Error executing API via backend:', error);
 
@@ -771,8 +823,6 @@ export default function RequestPanel({ activeRequest }) {
         isError: true,
       });
 
-      // Switch to the response tab to show error
-      setActiveTab('response');
       setResponseTab('body');
     } finally {
       setIsSending(false);
@@ -811,7 +861,7 @@ export default function RequestPanel({ activeRequest }) {
           url: url,
           headers: extractValue(activeApi, 'headers', {}),
           params: paramsObj,
-          body: method !== 'GET' ? normalizeBody(bodyContent, bodyType) : null,
+          body: method !== 'GET' ? normalizeBody(bodyContent, bodyType, bodyType === 'graphql' ? { query: gqlQuery, variables: gqlVariables } : null) : null,
           expected: validationSchema,
         });
 
@@ -837,14 +887,10 @@ export default function RequestPanel({ activeRequest }) {
       };
 
       setResponse(formattedResponse);
-
-      // Switch to the response tab to show validation results
-      setActiveTab('response');
       setResponseTab('body');
     } catch (error) {
       console.error('Error validating API:', error);
 
-      // Show error in response tab
       setResponse({
         status: 500,
         statusText: 'Validation Error',
@@ -858,7 +904,6 @@ export default function RequestPanel({ activeRequest }) {
         isError: true,
       });
 
-      setActiveTab('response');
       setResponseTab('body');
     } finally {
       setIsSending(false);
@@ -1119,6 +1164,33 @@ export default function RequestPanel({ activeRequest }) {
     }
   };
 
+  // Helper to build response body display value
+  const responseBodyValue = response
+    ? typeof response.body === 'object'
+      ? JSON.stringify(response.body, null, 2)
+      : String(response.body ?? '')
+    : '';
+
+  const isWebSocketUrl = url && (url.startsWith('ws://') || url.startsWith('wss://'));
+
+  if (isWebSocketUrl) {
+    return (
+      <div className={styles.requestPanel}>
+        <div className={styles.urlBar}>
+          <span className={styles.wsLabel}>WS</span>
+          <VariableAwareInput
+            className={styles.urlInput}
+            value={url}
+            onChange={setUrl}
+            variables={variables || {}}
+            placeholder="ws:// or wss://"
+          />
+        </div>
+        <WebSocketPanel url={url} />
+      </div>
+    );
+  }
+
   return (
     <div className={styles.requestPanel}>
       {/* Request URL Bar */}
@@ -1137,10 +1209,11 @@ export default function RequestPanel({ activeRequest }) {
           <option value="OPTIONS">OPTIONS</option>
         </select>
 
-        <VariableInput
+        <VariableAwareInput
           className={styles.urlInput}
           value={url}
-          onChange={e => setUrl(e.target.value)}
+          onChange={setUrl}
+          variables={variables || {}}
           placeholder="Enter request URL (use {{VARIABLE_NAME}} for variables)"
         />
 
@@ -1246,13 +1319,13 @@ export default function RequestPanel({ activeRequest }) {
                       endpoint: url,
                       headers: headersObj,
                       params: paramsObj,
-                      body: normalizeBody(bodyContent, bodyType),
+                      body: normalizeBody(bodyContent, bodyType, bodyType === 'graphql' ? { query: gqlQuery, variables: gqlVariables } : null),
                       bodyType: bodyType,
                       extra_meta: {
                         ...extractValue(activeApi, 'extra_meta', {}),
                         headers: headersObj,
                         params: paramsObj,
-                        body: normalizeBody(bodyContent, bodyType),
+                        body: normalizeBody(bodyContent, bodyType, bodyType === 'graphql' ? { query: gqlQuery, variables: gqlVariables } : null),
                         expected: validationSchemaData, // Add validation schema to extra_meta
                       },
                     }
@@ -1265,12 +1338,12 @@ export default function RequestPanel({ activeRequest }) {
                       is_active: true,
                       headers: headersObj,
                       params: paramsObj,
-                      body: normalizeBody(bodyContent, bodyType),
+                      body: normalizeBody(bodyContent, bodyType, bodyType === 'graphql' ? { query: gqlQuery, variables: gqlVariables } : null),
                       bodyType: bodyType,
                       extra_meta: {
                         headers: headersObj,
                         params: paramsObj,
-                        body: normalizeBody(bodyContent, bodyType),
+                        body: normalizeBody(bodyContent, bodyType, bodyType === 'graphql' ? { query: gqlQuery, variables: gqlVariables } : null),
                         expected: validationSchemaData, // Add validation schema to extra_meta
                       },
                     };
@@ -1475,16 +1548,16 @@ export default function RequestPanel({ activeRequest }) {
       {/* Request Configuration Tabs */}
       <div className={styles.tabs}>
         <div
-          className={`${styles.tab} ${activeTab === 'api' ? styles.active : ''}`}
-          onClick={() => setActiveTab('api')}
-        >
-          API Details
-        </div>
-        <div
           className={`${styles.tab} ${activeTab === 'params' ? styles.active : ''}`}
           onClick={() => setActiveTab('params')}
         >
           Params
+        </div>
+        <div
+          className={`${styles.tab} ${activeTab === 'auth' ? styles.active : ''}`}
+          onClick={() => setActiveTab('auth')}
+        >
+          Auth
         </div>
         <div
           className={`${styles.tab} ${activeTab === 'headers' ? styles.active : ''}`}
@@ -1499,29 +1572,25 @@ export default function RequestPanel({ activeRequest }) {
           Body
         </div>
         <div
-          className={`${styles.tab} ${activeTab === 'validation' ? styles.active : ''}`}
-          onClick={() => setActiveTab('validation')}
-        >
-          Validation
-        </div>
-        <div
           className={`${styles.tab} ${activeTab === 'apiTests' ? styles.active : ''}`}
           onClick={() => setActiveTab('apiTests')}
         >
-          API Tests
+          Tests
         </div>
         <div
-          className={`${styles.tab} ${activeTab === 'response' ? styles.active : ''}`}
-          onClick={() => setActiveTab('response')}
+          className={`${styles.tab} ${activeTab === 'api' ? styles.active : ''}`}
+          onClick={() => setActiveTab('api')}
         >
-          Response
+          Info
         </div>
       </div>
 
+      {/* Request + Response split via react-resizable-panels */}
+      <PanelGroup orientation="vertical" className={styles.panelGroup}>
+        <Panel defaultSize="45%" minSize="20%" className={styles.requestTabsPanel}>
       {/* Tab Content */}
       <div
         className={styles.tabContent}
-        style={{ height: `${requestHeight}px` }}
       >
         {activeTab === 'api' && (
           <div className={styles.apiContent}>
@@ -1641,6 +1710,58 @@ export default function RequestPanel({ activeRequest }) {
               <div className={styles.emptyState}>
                 <p>Select a file to configure or view an API</p>
               </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'auth' && (
+          <div className={styles.authContent}>
+            <div className={styles.authTypeRow}>
+              <label className={styles.authLabel}>Auth Type</label>
+              <select
+                className={styles.authTypeSelect}
+                value={authType}
+                onChange={e => setAuthType(e.target.value)}
+              >
+                <option value="none">No Auth</option>
+                <option value="bearer">Bearer Token</option>
+                <option value="basic">Basic Auth</option>
+              </select>
+            </div>
+            {authType === 'bearer' && (
+              <div className={styles.authFields}>
+                <label className={styles.authFieldLabel}>Token</label>
+                <input
+                  type="text"
+                  className={styles.authFieldInput}
+                  value={bearerToken}
+                  onChange={e => {
+                    setBearerToken(e.target.value);
+                    // Inject into headers
+                    const idx = headers.findIndex(h => h.key === 'Authorization');
+                    if (idx >= 0) {
+                      const next = [...headers];
+                      next[idx].value = `Bearer ${e.target.value}`;
+                      setHeaders(next);
+                    } else {
+                      setHeaders(prev => [...prev, { key: 'Authorization', value: `Bearer ${e.target.value}`, description: '' }]);
+                    }
+                  }}
+                  placeholder="Paste token here"
+                />
+                <p className={styles.authHint}>Sets Authorization: Bearer &lt;token&gt; header</p>
+              </div>
+            )}
+            {authType === 'basic' && (
+              <div className={styles.authFields}>
+                <label className={styles.authFieldLabel}>Username</label>
+                <input type="text" className={styles.authFieldInput} placeholder="Username" />
+                <label className={styles.authFieldLabel}>Password</label>
+                <input type="password" className={styles.authFieldInput} placeholder="Password" />
+              </div>
+            )}
+            {authType === 'none' && (
+              <p className={styles.authHint}>No authentication will be sent with this request.</p>
             )}
           </div>
         )}
@@ -1911,36 +2032,55 @@ export default function RequestPanel({ activeRequest }) {
               </div>
               <div
                 className={`${styles.bodyTypeBadge} ${bodyType === 'form-data' ? styles.active : ''}`}
-                onClick={() => {
-                  setBodyType('form-data');
-                  // For simplicity, we'll keep the text representation of form data
-                  if (bodyType === 'none' || !bodyContent) {
-                    setBodyContent(
-                      'name=Example&id=1&description=Sample+request+body'
-                    );
-                  }
-                }}
+                onClick={() => setBodyType('form-data')}
               >
                 form-data
               </div>
+              <div
+                className={`${styles.bodyTypeBadge} ${bodyType === 'url-encoded' ? styles.active : ''}`}
+                onClick={() => setBodyType('url-encoded')}
+              >
+                url-encoded
+              </div>
+              <div
+                className={`${styles.bodyTypeBadge} ${bodyType === 'graphql' ? styles.active : ''}`}
+                onClick={() => setBodyType('graphql')}
+              >
+                GraphQL
+              </div>
             </div>
 
-            {bodyType !== 'none' && (
+            {bodyType === 'JSON' && (
+              <CodeMirror
+                value={bodyContent}
+                height="100%"
+                minHeight="120px"
+                extensions={[jsonLang()]}
+                theme={isDarkMode ? oneDark : undefined}
+                onChange={val => setBodyContent(val)}
+                className={styles.bodyCodeMirror}
+                basicSetup={{ lineNumbers: true, foldGutter: true }}
+              />
+            )}
+            {(bodyType === 'form-data' || bodyType === 'url-encoded') && (
+              <KeyValueBodyTable
+                rows={bodyType === 'form-data' ? formDataRows : urlEncodedRows}
+                setRows={bodyType === 'form-data' ? setFormDataRows : setUrlEncodedRows}
+                onSerialize={serialized => setBodyContent(serialized)}
+              />
+            )}
+            {bodyType !== 'none' && bodyType !== 'JSON' && bodyType !== 'form-data' && bodyType !== 'url-encoded' && (
               <JsonEditor
                 value={bodyContent}
                 onChange={setBodyContent}
                 placeholder={
                   bodyType === 'raw'
                     ? 'Enter raw text'
-                    : bodyType === 'JSON'
-                      ? 'Enter JSON data'
-                      : bodyType === 'XML'
-                        ? 'Enter XML data'
-                        : bodyType === 'form-data'
-                          ? 'name=value&name2=value2'
-                          : ''
+                    : bodyType === 'XML'
+                      ? 'Enter XML data'
+                      : ''
                 }
-                language={bodyType === 'JSON' ? 'json' : 'text'}
+                language="text"
                 showCopyButton={true}
                 resizable={true}
                 minHeight={150}
@@ -1959,6 +2099,66 @@ export default function RequestPanel({ activeRequest }) {
                   Form data will be sent as application/x-www-form-urlencoded
                 </p>
                 <p>Format: key1=value1&key2=value2</p>
+              </div>
+            )}
+            {bodyType === 'graphql' && (
+              <div className={styles.gqlPanel}>
+                <div className={styles.gqlPanelRow}>
+                  <div className={styles.gqlLabel}>Query</div>
+                  <button
+                    className={styles.gqlSchemaBtn}
+                    disabled={gqlSchemaLoading}
+                    onClick={async () => {
+                      if (!url) return;
+                      setGqlSchemaLoading(true);
+                      setGqlSchemaError(null);
+                      try {
+                        const API_BASE = import.meta.env.VITE_API_BASE || 'https://api-testing-2vjt.onrender.com';
+                        const token = localStorage.getItem('token');
+                        const res = await fetch(`${API_BASE}/api/graphql-introspect`, {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                            Authorization: token?.startsWith('Bearer ') ? token : `Bearer ${token}`,
+                          },
+                          body: JSON.stringify({ url }),
+                        });
+                        const data = await res.json();
+                        if (data.error) setGqlSchemaError(data.error);
+                        else setGqlSchemaError(null);
+                      } catch (err) {
+                        setGqlSchemaError('Failed to load schema');
+                      } finally {
+                        setGqlSchemaLoading(false);
+                      }
+                    }}
+                  >
+                    {gqlSchemaLoading ? 'Loading…' : 'Load Schema'}
+                  </button>
+                </div>
+                {gqlSchemaError && (
+                  <div style={{ color: '#ef4444', fontSize: 11, marginBottom: 4 }}>{gqlSchemaError}</div>
+                )}
+                <CodeMirror
+                  value={gqlQuery}
+                  height="120px"
+                  theme={isDarkMode ? oneDark : undefined}
+                  onChange={val => setGqlQuery(val)}
+                  className={styles.bodyCodeMirror}
+                  basicSetup={{ lineNumbers: true }}
+                  placeholder="{ user(id: 1) { name email } }"
+                />
+                <div className={styles.gqlLabel} style={{ marginTop: 8 }}>Variables (JSON)</div>
+                <CodeMirror
+                  value={gqlVariables}
+                  height="80px"
+                  extensions={[jsonLang()]}
+                  theme={isDarkMode ? oneDark : undefined}
+                  onChange={val => setGqlVariables(val)}
+                  className={styles.bodyCodeMirror}
+                  basicSetup={{ lineNumbers: false }}
+                  placeholder="{}"
+                />
               </div>
             )}
           </div>
@@ -2249,19 +2449,38 @@ export default function RequestPanel({ activeRequest }) {
           </div>
         )}
 
-        {activeTab === 'response' && (
-          <div className={styles.responseContent}>
+      </div>
+        </Panel>
+        <PanelResizeHandle className={styles.verticalResizeHandle} />
+        <Panel defaultSize="45%" minSize="15%" className={styles.responsePanel}>
+          {/* Response Panel — always visible */}
+          <div className={styles.responsePanelInner}>
             {response ? (
               <>
                 <div className={styles.responseMeta}>
                   <div
                     className={`${styles.statusBadge} ${response.status < 300 ? styles.success : styles.error}`}
                   >
-                    Status: {response.status} {response.statusText}
+                    {response.status} {response.statusText}
                   </div>
                   <div className={styles.responseInfo}>
-                    <span>Time: {response.time}</span>
-                    <span>Size: {response.size}</span>
+                    <span>{response.time}</span>
+                    <span>{response.size}</span>
+                  </div>
+                  <div className={styles.responseActions}>
+                    <CopyButton textToCopy={responseBodyValue} className={styles.copyResponseBtn} />
+                    <CopyButton
+                      textToCopy={buildCurlCommand({
+                        method,
+                        url,
+                        headers: Object.fromEntries(
+                          headers.filter(h => h.key).map(h => [h.key, h.value])
+                        ),
+                        body: bodyType === 'JSON' && bodyContent ? (() => { try { return JSON.parse(bodyContent); } catch { return null; } })() : null,
+                      })}
+                      className={styles.copyResponseBtn}
+                      label="Copy cURL"
+                    />
                   </div>
                 </div>
 
@@ -2270,7 +2489,13 @@ export default function RequestPanel({ activeRequest }) {
                     className={`${styles.responseTab} ${responseTab === 'body' ? styles.active : ''}`}
                     onClick={() => setResponseTab('body')}
                   >
-                    Body
+                    Pretty
+                  </div>
+                  <div
+                    className={`${styles.responseTab} ${responseTab === 'raw' ? styles.active : ''}`}
+                    onClick={() => setResponseTab('raw')}
+                  >
+                    Raw
                   </div>
                   <div
                     className={`${styles.responseTab} ${responseTab === 'headers' ? styles.active : ''}`}
@@ -2283,37 +2508,22 @@ export default function RequestPanel({ activeRequest }) {
                 <div className={styles.responseBody}>
                   {responseTab === 'body' && (
                     <div className={`${styles.responseBodyContent} scrollable`}>
-                      {response.body &&
-                      response.body.response_code !== undefined ? (
-                        // Format for standard API response with response_code and data/error_message
-                        <div className={styles.structuredResponse}>
-                          <JsonEditor
-                            value={JSON.stringify(response.body, null, 2)}
-                            language="json"
-                            showCopyButton={true}
-                            resizable={true}
-                            minHeight={150}
-                            maxHeight={400}
-                            disabled={true}
-                            className={styles.responseJsonEditor}
-                          />
-                        </div>
-                      ) : (
-                        // For other response formats
-                        <JsonEditor
-                          value={JSON.stringify(response.body, null, 2)}
-                          language="json"
-                          showCopyButton={true}
-                          resizable={true}
-                          minHeight={150}
-                          maxHeight={400}
-                          disabled={true}
-                          className={styles.responseJsonEditor}
-                        />
-                      )}
+                      <CodeMirror
+                        value={responseBodyValue}
+                        height="100%"
+                        extensions={[jsonLang()]}
+                        theme={isDarkMode ? oneDark : undefined}
+                        readOnly
+                        className={styles.responseCodeMirror}
+                        basicSetup={{ lineNumbers: true, foldGutter: true }}
+                      />
                     </div>
                   )}
-
+                  {responseTab === 'raw' && (
+                    <div className={`${styles.responseBodyContent} scrollable`}>
+                      <pre className={styles.rawResponsePre}>{responseBodyValue}</pre>
+                    </div>
+                  )}
                   {responseTab === 'headers' && (
                     <div className={`${styles.responseHeaders} scrollable`}>
                       {Object.entries(response.headers).map(([key, value]) => (
@@ -2332,15 +2542,15 @@ export default function RequestPanel({ activeRequest }) {
                   <img
                     src={thinkingGif}
                     alt="Thinking animation"
-                    style={{ width: 120, height: 120, objectFit: 'contain' }}
+                    style={{ width: 80, height: 80, objectFit: 'contain' }}
                   />
-                  <p>Still thinking... Try making an API call!</p>
+                  <p>Send a request to see the response</p>
                 </div>
               </div>
             )}
           </div>
-        )}
-      </div>
+        </Panel>
+      </PanelGroup>
 
       {/* Test Case Form Modal */}
       {showTestCaseForm && selectedNode?.type === 'file' && (

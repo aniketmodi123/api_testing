@@ -1,4 +1,7 @@
-# List and manage environments
+"""
+What this file does: Exposes CRUD routes for environment management — list, get, update, activate, and delete.
+"""
+
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete
@@ -18,7 +21,7 @@ async def list_environments(
     username: str = Header(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """List all environments in a workspace"""
+    """GET /environment/workspace/{workspace_id}/environments — return all environments and highlight the currently active one."""
     try:
         # Get user
         user = await get_user_by_username(db, username)
@@ -88,7 +91,7 @@ async def get_environment(
     username: str = Header(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Get a specific environment with its variables"""
+    """GET /environment/workspace/{workspace_id}/environments/{environment_id} — return a single environment with its variables."""
     try:
         # Get user
         user = await get_user_by_username(db, username)
@@ -149,7 +152,7 @@ async def update_environment(
     username: str = Header(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Update an environment"""
+    """PUT /environment/workspace/{workspace_id}/environments/{environment_id} — update environment name, description, or active flag; deactivate others when activating."""
     try:
         # Get user
         user = await get_user_by_username(db, username)
@@ -250,7 +253,7 @@ async def activate_environment(
     username: str = Header(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Set an environment as the active one for the workspace"""
+    """POST /environment/workspace/{workspace_id}/environments/{environment_id}/activate — set this environment as active and deactivate all others in the workspace."""
     try:
         # Get user
         user = await get_user_by_username(db, username)
@@ -327,7 +330,7 @@ async def delete_environment(
     username: str = Header(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Delete an environment and all its variables"""
+    """DELETE /environment/workspace/{workspace_id}/environments/{environment_id} — permanently delete an environment and its JSON-stored variables."""
     try:
         # Get user
         user = await get_user_by_username(db, username)

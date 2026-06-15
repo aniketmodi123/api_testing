@@ -1,0 +1,201 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.addBtn {
+  font-size: 12px;
+  padding: 3px 10px;
+  background: var(--p0-primary, var(--primary));
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.addBtn:hover { opacity: 0.85; }
+
+.error {
+  font-size: 12px;
+  color: var(--error, #ef4444);
+  padding: 4px 6px;
+}
+
+.empty {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 10px 0;
+}
+
+.alertRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  background: var(--p0-surface-2, var(--surface-2));
+  border-radius: 4px;
+  gap: 8px;
+}
+
+.alertInfo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.typeBadge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.typeBadge.webhook {
+  background: rgba(99, 102, 241, 0.15);
+  color: #6366f1;
+}
+
+.typeBadge.email {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+
+.target {
+  font-size: 12px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.conditions {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.alertActions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.editBtn {
+  font-size: 11px;
+  padding: 2px 8px;
+  border: 1px solid var(--p0-border, var(--border));
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.editBtn:hover {
+  border-color: var(--p0-primary, var(--primary));
+  color: var(--p0-primary, var(--primary));
+}
+
+.deleteBtn {
+  background: none;
+  border: none;
+  color: var(--error, #ef4444);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 4px;
+}
+
+/* Form */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: var(--p0-surface-2, var(--surface-2));
+  border-radius: 6px;
+}
+
+.formRow {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.select, .input {
+  font-size: 12px;
+  padding: 5px 8px;
+  border: 1px solid var(--p0-border, var(--border));
+  border-radius: 4px;
+  background: var(--p0-bg, var(--background));
+  color: var(--text);
+}
+
+.checkboxRow {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.checkboxRow label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.formActions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.cancelBtn {
+  font-size: 12px;
+  padding: 4px 12px;
+  border: 1px solid var(--p0-border, var(--border));
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.saveBtn {
+  font-size: 12px;
+  padding: 4px 14px;
+  background: var(--p0-primary, var(--primary));
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.saveBtn:disabled { opacity: 0.6; cursor: not-allowed; }

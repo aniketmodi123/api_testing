@@ -72,6 +72,25 @@
   --selected-item-background: rgba(59, 130, 246, 0.1);
   --disabled: #475569;
 
+  /* Phase 0 design tokens — dark mode */
+  --p0-bg:           #0f0f0f;
+  --p0-surface:      #1a1a1a;
+  --p0-surface-2:    #242424;
+  --p0-surface-3:    #2e2e2e;
+  --p0-border:       #333333;
+  --p0-text:         #e8e8e8;
+  --p0-text-muted:   #888888;
+  --p0-text-subtle:  #555555;
+  --p0-primary:      #6366f1;
+  --p0-primary-hover:#4f46e5;
+  --p0-primary-dim:  rgba(99,102,241,0.15);
+  --p0-success:      #10b981;
+  --p0-warning:      #f59e0b;
+  --p0-error:        #ef4444;
+  --p0-info:         #3b82f6;
+  --p0-font-ui:      'Inter', -apple-system, sans-serif;
+  --p0-font-mono:    'JetBrains Mono', 'Fira Code', monospace;
+
   /* Legacy variables for backward compatibility */
   --bg: #0b0c10;
   --text-color: #e5e7eb;
@@ -99,6 +118,16 @@
   --hover-background: rgba(0, 0, 0, 0.03);
   --selected-item-background: rgba(59, 130, 246, 0.1);
   --disabled: #cbd5e1;
+
+  /* Phase 0 design tokens — light mode */
+  --p0-bg:           #ffffff;
+  --p0-surface:      #f5f5f5;
+  --p0-surface-2:    #ebebeb;
+  --p0-surface-3:    #e0e0e0;
+  --p0-border:       #d4d4d4;
+  --p0-text:         #1a1a1a;
+  --p0-text-muted:   #666666;
+  --p0-text-subtle:  #999999;
 
   /* Legacy variables for backward compatibility */
   --bg: #f8fafc;
@@ -132,6 +161,7 @@ body,
 body {
   margin: 0;
   font-family:
+    'Inter',
     ui-sans-serif,
     system-ui,
     -apple-system,
@@ -267,4 +297,68 @@ button {
   --scrollbar-track-color: #f1f5f9;
   --scrollbar-thumb-color: #94a3b8;
   --scrollbar-thumb-hover-color: #64748b;
+}
+
+/* Key-value table for form-data / url-encoded body (used in RequestPanel) */
+.kvTable {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.kvRow {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.kvInput {
+  flex: 1;
+  background: var(--p0-surface-2);
+  border: 1px solid var(--p0-border);
+  color: var(--p0-text);
+  border-radius: 4px;
+  padding: 5px 8px;
+  font-size: 12px;
+  font-family: var(--p0-font-mono);
+}
+
+.kvInput:focus {
+  outline: none;
+  border-color: var(--p0-primary);
+}
+
+.kvRemove {
+  background: none;
+  border: none;
+  color: var(--p0-text-muted);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0 4px;
+  border-radius: 3px;
+  line-height: 1;
+}
+
+.kvRemove:hover {
+  color: var(--p0-error);
+  background: var(--p0-surface-3);
+}
+
+.kvAdd {
+  background: none;
+  border: 1px dashed var(--p0-border);
+  color: var(--p0-text-muted);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-family: var(--p0-font-ui);
+  margin-top: 2px;
+  width: fit-content;
+}
+
+.kvAdd:hover {
+  border-color: var(--p0-primary);
+  color: var(--p0-primary);
 }

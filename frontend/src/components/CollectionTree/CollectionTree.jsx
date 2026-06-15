@@ -6,6 +6,8 @@ import ConfirmModal from '../ConfirmModal/ConfirmModal';
 import HeaderEditor from '../HeaderEditor/HeaderEditor';
 import LookingLoader from '../LookingLoader/LookingLoader';
 import MoveCopyPanel from '../MoveCopyPanel';
+import ImportFileModal from '../ImportExport/ImportFileModal';
+import { toPostmanCollection } from '../../utils/importExport';
 import styles from './CollectionTree.module.css';
 
 // Recursive component for rendering node items (folders and files)
@@ -20,7 +22,9 @@ const NodeItem = ({
   handleRenameAction,
   handleMoveCopyAction,
   handleCreateNewItem,
-  handleEditHeaders, // Added this prop
+  handleEditHeaders,
+  handleExportFolder,
+  handleImportCollection,
   closeAllMenus,
   level = 0,
 }) => {
@@ -82,6 +86,12 @@ const NodeItem = ({
           handleEditHeaders(node);
         } else {
         }
+        break;
+      case 'export':
+        if (handleExportFolder) handleExportFolder(node);
+        break;
+      case 'importcollection':
+        if (handleImportCollection) handleImportCollection(node);
         break;
       case 'delete':
         handleDeleteNode(node.id, e);
@@ -148,6 +158,22 @@ const NodeItem = ({
                     Edit Headers
                   </div>
                 )}
+                {node.type === 'folder' && (
+                  <div
+                    className={styles.menuItem}
+                    onClick={e => handleAction('export', e)}
+                  >
+                    Export as Postman
+                  </div>
+                )}
+                {node.type === 'folder' && (
+                  <div
+                    className={styles.menuItem}
+                    onClick={e => handleAction('importcollection', e)}
+                  >
+                    Import Collection
+                  </div>
+                )}
                 <div
                   className={styles.menuItem}
                   onClick={e => handleAction('delete', e)}
@@ -176,6 +202,8 @@ const NodeItem = ({
                 handleMoveCopyAction={handleMoveCopyAction}
                 handleCreateNewItem={handleCreateNewItem}
                 handleEditHeaders={handleEditHeaders}
+                handleExportFolder={handleExportFolder}
+                handleImportCollection={handleImportCollection}
                 closeAllMenus={closeAllMenus}
               />
             ))}
@@ -280,6 +308,9 @@ export default function CollectionTree({ onSelectRequest }) {
   // Header editor state
   const [isHeaderEditorOpen, setIsHeaderEditorOpen] = useState(false);
   const [currentFolder, setCurrentFolder] = useState(null);
+
+  // Import/Export state
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   // Modal state
   const [modalOpen, setModalOpen] = useState(false);
@@ -509,7 +540,27 @@ export default function CollectionTree({ onSelectRequest }) {
   const handleSaveHeaders = headerData => {
     setIsHeaderEditorOpen(false);
     setCurrentFolder(null);
-  }; // Filter nodes based on search text
+  };
+
+  // Export a folder subtree as Postman v2.1 JSON download
+  const handleExportFolder = node => {
+    const subtree = [node];
+    const collection = toPostmanCollection(subtree, node.name);
+    const blob = new Blob([JSON.stringify(collection, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${node.name.replace(/\s+/g, '_')}_postman.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Open import modal
+  const handleImportCollection = () => {
+    setIsImportModalOpen(true);
+  };
+
+  // Filter nodes based on search text
   const filteredNodes =
     filterText.trim() === ''
       ? rootNodes
@@ -823,6 +874,8 @@ export default function CollectionTree({ onSelectRequest }) {
                 handleMoveCopyAction={handleMoveCopyAction}
                 handleCreateNewItem={handleCreateNewItem}
                 handleEditHeaders={handleEditHeaders}
+                handleExportFolder={handleExportFolder}
+                handleImportCollection={handleImportCollection}
                 closeAllMenus={menuUpdateTrigger}
               />
             ))
@@ -898,6 +951,15 @@ export default function CollectionTree({ onSelectRequest }) {
             onSave={handleSaveHeaders}
           />
         </div>
+      )}
+
+      {/* Import Collection Modal */}
+      {isImportModalOpen && (
+        <ImportFileModal
+          workspaceId={activeWorkspace?.id}
+          onClose={() => setIsImportModalOpen(false)}
+          onSuccess={() => refreshWorkspaces()}
+        />
       )}
 
       {/* Move/Copy Panel */}

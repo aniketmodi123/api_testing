@@ -1,3 +1,7 @@
+"""
+What this file does: Exposes POST /case/{case_id}/duplicate for cloning a test case with a "(Copy)" suffix.
+"""
+
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,7 +25,7 @@ async def duplicate_test_case(
     username: str = Header(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Duplicate test case"""
+    """POST /case/{case_id}/duplicate — create a copy of an existing test case with "(Copy)" appended to the name."""
     try:
         # Get user
         user = await get_user_by_username(db, username)

@@ -1,3 +1,7 @@
+"""
+What this file does: Exposes DELETE /case/{case_id} (single) and DELETE /cases/bulk for removing test cases.
+"""
+
 from typing import List
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy import select, and_
@@ -20,7 +24,7 @@ async def delete_test_case(
     username: str = Header(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Delete single test case"""
+    """DELETE /case/{case_id} — delete a single test case after verifying ownership through the API → file → workspace chain."""
     try:
         # Get user
         user = await get_user_by_username(db, username)
@@ -62,7 +66,7 @@ async def delete_test_cases_bulk(
     username: str = Header(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Delete multiple test cases"""
+    """DELETE /cases/bulk — delete multiple test cases by ID; report any IDs not found or not owned by the caller."""
     try:
         if not case_ids:
             return create_response(400, error_message="No case IDs provided")

@@ -1,3 +1,7 @@
+"""
+What this file does: Exposes POST /environment/workspace/{workspace_id}/environments/{environment_id}/variables for setting environment variables.
+"""
+
 from fastapi import APIRouter, Depends, Header as FastAPIHeader
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,7 +29,7 @@ async def save_environment_variables(
     username: str = FastAPIHeader(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Save environment variables (creates if not exists, updates if exists - similar to headers)"""
+    """POST /environment/workspace/{workspace_id}/environments/{environment_id}/variables — overwrite the environment's key-value variables; returns 201 on first save, 200 on update."""
     try:
         # Get user
         user = await get_user_by_username(db, username)

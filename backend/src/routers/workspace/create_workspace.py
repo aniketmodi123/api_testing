@@ -1,3 +1,7 @@
+"""
+What this file does: Exposes the POST /workspace/create route for creating new workspaces owned by the authenticated user.
+"""
+
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,7 +24,7 @@ async def create_workspace(
     username: str = Header(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Create a new workspace"""
+    """POST /workspace/create — create a workspace owned by the authenticated user and return its data."""
     try:
         # Get user
         user = await get_user_by_username(db, username)

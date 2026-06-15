@@ -1,3 +1,7 @@
+"""
+What this file does: Exposes the PUT /update_user route for updating the authenticated user's profile fields.
+"""
+
 from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,6 +22,7 @@ async def update_user(
     username:str = Header(...),
     db: AsyncSession = Depends(get_db)
 ):
+    """PUT /update_user — patch the authenticated user's profile; reject duplicate email."""
     try:
         update_data = user_update.model_dump(exclude_unset=True)
 

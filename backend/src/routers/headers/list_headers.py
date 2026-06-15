@@ -1,3 +1,7 @@
+"""
+What this file does: Exposes GET /{folder_id}/headers for retrieving the most recent header record for a folder.
+"""
+
 from fastapi import APIRouter, Depends, Header as FastAPIHeader
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,7 +25,7 @@ async def get_folder_headers(
     username: str = FastAPIHeader(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Get the most recent folder headers (or specific header if multiple exist)"""
+    """GET /{folder_id}/headers — return the most recently created header record for the folder."""
     try:
         # Get user
         user = await get_user_by_username(db, username)

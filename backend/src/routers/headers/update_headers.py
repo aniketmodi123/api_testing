@@ -1,3 +1,7 @@
+"""
+What this file does: Exposes PUT /{folder_id}/headers for replacing the content of a folder's header record.
+"""
+
 from fastapi import APIRouter, Depends, Header as FastAPIHeader
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,7 +29,7 @@ async def update_folder_headers(
     username: str = FastAPIHeader(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Update the folder's header (no header_id needed since only one header per folder)"""
+    """PUT /{folder_id}/headers — replace the content of the folder's header record."""
     try:
         user = await get_user_by_username(db, username)
         if not user:

@@ -19,6 +19,7 @@ export class BackendApiCallService {
     headers = {},
     params = {},
     body = null,
+    bodyType = null,
     options = {},
   }) {
     try {
@@ -32,6 +33,7 @@ export class BackendApiCallService {
         headers: headers,
         params: params,
         body: body,
+        body_type: bodyType,
         options: {
           include_folder_headers: true,
           resolve_variables: true,

@@ -4,6 +4,7 @@ import { Button } from '../common';
 import ConfirmModal from '../ConfirmModal/ConfirmModal';
 import styles from './EnvironmentManager.module.css';
 import EnvironmentSelector from './EnvironmentSelector';
+import GlobalVariablesPanel from './GlobalVariablesPanel';
 
 export default function EnvironmentManager({
   onEnvironmentSelect,
@@ -106,7 +107,12 @@ export default function EnvironmentManager({
         </div>
       )}
 
-      {/* Main Content */}
+      {/* Global Variables section (always shown) */}
+      <GlobalVariablesPanel />
+
+      <div style={{ borderTop: '1px solid var(--p0-border, var(--border))', margin: '0' }} />
+
+      {/* Main Content — Environments */}
       <div className={styles.content}>
         {environments.length === 0 ? (
           /* Empty State */

@@ -1,3 +1,7 @@
+"""
+What this file does: Exposes GET /case/{case_id} for retrieving a test case with its API and file context.
+"""
+
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,7 +24,7 @@ async def get_test_case_details(
     username: str = Header(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Get specific test case details with API and file context"""
+    """GET /case/{case_id} — return test case fields along with its parent API method, endpoint, and file context."""
     try:
         # Get user
         user = await get_user_by_username(db, username)

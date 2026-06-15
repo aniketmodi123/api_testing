@@ -1,3 +1,7 @@
+"""
+What this file does: Exposes GET /file/{file_id}/api for loading a file's API with optional test cases, and GET /workspace/{workspace_id}/bulk-testing-tree for bulk-test tree data.
+"""
+
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,7 +26,7 @@ async def get_file_api(
     db: AsyncSession = Depends(get_db),
     include_cases: bool = False
 ):
-    """Get API from a file with optional test cases"""
+    """GET /file/{file_id}/api — return the API for a file node, optionally including all test cases sorted by name."""
     try:
         # Get user
         user = await get_user_by_username(db, username)
@@ -125,7 +129,7 @@ async def get_bulk_testing_tree(
     username: str = Header(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Get optimized tree structure for bulk testing with all APIs and test cases"""
+    """GET /workspace/{workspace_id}/bulk-testing-tree — return the full node tree enriched with API method, endpoint, and test cases for bulk execution."""
     try:
         # Get user
         user = await get_user_by_username(db, username)

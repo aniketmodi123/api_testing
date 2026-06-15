@@ -1,3 +1,7 @@
+"""
+What this file does: Exposes the POST /sign_in route for authenticating users and issuing JWT access tokens.
+"""
+
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from fastapi import APIRouter, Depends
@@ -25,9 +29,7 @@ router = APIRouter()
 
 @router.post("/sign_in")
 async def sign_in(user_credentials: UserSignIn, db: AsyncSession = Depends(get_db)):
-    """
-    Authenticate user and return access token.
-    """
+    """POST /sign_in — verify credentials, issue a 7-day JWT, cache the token, and log the attempt."""
     try:
         # Get user by username
         stmt = select(User).where(User.email == user_credentials.email)

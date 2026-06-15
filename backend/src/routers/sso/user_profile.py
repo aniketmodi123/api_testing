@@ -1,3 +1,7 @@
+"""
+What this file does: Exposes the GET /me route for retrieving the authenticated user's profile.
+"""
+
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,12 +20,12 @@ from utils import (
 router = APIRouter()
 
 
-# Bonus: Get current user profile
 @router.get("/me", response_model=UserResponse)
 async def get_current_user_profile(
     username: str= Header(...),
     db: AsyncSession = Depends(get_db)
 ):
+    """GET /me — return the profile of the currently authenticated user."""
     try:
         result = await db.execute(select(User).where(User.email == username))
         user = result.scalar_one_or_none()

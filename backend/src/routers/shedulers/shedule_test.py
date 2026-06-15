@@ -1,4 +1,6 @@
-# routers/scheduler/create.py
+"""
+What this file does: Exposes CRUD endpoints under /schedules for creating, reading, updating, and deleting bulk test schedules and their execution records.
+"""
 from __future__ import annotations
 
 from datetime import datetime, timedelta
@@ -24,7 +26,7 @@ router = APIRouter(prefix="/schedules", tags=["schedules"])
 # -----------------------------
 
 def ensure_naive_datetime(dt: Optional[datetime]) -> Optional[datetime]:
-    """Ensure datetime is timezone-naive for database compatibility"""
+    """Strip the timezone from a datetime so it can be stored in a timezone-naive DB column; returns None when dt is None."""
     if dt is None:
         return None
     if hasattr(dt, 'tzinfo') and dt.tzinfo is not None:
@@ -36,6 +38,10 @@ def ensure_naive_datetime(dt: Optional[datetime]) -> Optional[datetime]:
 # -----------------------------
 
 async def verify_nodes(db: AsyncSession, node_ids: List[int], user_id: int):
+    """
+    Returns:
+        list[Node]: File nodes from node_ids that belong to workspaces owned by user_id; empty list when node_ids is empty.
+    """
     if not node_ids:
         return []
     result = await db.execute(
@@ -46,12 +52,14 @@ async def verify_nodes(db: AsyncSession, node_ids: List[int], user_id: int):
     return result.scalars().all()
 
 def _parse_hhmm(value: Optional[str]) -> tuple[int, int]:
+    """What it does: Parse a "HH:MM" string into an (hour, minute) int tuple; returns (0, 0) when value is None or malformed."""
     if not value or ":" not in value:
         return (0, 0)
     h, m = value.split(":", 1)
     return int(h), int(m)
 
 def _seed_first_next_run(s: BulkTestSchedule, now: datetime) -> Optional[datetime]:
+    """What it does: Compute the first next_run timestamp for a newly created schedule based on its type and configuration."""
     t = (s.type or "").lower()
     if t == "once":
         # Use the requested time. If it's in the past, we still store it;
@@ -119,6 +127,7 @@ async def create_schedule(
     workspace_id: int = Header(...),
     db: AsyncSession = Depends(get_db),
 ):
+    """POST /schedules — create a bulk test schedule, validate file ownership, seed next_run, and return the saved schedule."""
     # 1) Verify user exists
     user = await get_user_by_username(db, username)
     if not user:
@@ -191,6 +200,7 @@ async def get_schedules(
     workspace_id: int = Header(...),
     db: AsyncSession = Depends(get_db),
 ):
+    """GET /schedules — return all schedules for the user's workspace ordered by creation date, each including execution count."""
     # 1) Verify user exists
     user = await get_user_by_username(db, username)
     if not user:
@@ -240,6 +250,7 @@ async def get_schedule_executions(
     username: str = Header(...),
     db: AsyncSession = Depends(get_db),
 ):
+    """GET /schedules/{schedule_id}/executions — return all executions for a schedule, each with its per-case result records."""
     # 1) Verify user exists
     user = await get_user_by_username(db, username)
     if not user:
@@ -310,6 +321,7 @@ async def delete_schedule_execution(
     username: str = Header(...),
     db: AsyncSession = Depends(get_db),
 ):
+    """DELETE /schedules/{schedule_id}/executions/{execution_id} — delete an execution and its results; reject if the execution is still running or queued."""
     # 1) Verify user exists
     user = await get_user_by_username(db, username)
     if not user:
@@ -368,6 +380,7 @@ async def get_running_executions(
     workspace_id: int = Header(...),
     db: AsyncSession = Depends(get_db),
 ):
+    """GET /schedules/executions/running — return all running or queued executions across the user's workspace schedules."""
     # 1) Verify user exists
     user = await get_user_by_username(db, username)
     if not user:
@@ -429,6 +442,7 @@ async def delete_schedule(
     username: str = Header(...),
     db: AsyncSession = Depends(get_db),
 ):
+    """DELETE /schedules/{schedule_id} — delete a schedule and all its cascaded executions and results."""
     # 1) Verify user exists
     user = await get_user_by_username(db, username)
     if not user:
@@ -488,6 +502,7 @@ async def update_schedule(
     workspace_id: int = Header(...),
     db: AsyncSession = Depends(get_db),
 ):
+    """PUT /schedules/{schedule_id} — update schedule fields, re-validate file ownership, and recalculate next_run."""
     # 1) Verify user exists
     user = await get_user_by_username(db, username)
     if not user:
