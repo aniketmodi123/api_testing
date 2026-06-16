@@ -7,7 +7,7 @@ from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_db
-from common_querys import get_user_by_username, validate_parent_node, get_workspace_tree_response, verify_workspace_ownership
+from common_querys import get_user_by_username, validate_parent_node, get_workspace_tree_response, verify_workspace_ownership, write_audit
 from models import Node
 from schema import NodeCreateRequest
 from utils import ExceptionHandler, create_response, value_correction
@@ -57,6 +57,7 @@ async def create_node(
         )
 
         db.add(new_node)
+        await write_audit(db, username=user.username, action="node.create", entity_type="node", workspace_id=node_data.workspace_id)
         await db.commit()
         await db.refresh(new_node)
 

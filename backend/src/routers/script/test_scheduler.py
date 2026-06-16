@@ -9,6 +9,7 @@ from sqlalchemy import or_, select
 from config import SessionLocal  # async_sessionmaker[AsyncSession]
 from models import BulkTestSchedule, BulkTestExecution, BulkTestResult
 from routers.runner.runner import bulk_run_cases
+from routers.monitor.crud import refresh_monitor_rollup
 from notification_service import dispatch_alerts
 from utils import logs
 
@@ -249,11 +250,15 @@ async def run_execution_task(schedule_id: int):
             _accumulate_execution_stats(exec_obj, flat_cases)
             exec_obj.finished_at = datetime.now()
             await db.commit()
+            await refresh_monitor_rollup(db, schedule_id)
+            await db.commit()
 
         except Exception as e:
             exec_obj.status = "failed"
             exec_obj.error_message = str(e)
             exec_obj.finished_at = datetime.now()
+            await db.commit()
+            await refresh_monitor_rollup(db, schedule_id)
             await db.commit()
 
         finally:

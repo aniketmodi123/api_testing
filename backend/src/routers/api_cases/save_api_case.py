@@ -8,7 +8,7 @@ from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_db
-from common_querys import get_user_by_username, verify_node_ownership
+from common_querys import get_user_by_username, verify_node_ownership, write_audit
 from models import Api, ApiCase, Workspace, Node
 from schema import ApiCaseCreateRequest
 from utils import (
@@ -100,6 +100,7 @@ async def save_api_case(
             if request.expected is not None:
                 case.expected = request.expected
 
+            await write_audit(db, username=user.username, action="api_case.update", entity_type="api_case", entity_id=case.id, workspace_id=file_node.workspace_id)
             await db.commit()
             await db.refresh(case)
 
@@ -130,6 +131,7 @@ async def save_api_case(
             )
 
             db.add(case)
+            await write_audit(db, username=user.username, action="api_case.create", entity_type="api_case", workspace_id=file_node.workspace_id)
             await db.commit()
             await db.refresh(case)
 

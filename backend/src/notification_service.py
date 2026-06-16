@@ -65,7 +65,7 @@ def _build_email_html(schedule: BulkTestSchedule, execution: BulkTestExecution) 
       <tr><td style="padding:6px 0;color:#666">Duration</td><td>{execution.duration_ms} ms</td></tr>
       <tr><td style="padding:6px 0;color:#666">Finished</td><td>{execution.finished_at}</td></tr>
     </table>
-    <p style="color:#999;font-size:12px;margin-top:24px">Polaris API Testing</p>
+    <p style="color:#999;font-size:12px;margin-top:24px">APIPilot</p>
   </div>
 </body></html>
 """
@@ -163,7 +163,7 @@ async def dispatch_alerts(
                 payload = _build_webhook_payload(schedule, execution)
                 tasks.append(_dispatch_webhook(alert.target, payload))
             elif alert.type == "email":
-                subject = f"[Polaris] Schedule '{schedule.name}' — {_execution_status_label(execution)}"
+                subject = f"[APIPilot] Schedule '{schedule.name}' — {_execution_status_label(execution)}"
                 html = _build_email_html(schedule, execution)
                 tasks.append(_dispatch_email(alert.target, subject, html))
 

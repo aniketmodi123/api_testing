@@ -8,7 +8,7 @@ from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_db
-from common_querys import get_user_by_username
+from common_querys import get_user_by_username, write_audit
 from models import Workspace, Node, Api, ApiCase
 from utils import (
     ExceptionHandler,
@@ -49,7 +49,16 @@ async def delete_test_case(
         if not case:
             return create_response(206, error_message="Test case not found or access denied")
 
-        # Delete the test case
+        # Resolve workspace_id for audit (case.api → node → workspace)
+        ws_result = await db.execute(
+            select(Workspace.id)
+            .join(Node, Node.workspace_id == Workspace.id)
+            .join(Api, Api.file_id == Node.id)
+            .where(Api.id == case.api_id)
+        )
+        ws_id = ws_result.scalar_one_or_none()
+
+        await write_audit(db, username=user.username, action="api_case.delete", entity_type="api_case", entity_id=case_id, workspace_id=ws_id)
         await db.delete(case)
         await db.commit()
 

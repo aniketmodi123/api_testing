@@ -535,7 +535,7 @@ def email_otp_message(otp, email, use_for):
                 </div>
                 <div class="footer">
                     <p>If you did not request this email, please contact us immediately.</p>
-                    <p>Thank you,<br>The Polaris Team</p>
+                    <p>Thank you,<br>The APIPilot Team</p>
                 </div>
             </div>
         </body>
@@ -611,8 +611,22 @@ def extract_variables_from_text(text: str) -> List[str]:
     return list(set(matches))
 
 
-def resolve_variables(data: Any, variables: dict, ts: int | None = None) -> Any:
-    """Substitute ``{{VAR}}`` placeholders in data with values from the variables dict.
+def _make_dynamic_context() -> dict:
+    """What it does: Generate a single-use dynamic token set so all tokens are stable within one resolve call."""
+    import uuid as _uuid
+    import random as _random
+    import string as _string
+    _rand_user = "".join(_random.choices(_string.ascii_lowercase, k=8))
+    _rand_domain = "".join(_random.choices(_string.ascii_lowercase, k=6))
+    return {
+        "$uuid": str(_uuid.uuid4()),
+        "$randomInt": str(_random.randint(1, 99999)),
+        "$randomEmail": f"{_rand_user}@{_rand_domain}.com",
+    }
+
+
+def resolve_variables(data: Any, variables: dict, ts: int | None = None, _dyn: dict | None = None) -> Any:
+    """Substitute ``{{VAR}}`` and dynamic ``{{$token}}`` placeholders in data with resolved values.
 
     Args:
         data: Value to process — str, dict, list, or other; ``None`` returns ``None``;
@@ -621,30 +635,37 @@ def resolve_variables(data: Any, variables: dict, ts: int | None = None) -> Any:
                    placeholders unchanged.
         ts: Unix timestamp in milliseconds used to replace ``${ts}`` tokens; generated
             from current time when ``None``.
+        _dyn: Pre-generated dynamic token dict (``$uuid``, ``$randomInt``, ``$randomEmail``);
+              created once on the first call and threaded through recursion so tokens are
+              stable within a single resolve pass. Callers should not pass this explicitly.
 
     Returns:
-        Any: Input data with all known ``{{VAR}}`` and ``${ts}`` tokens substituted;
-             unknown variables remain as their original ``{{VAR}}`` literal.
+        Any: Input data with all known ``{{VAR}}``, ``{{$token}}``, and ``${ts}`` tokens
+             substituted; unknown variables remain as their original ``{{VAR}}`` literal.
     """
     if data is None:
         return None
     if not ts:
         ts = int(time() * 1000)
+    # Generate dynamic tokens once per top-level call; thread through recursion
+    if _dyn is None:
+        _dyn = _make_dynamic_context()
 
     if isinstance(data, str):
         result = str(data)
-        if variables:
-            def replace_variable(match):
-                """What it does: Return the resolved value or leave the placeholder unchanged."""
-                var_name = match.group(1)
-                return str(variables.get(var_name, match.group(0)))
-            result = re.sub(r"\{\{([a-zA-Z_][a-zA-Z0-9_\-]*)\}\}", replace_variable, result)
+        # Merged lookup: user variables take priority over dynamic tokens
+        lookup = {**_dyn, **(variables or {})}
+        def replace_variable(match):
+            """What it does: Return the resolved value or leave the placeholder unchanged."""
+            var_name = match.group(1)
+            return str(lookup.get(var_name, match.group(0)))
+        result = re.sub(r"\{\{([a-zA-Z_\$][a-zA-Z0-9_\-\$]*)\}\}", replace_variable, result)
         return result.replace("${ts}", str(ts))
 
     if isinstance(data, dict):
-        return {k: resolve_variables(v, variables, ts) for k, v in data.items()}
+        return {k: resolve_variables(v, variables, ts, _dyn) for k, v in data.items()}
     if isinstance(data, list):
-        return [resolve_variables(i, variables, ts) for i in data]
+        return [resolve_variables(i, variables, ts, _dyn) for i in data]
     return data
 
 

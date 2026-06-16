@@ -14,6 +14,7 @@ import { TestCaseForm } from '../TestCaseForm';
 import TestResultsGrid from '../TestResultsGrid';
 import { Button, JsonEditor, VariableInput, VariableAwareInput } from '../common';
 import WebSocketPanel from '../WebSocketPanel/WebSocketPanel';
+import AuthBuilder from './AuthBuilder';
 import { api as backendApi } from '../../api';
 import styles from './RequestPanel.module.css';
 import './buttonStyles.css';
@@ -627,8 +628,6 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
 
   const [activeTab, setActiveTab] = useState('api');
   const [responseTab, setResponseTab] = useState('body');
-  const [authType, setAuthType] = useState('none');
-  const [bearerToken, setBearerToken] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [response, setResponse] = useState(null);
   const [excelCopied, setExcelCopied] = useState(false);
@@ -1714,57 +1713,16 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
           </div>
         )}
 
-        {activeTab === 'auth' && (
-          <div className={styles.authContent}>
-            <div className={styles.authTypeRow}>
-              <label className={styles.authLabel}>Auth Type</label>
-              <select
-                className={styles.authTypeSelect}
-                value={authType}
-                onChange={e => setAuthType(e.target.value)}
-              >
-                <option value="none">No Auth</option>
-                <option value="bearer">Bearer Token</option>
-                <option value="basic">Basic Auth</option>
-              </select>
-            </div>
-            {authType === 'bearer' && (
-              <div className={styles.authFields}>
-                <label className={styles.authFieldLabel}>Token</label>
-                <input
-                  type="text"
-                  className={styles.authFieldInput}
-                  value={bearerToken}
-                  onChange={e => {
-                    setBearerToken(e.target.value);
-                    // Inject into headers
-                    const idx = headers.findIndex(h => h.key === 'Authorization');
-                    if (idx >= 0) {
-                      const next = [...headers];
-                      next[idx].value = `Bearer ${e.target.value}`;
-                      setHeaders(next);
-                    } else {
-                      setHeaders(prev => [...prev, { key: 'Authorization', value: `Bearer ${e.target.value}`, description: '' }]);
-                    }
-                  }}
-                  placeholder="Paste token here"
-                />
-                <p className={styles.authHint}>Sets Authorization: Bearer &lt;token&gt; header</p>
-              </div>
-            )}
-            {authType === 'basic' && (
-              <div className={styles.authFields}>
-                <label className={styles.authFieldLabel}>Username</label>
-                <input type="text" className={styles.authFieldInput} placeholder="Username" />
-                <label className={styles.authFieldLabel}>Password</label>
-                <input type="password" className={styles.authFieldInput} placeholder="Password" />
-              </div>
-            )}
-            {authType === 'none' && (
-              <p className={styles.authHint}>No authentication will be sent with this request.</p>
-            )}
-          </div>
-        )}
+        {activeTab === 'auth' && (() => {
+          const savedAuth = activeApi?.extra_meta?.auth;
+          return (
+            <AuthBuilder
+              apiId={activeApi?.id ?? null}
+              initialType={savedAuth?.type ?? 'none'}
+              initialConfig={savedAuth?.config ?? {}}
+            />
+          );
+        })()}
 
         {activeTab === 'params' && (
           <div className={styles.paramsContent}>

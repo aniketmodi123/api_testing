@@ -1,6 +1,7 @@
-# Docstring Rules — Polaris API Testing Backend
+# Docstring Rules — API Testing Backend
 
 ## Which format to use
+
 - **FastAPI route handlers** (`@router.get/post/put/delete/patch/websocket`) → Route Handler section
 - **Utility / logic / helper functions** → Function section
 - **Pydantic BaseModel / dataclasses** → Class / Data Model section
@@ -8,13 +9,14 @@
 
 ---
 
-## Route Handler Docstring  (`@router.*` endpoints)
+## Route Handler Docstring (`@router.*` endpoints)
 
 ```
 """<one sentence — imperative verb, what the endpoint does for the caller>"""
 ```
 
 With Steps (only when 4+ distinct stages):
+
 ```
 """<one sentence summary>
 
@@ -28,6 +30,7 @@ Notes:
 ```
 
 Rules:
+
 - Summary always — one line, imperative verb, caller-facing
 - No Args block — path/query params in signature; body schema self-documents
 - No Returns block — response shape in `create_response()` + Pydantic schema
@@ -55,9 +58,11 @@ Attributes:   ← required when the class is a structured return type
 ```
 
 ### Summary Line
+
 - Imperative verb, one sentence, no trailing period
 
 ### Attributes
+
 - **All fields must appear** — obvious fields get one phrase; non-obvious get full detail
 - For `Literal` fields: list every value with its meaning inline, on one line
 - For nullable fields: state when `None` is returned vs a value — public contract, always document
@@ -65,7 +70,7 @@ Attributes:   ← required when the class is a structured return type
 
 ---
 
-## Function / Method Docstring  (utilities, helpers, business logic)
+## Function / Method Docstring (utilities, helpers, business logic)
 
 ### Section Order
 
@@ -90,11 +95,11 @@ See Also:    ← only when returning a custom type
 ### Args
 
 - No type annotation — it lives in the signature
-- Double backticks for inline values: ``None``, ``"strict"``
+- Double backticks for inline values: `None`, `"strict"`
 - Describe constraints, accepted values, and what `None` means behaviourally
 - **Omit entirely when all params are self-explanatory** (e.g. `db`, `username`, `id`)
 - **Literal / mode params** — compact arrow notation on one line:
-  ``"value"`` (default) does X; ``"name"`` → does Y; ``"keep"`` → passes through
+  `"value"` (default) does X; `"name"` → does Y; `"keep"` → passes through
   Never wrap across 3+ lines
 - **8+ parameters** — keep each entry to one line; prefer arrow notation over prose
 
@@ -159,18 +164,18 @@ Anything that documents the return type, the execution path, or internal state b
 
 ## What Triggers a Deduction
 
-| Mistake | Root Cause |
-|---|---|
-| Returns listing internal fields | Documenting the return type inside the function |
-| Summary enumerating accepted input types | Input catalog instead of purpose statement |
-| Summary using implementation terms ("resolved", "recursive") | Implementation language in caller-facing summary |
-| Returns describing how value was produced | Execution narrative instead of caller-value outcome |
-| Note saying "X path / Y path" | Exposing internal execution architecture |
-| Note restating Returns + Raises | Duplication with no added contract |
-| Module docstring listing capabilities | Implementation catalog instead of public purpose |
-| Class docstring missing Literal field values | Caller cannot know the contract without reading source |
-| Literal param wrapped across 3+ lines | Violates compact arrow-notation rule |
-| Attributes block skipping any field | Incomplete schema; all fields must appear |
-| Steps on a ≤3-stage function | Over-documentation; omit Steps |
-| Args block documenting db / username / id | Obvious params; omit Args block |
-| Example block added anywhere | Not used in these rules — remove |
+| Mistake                                                      | Root Cause                                             |
+| ------------------------------------------------------------ | ------------------------------------------------------ |
+| Returns listing internal fields                              | Documenting the return type inside the function        |
+| Summary enumerating accepted input types                     | Input catalog instead of purpose statement             |
+| Summary using implementation terms ("resolved", "recursive") | Implementation language in caller-facing summary       |
+| Returns describing how value was produced                    | Execution narrative instead of caller-value outcome    |
+| Note saying "X path / Y path"                                | Exposing internal execution architecture               |
+| Note restating Returns + Raises                              | Duplication with no added contract                     |
+| Module docstring listing capabilities                        | Implementation catalog instead of public purpose       |
+| Class docstring missing Literal field values                 | Caller cannot know the contract without reading source |
+| Literal param wrapped across 3+ lines                        | Violates compact arrow-notation rule                   |
+| Attributes block skipping any field                          | Incomplete schema; all fields must appear              |
+| Steps on a ≤3-stage function                                 | Over-documentation; omit Steps                         |
+| Args block documenting db / username / id                    | Obvious params; omit Args block                        |
+| Example block added anywhere                                 | Not used in these rules — remove                       |

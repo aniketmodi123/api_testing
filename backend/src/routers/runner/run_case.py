@@ -20,7 +20,8 @@ from config import (
     get_db
 )
 
-from common_querys import verify_node_ownership, get_user_by_username, get_workspace_variables, get_headers
+from common_querys import verify_node_ownership, get_user_by_username, get_workspace_variables, get_headers, resolve_auth
+from auth_strategies import apply_auth
 from models import Api
 
 
@@ -70,6 +71,19 @@ async def get_file_api(
 
         resolved_endpoint = resolve_variables(api.endpoint, workspace_variables)
         resolved_headers = resolve_variables(merge_result.get("merged_headers", {}), workspace_variables)
+
+        # Inject per-API auth into API-level headers so every case inherits it.
+        auth_config = await resolve_auth(db, api.file_id)
+        if auth_config:
+            auth_headers, _ = apply_auth(
+                auth_config,
+                method=api.method.upper(),
+                url=resolved_endpoint,
+                existing_headers=resolved_headers,
+            )
+            for k, v in auth_headers.items():
+                if k not in resolved_headers:
+                    resolved_headers[k] = v
 
         data = {
             "id": api.id,

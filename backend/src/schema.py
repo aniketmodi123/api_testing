@@ -1585,3 +1585,141 @@ class InviteResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 — Auth Helpers: per-type auth config models
+# ---------------------------------------------------------------------------
+
+class AuthNone(BaseModel):
+    """Carry a no-auth declaration for an API.
+
+    Attributes:
+        type: Always ``"none"``.
+    """
+
+    type: Literal["none"] = "none"
+
+
+class AuthApiKey(BaseModel):
+    """Carry API-key auth config for an API.
+
+    Attributes:
+        type: Always ``"apikey"``.
+        key: Header or query-parameter name (e.g. ``"X-API-Key"``).
+        value: The API key value; encrypted at rest.
+        in_: ``"header"`` (default) injects the key as a request header;
+             ``"query"`` → appends it as a URL query parameter.
+    """
+
+    type: Literal["apikey"] = "apikey"
+    key: str = Field(..., min_length=1, description="Header or query param name")
+    value: str = Field(..., description="API key value (encrypted at rest)")
+    in_: Literal["header", "query"] = Field("header", alias="in")
+
+    class Config:
+        populate_by_name = True
+
+
+class AuthBearer(BaseModel):
+    """Carry Bearer token auth config for an API.
+
+    Attributes:
+        type: Always ``"bearer"``.
+        token: The bearer token value; encrypted at rest.
+    """
+
+    type: Literal["bearer"] = "bearer"
+    token: str = Field(..., description="Bearer token (encrypted at rest)")
+
+
+class AuthBasic(BaseModel):
+    """Carry HTTP Basic auth config for an API.
+
+    Attributes:
+        type: Always ``"basic"``.
+        username: Basic auth username.
+        password: Basic auth password; encrypted at rest.
+    """
+
+    type: Literal["basic"] = "basic"
+    username: str = Field(..., description="Basic auth username")
+    password: str = Field(..., description="Basic auth password (encrypted at rest)")
+
+
+class AuthAwsSigV4(BaseModel):
+    """Carry AWS Signature Version 4 auth config for an API.
+
+    Attributes:
+        type: Always ``"aws_sigv4"``.
+        access_key: AWS access key ID; encrypted at rest.
+        secret_key: AWS secret access key; encrypted at rest.
+        region: AWS region (e.g. ``"us-east-1"``).
+        service: AWS service name (e.g. ``"execute-api"``).
+    """
+
+    type: Literal["aws_sigv4"] = "aws_sigv4"
+    access_key: str = Field(..., description="AWS access key ID (encrypted at rest)")
+    secret_key: str = Field(..., description="AWS secret access key (encrypted at rest)")
+    region: str = Field(..., description="AWS region (e.g. us-east-1)")
+    service: str = Field(..., description="AWS service name (e.g. execute-api)")
+
+
+class AuthJwt(BaseModel):
+    """Carry JWT builder auth config for an API.
+
+    Attributes:
+        type: Always ``"jwt"``.
+        secret: Signing secret; encrypted at rest.
+        algorithm: JWT signing algorithm (default ``"HS256"``).
+        payload: JSON dict of claims to include in the token.
+        header_name: Request header to inject the signed JWT into (default ``"Authorization"``).
+        header_prefix: Prefix prepended before the token (default ``"Bearer"``);
+                       empty string → token injected with no prefix.
+    """
+
+    type: Literal["jwt"] = "jwt"
+    secret: str = Field(..., description="JWT signing secret (encrypted at rest)")
+    algorithm: str = Field("HS256", description="Signing algorithm")
+    payload: Dict[str, Any] = Field(default_factory=dict, description="JWT claims")
+    header_name: str = Field("Authorization", description="Header to inject signed JWT into")
+    header_prefix: str = Field("Bearer", description="Prefix before the token value")
+
+
+class AuthOAuth2(BaseModel):
+    """Carry OAuth2 auth config for an API.
+
+    Attributes:
+        type: Always ``"oauth2"``.
+        grant: ``"client_credentials"`` uses machine-to-machine grant;
+               ``"authorization_code"`` → user-redirect grant.
+        token_url: OAuth2 token endpoint URL.
+        client_id: OAuth2 client identifier.
+        client_secret: OAuth2 client secret; encrypted at rest.
+        scope: Space-separated scope string; empty string when no scope is needed.
+        auth_ref: Opaque cache key used to look up a stored token; ``None`` when no token is cached yet.
+    """
+
+    type: Literal["oauth2"] = "oauth2"
+    grant: Literal["client_credentials", "authorization_code"] = "client_credentials"
+    token_url: str = Field(..., description="OAuth2 token endpoint URL")
+    client_id: str = Field(..., description="OAuth2 client ID")
+    client_secret: str = Field(..., description="OAuth2 client secret (encrypted at rest)")
+    scope: str = Field("", description="Space-separated OAuth2 scope string")
+    auth_ref: Optional[str] = Field(None, description="Cache key for stored token")
+
+
+AuthConfig = Union[AuthNone, AuthApiKey, AuthBearer, AuthBasic, AuthAwsSigV4, AuthJwt, AuthOAuth2]
+
+
+class SetAuthRequest(BaseModel):
+    """Carry the auth config to persist on an API.
+
+    Attributes:
+        type: Auth type discriminator — ``"none"``, ``"apikey"``, ``"bearer"``, ``"basic"``,
+              ``"aws_sigv4"``, ``"jwt"``, or ``"oauth2"``.
+        config: Type-specific auth config dict; contents depend on the chosen type.
+    """
+
+    type: Literal["none", "apikey", "bearer", "basic", "aws_sigv4", "jwt", "oauth2"]
+    config: Dict[str, Any] = Field(default_factory=dict, description="Type-specific auth config")

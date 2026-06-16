@@ -42,7 +42,8 @@ from sqlalchemy.orm import selectinload
 from models import Api, Workspace, Node
 from routers.runner.runner import run_from_list_api
 from utils import create_response, ExceptionHandler, value_correction, resolve_variables
-from common_querys import get_user_by_username, get_workspace_variables, get_headers
+from common_querys import get_user_by_username, get_workspace_variables, get_headers, resolve_auth
+from auth_strategies import apply_auth
 from config import get_db
 
 router = APIRouter()
@@ -110,8 +111,21 @@ async def bulk_run_cases(
 
             workspace_variables = await get_workspace_variables(db, file.workspace_id)
             resolved_endpoint = resolve_variables(api.endpoint, workspace_variables)
-            resolved_headers = merge_result.get("merged_headers", {})
+            resolved_headers = dict(merge_result.get("merged_headers", {}))
             resolved_extra_meta = resolve_variables(api.extra_meta or {}, workspace_variables)
+
+            # Inject per-API auth into API-level headers so every case inherits it.
+            auth_config = await resolve_auth(db, api.file_id)
+            if auth_config:
+                auth_headers, _ = apply_auth(
+                    auth_config,
+                    method=api.method.upper(),
+                    url=resolved_endpoint,
+                    existing_headers=resolved_headers,
+                )
+                for k, v in auth_headers.items():
+                    if k not in resolved_headers:
+                        resolved_headers[k] = v
 
             cases_data = []
             selected_cases = api_requests.get(file.id)

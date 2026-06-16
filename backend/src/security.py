@@ -11,7 +11,7 @@ from models import Cache
 from config import JWT_ALGORITHM, JWT_SECRET_KEY, SessionLocal
 from jose import jwt
 
-from utils import create_response
+from utils import create_response, logs
 
 
 def validate_required_headers(request, required_headers):
@@ -59,7 +59,7 @@ async def authenticate_token(request):
         try:
             payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
         except Exception as e:
-            print(f"JWT decode error: {str(e)}")
+            logs("JWT decode error", type="error")
             return False
 
         if payload is None:
@@ -69,7 +69,7 @@ async def authenticate_token(request):
         request_username = username
 
         if payload['username'] != request_username:
-            print(f"Username mismatch: {payload['username']} vs {request_username}")
+            logs("JWT username mismatch", type="error")
             return False
 
         # Step 5: Check blacklist in cache
@@ -124,6 +124,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
         """Authenticate the request and forward it, or return a 401 response."""
         # Skip authentication for public routes
         if request.url.path in self.public_routes:
+            response = await call_next(request)
+            return response
+
+        # /m/ = public mock serve; /docs/ = public published docs; /meta/ = public info — no auth needed
+        if request.url.path.startswith("/m/") or request.url.path.startswith("/docs/") or request.url.path.startswith("/meta/"):
             response = await call_next(request)
             return response
 

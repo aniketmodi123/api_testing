@@ -26,6 +26,8 @@ JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'your-secret-key-here')
 JWT_ALGORITHM = os.environ.get('JWT_ALGORITHM', 'HS256')
 
 SECRET_ENC_KEY = os.environ.get('SECRET_ENC_KEY', '')
+OUTBOUND_VERIFY_TLS = os.environ.get('OUTBOUND_VERIFY_TLS', 'true').lower() != 'false'
+CORS_ORIGINS = os.environ.get('CORS_ORIGINS', '*')
 
 # Check if all required environment variables are set
 if not all([PROD_HOST, PROD_USER, PROD_PASSWORD, PROD_DB]):

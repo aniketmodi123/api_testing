@@ -5,6 +5,7 @@ import asyncio
 import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from ssrf import assert_safe_url
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -23,6 +24,7 @@ async def websocket_proxy(ws: WebSocket, target_url: str):
         return
 
     try:
+        assert_safe_url(target_url)
         async with websockets.connect(target_url) as target:
 
             async def relay_to_target():

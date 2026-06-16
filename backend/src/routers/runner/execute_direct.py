@@ -15,22 +15,101 @@ from utils import (
     resolve_variables,
     merge_scopes,
     handle_http_error,
-    get_environment_variables
+    get_environment_variables,
+    logs,
 )
+from http_client import get_http_client, OUTBOUND_VERIFY_TLS
+from ssrf import assert_safe_url
 from routers.variables.global_variables import get_global_variables_for_user
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from common_querys import get_user_by_username, verify_node_ownership, get_headers
+from common_querys import get_user_by_username, verify_node_ownership, get_headers, resolve_auth
 from config import get_db
 from models import Environment, Node
+from auth_strategies import apply_auth_async
 
 def resolve_docker_url(url: str) -> str:
     """What it does: Replace 'localhost' with 'host.docker.internal' so the container can reach the host machine."""
     if 'localhost' in url:
-        # Replace localhost with host.docker.internal for Docker networking
         return url.replace('localhost', 'host.docker.internal')
-
     return url
+
+
+async def send_request(
+    *,
+    method: str,
+    url: str,
+    headers: Dict[str, Any],
+    params: Dict[str, Any],
+    body: Any,
+    body_type: str = "JSON",
+    timeout: float = 30.0,
+) -> Dict[str, Any]:
+    """
+    What it does: Fire an outbound HTTP request with SSRF guard and Docker URL rewriting; return a dict with status_code, headers, text, json, and execution_time.
+    Args:
+        method: HTTP verb (GET, POST, etc.).
+        url: Fully resolved request URL.
+        headers: Final merged request headers.
+        params: Resolved query parameters; appended to the URL.
+        body: Request body — dict, list, or str; ``None`` for body-less requests.
+        body_type: ``"JSON"`` (default) sends as JSON; ``"FORM-DATA"`` or ``"URL-ENCODED"`` sends as form.
+        timeout: Request timeout in seconds; defaults to 30.
+    Returns:
+        dict: ``{status_code, headers, text, json, execution_time}`` — caller formats for its response shape.
+    Raises:
+        httpx.ConnectError: When the target is unreachable.
+        httpx.TimeoutException: When the request exceeds timeout.
+        ValueError: When assert_safe_url rejects the URL (SSRF guard).
+    """
+    # Build final URL with query params
+    final_url = url
+    if params:
+        param_string = "&".join(f"{k}={v}" for k, v in params.items() if v is not None)
+        if param_string:
+            separator = "&" if "?" in final_url else "?"
+            final_url = f"{final_url}{separator}{param_string}"
+
+    request_data: Dict[str, Any] = {
+        "method": method.upper(),
+        "url": resolve_docker_url(final_url),
+        "headers": headers,
+    }
+
+    body_type_upper = (body_type or "JSON").upper()
+    if method.upper() != "GET" and body is not None:
+        if body_type_upper in ("FORM-DATA", "URL-ENCODED"):
+            if isinstance(body, str):
+                request_data["content"] = body.encode("utf-8")
+                headers["Content-Type"] = "application/x-www-form-urlencoded"
+            else:
+                request_data["data"] = body
+        elif isinstance(body, (dict, list)):
+            request_data["json"] = body
+        else:
+            request_data["content"] = str(body)
+
+    assert_safe_url(request_data["url"])
+
+    start = time.time()
+    client = get_http_client()
+    response = await client.request(**request_data)
+    elapsed = time.time() - start
+
+    response_json = None
+    try:
+        response_json = response.json()
+    except Exception:
+        pass
+
+    return {
+        "status_code": response.status_code,
+        "headers": dict(response.headers),
+        "text": response.text,
+        "json": response_json,
+        "execution_time": round(elapsed, 3),
+        "resolved_url": final_url,
+    }
 
 
 router = APIRouter()
@@ -54,13 +133,13 @@ async def test_connectivity(url: str) -> Dict[str, Any]:
 
     for test_url in test_urls:
         try:
-            async with httpx.AsyncClient(timeout=5.0, verify=False) as client:
-                response = await client.get(test_url)
-                results[test_url] = {
-                    "status": "success",
-                    "status_code": response.status_code,
-                    "response_time": "< 5s"
-                }
+            client = get_http_client()
+            response = await client.get(test_url, timeout=5.0)
+            results[test_url] = {
+                "status": "success",
+                "status_code": response.status_code,
+                "response_time": "< 5s"
+            }
         except Exception as e:
             results[test_url] = {
                 "status": "failed",
@@ -185,101 +264,70 @@ async def execute_api_direct(
         if resolved_url and ('.ngrok.' in resolved_url or 'ngrok-free.app' in resolved_url):
             final_headers['ngrok-skip-browser-warning'] = 'true'
 
-        # 5. Prepare request configuration
+        # Inject per-API auth (apikey/bearer/basic/jwt/aws_sigv4).
+        # resolve_auth walks folder→file ancestry; leaf wins (research.md gotcha #2).
+        # Manual Authorization headers set above take precedence — auth inject only
+        # fills keys not already present to prevent double-auth (research.md gotcha #1).
+        auth_config = await resolve_auth(db, request.file_id)
+        if auth_config:
+            body_bytes: bytes | None = None
+            if resolved_body is not None:
+                if isinstance(resolved_body, (dict, list)):
+                    body_bytes = json.dumps(resolved_body).encode("utf-8")
+                elif isinstance(resolved_body, str):
+                    body_bytes = resolved_body.encode("utf-8")
+            auth_headers, auth_params = await apply_auth_async(
+                auth_config,
+                method=request.method.upper(),
+                url=resolved_url,
+                existing_headers=final_headers,
+                body_bytes=body_bytes,
+                db=db,
+                owner_username=username,
+            )
+            for k, v in auth_headers.items():
+                if k not in final_headers:
+                    final_headers[k] = v
+            resolved_params = {**auth_params, **resolved_params}
+
+        # 5. Fire the request via shared send_request
         timeout = request.options.get('timeout', 30.0)
+        result = await send_request(
+            method=request.method,
+            url=resolved_url,
+            headers=final_headers,
+            params=resolved_params,
+            body=resolved_body,
+            body_type=body_type,
+            timeout=timeout,
+        )
+        final_url = result["resolved_url"]
 
-        # Build final URL with query parameters
-        final_url = resolved_url
-        if resolved_params:
-            param_string = '&'.join([f"{k}={v}" for k, v in resolved_params.items() if v is not None])
-            if param_string:
-                separator = '&' if '?' in final_url else '?'
-                final_url = f"{final_url}{separator}{param_string}"
-
-        # 6. Make external API call
-        start_time = time.time()
-
-        # Configure httpx client with more permissive settings
-        client_config = {
-            'timeout': timeout,
-            'verify': False,  # Disable SSL verification for localhost
-            'follow_redirects': True,
-            'limits': httpx.Limits(max_keepalive_connections=5, max_connections=10)
-        }
-
-        async with httpx.AsyncClient(**client_config) as client:
-            # Prepare request data
-            request_data = {
-                'method': request.method.upper(),
-                'url': final_url,
-                'headers': final_headers,
-            }
-
-            # Add body for non-GET requests
-            if request.method.upper() != 'GET' and resolved_body is not None:
-                if body_type in ('FORM-DATA', 'URL-ENCODED'):
-                    # Send as URL-encoded form data
-                    if isinstance(resolved_body, str):
-                        request_data['content'] = resolved_body.encode('utf-8')
-                        final_headers['Content-Type'] = 'application/x-www-form-urlencoded'
-                    else:
-                        request_data['data'] = resolved_body
-                elif isinstance(resolved_body, (dict, list)):
-                    request_data['json'] = resolved_body
-                else:
-                    request_data['content'] = str(resolved_body)
-
-            # Get Docker-aware resolved URL
-            resolved_final_url = resolve_docker_url(final_url)
-            request_data['url'] = resolved_final_url
-
-            # Make the request
-            response = await client.request(**request_data)
-
-        execution_time = time.time() - start_time
-
-        # 7. Parse response
-        response_text = response.text
-        response_json = None
-
-        try:
-            response_json = response.json()
-        except:
-            # Not JSON, keep as text
-            pass
-
-        # 8. Return structured response
+        # 6. Return structured response
         return create_response(
             response_code=200,
             data={
-                "status_code": response.status_code,
-                "headers": dict(response.headers),
-                "text": response_text,
-                "json": response_json,
-                "execution_time": round(execution_time, 3),
-                "resolved_url": final_url,
+                **result,
                 "resolved_headers": final_headers,
                 "variables_used": merged_variables,
-                # "folder_headers": folder_headers,  # Removed: not defined, merged headers are in resolved_headers
                 "request_details": {
                     "method": request.method.upper(),
                     "original_url": request.url,
                     "resolved_params": resolved_params,
-                    "has_body": resolved_body is not None
-                }
+                    "has_body": resolved_body is not None,
+                },
             }
         )
 
     except (httpx.ConnectError, httpx.TimeoutException, httpx.RequestError) as e:
-        # Use the convenient helper function
         return handle_http_error(
             e,
-            url=final_url if 'final_url' in locals() else request.url,
+            url=resolved_url if 'resolved_url' in locals() else request.url,
             method=request.method.upper(),
-            headers=final_headers if 'final_headers' in locals() else request.headers
+            headers=final_headers if 'final_headers' in locals() else request.headers,
         )
     except Exception as e:
-        print(f"Error executing API: {e}")
+        logs(f"execute_api_direct error: {type(e).__name__}", type="error")
         return ExceptionHandler(e)
 
 
@@ -308,16 +356,16 @@ async def execute_api_with_validation(
                 response_data = json.loads(response_content)
             else:
                 # Fallback - this shouldn't happen but provides safety
-                print("Warning: Unexpected response format from execute_api_direct")
+                logs("Unexpected response format from execute_api_direct", type="error")
                 return api_response
 
             execution_data = response_data.get('data', {})
             if not execution_data:
-                print("Warning: No execution data found in API response")
+                logs("No execution data found in API response", type="error")
                 return api_response
 
         except Exception as e:
-            print(f"Error extracting execution data: {e}")
+            logs(f"Error extracting execution data: {type(e).__name__}", type="error")
             return api_response
 
         # 4. Create mock response object for validation
@@ -359,5 +407,5 @@ async def execute_api_with_validation(
         return create_response(200, data=execution_data)
 
     except Exception as e:
-        print(f"Error in validation: {e}")
+        logs(f"execute_with_validation error: {type(e).__name__}", type="error")
         return ExceptionHandler(e)

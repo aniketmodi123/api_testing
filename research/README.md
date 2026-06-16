@@ -1,62 +1,85 @@
-# Polaris — Postman-Parity Research & Roadmap
+# APIPilot Research — Feature-First Spec Directory
 
-Strategic gap-analysis + implementation roadmap to bring this API testing platform to Postman
-feature parity. **Planning only — no code until `implementation-plan.md` is approved.**
+LAST_UPDATED: 2026-06-16
+STRUCTURE: Feature-first. Each folder = one self-contained feature specification.
 
-## Read in order
-| # | Doc | What |
-|---|---|---|
-| 0 | [project-overview.md](project-overview.md) | Current state: stack, arch, auth, modules, quirks |
-| 1 | [current-features.md](current-features.md) | Feature inventory matrix (Existing/Partial/Missing) |
-| 2 | [postman-gap-analysis.md](postman-gap-analysis.md) | Gap score + required work per feature |
-| 3 | [architecture-review.md](architecture-review.md) | Debt, anti-patterns, missing abstractions, risk matrix |
-| 4 | [domain-model.md](domain-model.md) | Entities (existing + new) |
-| 5 | [database-design.md](database-design.md) | Tables, indexes, migrations |
-| 6 | [api-design.md](api-design.md) | New endpoints + contracts |
-| 7 | [frontend-design.md](frontend-design.md) | Screens, states, nav map |
-| 8 | [security-review.md](security-review.md) | Findings by severity + remediation |
-| 9 | [testing-strategy.md](testing-strategy.md) | Test layers + matrix |
-| 10/11 | [implementation-roadmap.md](implementation-roadmap.md) | Phased roadmap + order |
-| 12 | [task-breakdown.md](task-breakdown.md) | Epic→Feature→Task→Subtask |
-| 13 | [validation-framework.md](validation-framework.md) | Pass/fail gates |
-| 14 | [readiness-review.md](readiness-review.md) | Completeness verdict |
-| 15 | [implementation-plan.md](implementation-plan.md) | Code-gen gate (awaiting approval) |
-| — | [trackers.md](trackers.md) | Progress · decisions · assumptions · risks · deps |
-| — | [differentiators.md](differentiators.md) | X1–X10 edges to **beat** Postman, not just match |
-| — | [coding-style-guide.md](coding-style-guide.md) | House style — code must read as user-written |
+---
 
-## Executable roadmap (build top-down)
-`research/phases/phase_0..15/` — one folder per phase. phase_0..5 have full
-README+spec+research+test_matrix; phase_6..15 have a README stub (full spec written at phase start).
-Build order = phase number. See [phases/](phases/) and the Phases block in [MEMORY.md](MEMORY.md).
+## How to Read This Directory
 
-| Phase | Folder | Edge |
-|---|---|---|
-| 0 | platform_hardening | — (foundation) |
-| 1 | secrets_vault | X5 self-hosted vault |
-| 2 | audit_rbac | — |
-| 3 | auth_helpers | X8 inherited auth |
-| 4 | variable_scopes | X3 live var preview |
-| 5 | flows | X7 chaining/orchestration |
-| 6 | openapi_specs | X6 bidirectional import |
-| 7 | contract_testing | X4 regression diff |
-| 8 | mock_servers | X10 mock from captures |
-| 9 | documentation | — |
-| 10 | monitoring | X2 free unlimited monitors |
-| 11 | collaboration | X9 no seat tax |
-| 12 | protocols | SSE/gRPC/SOAP |
-| 13 | governance | — |
-| 14 | ai_assist | X1 AI case generation |
-| 15 | differentiator_polish | X1–X10 audit |
+Start here:
+1. `FEATURE_INVENTORY.md` — status + coverage of all features
+2. `POSTMAN_GAP_ANALYSIS.md` — what's missing vs Postman, priority-ordered
+3. `IMPLEMENTATION_ORDER.md` — which features to implement in what order
 
-## Relationship to existing research
-`research/project/architecture` remains the detailed existing-codebase knowledge base. The old
-done-feature phase folders (UI, history, test-power, monitoring, collab, protocols) were removed —
-that functionality already ships; its status lives in [current-features.md](current-features.md).
+---
 
-## Headline
-~38% Postman parity today (strong core: request/collections/variables/runner/scheduler/
-collab/GraphQL+WS). Biggest gaps: secrets-at-rest, auth helpers, flows/chaining, mock servers,
-docs publishing, contract/OpenAPI. Critical path: **Alembic → secrets → auth/variables → flows.**
+## Feature Folders
 
-**Status: planning complete. Awaiting approval to start Phase F0.**
+Each folder contains exactly 4 files:
+- `README.md` — status, coverage %, dependencies, current/next task
+- `research.md` — existing code to reuse, patterns, gotchas
+- `spec.md` — requirements, API contracts, decisions, edge cases
+- `test_matrix.md` — acceptance tests, edge cases, regression
+
+---
+
+## Context Loading Rule (mandatory for subagents)
+
+When working on a feature, load ONLY the 4 files in that feature folder.
+Do NOT load the entire research directory or other feature folders.
+
+```
+research/<feature-folder>/README.md
+research/<feature-folder>/research.md
+research/<feature-folder>/spec.md
+research/<feature-folder>/test_matrix.md
+```
+
+---
+
+## Feature Readiness Gate
+
+Before ANY implementation, the target feature folder MUST have all 4 files.
+If any file is missing: STOP and generate documentation first. Do not code.
+
+---
+
+## Directory
+
+| Folder | Feature |
+|---|---|
+| 01-api-request-builder | Request builder, HTTP methods, URL, headers |
+| 02-api-execution-engine | Execute engine, TLS, retry, pooled client |
+| 03-response-viewer | Status, body, headers, history |
+| 04-variables | Global, collection, env, local, dynamic, scope chain |
+| 05-environments | Environment CRUD + active env |
+| 06-authentication | All auth types, OAuth2, folder inheritance |
+| 07-collections | Node tree, CRUD, bulk import |
+| 08-testing | Assertions, validator, schema validation |
+| 09-collection-runner | Bulk run, history, results |
+| 10-workflows | Flow engine, chaining, conditions, canvas |
+| 11-documentation | Doc generation, publishing, public page |
+| 12-mock-servers | Mock server, routes, public serve, from-capture |
+| 13-monitoring | Uptime, p95, latency series, rollup |
+| 14-workspaces | Workspace, members, invites, RBAC |
+| 15-collaboration | Comments, threads |
+| 16-version-control | Node snapshots, restore |
+| 17-graphql | Introspection, GraphQL body mode |
+| 18-websocket | WebSocket proxy |
+| 19-sse | SSE streaming proxy |
+| 20-grpc | gRPC unary (gated on demand) |
+| 20-openapi-specs | OpenAPI import/export, cURL round-trip, contract testing, regression diff |
+| 21-soap | SOAP (gated on demand) |
+| 22-security | SSRF, TLS, CORS, structured logging |
+| 23-governance | API linting, naming rules, lint report |
+| 24-ai | AI test generation (dropped — re-scope if needed) |
+| 25-administration | Meta endpoints, god user, comparison sheet |
+| assertions | Assertion engine (see 08-testing) |
+| audit-logs | AuditLog model, write_audit, read endpoint |
+| alerts | ScheduleAlert, email/webhook firing |
+| multi-request-groups | Group execution (via collections + runner) |
+| schedules | BulkTestSchedule, cron, scheduler worker |
+| secrets-vault | Fernet encryption, vault.py, backfill |
+| ssrf-protection | assert_safe_url, all call sites |
+| test-cases | ApiCase model, CRUD |

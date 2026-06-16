@@ -18,3 +18,4 @@ pydantic[email]
 jsonschema
 websockets
 cryptography
+jsonpath-ng

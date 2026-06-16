@@ -1,0 +1,355 @@
+"""
+What this file does: Parses an OpenAPI 3.x or Swagger 2.0 spec (JSON or YAML) and generates nodes, apis, and cases in the workspace; stores the spec record in api_specs.
+"""
+
+import json
+import shlex
+from typing import Any, Dict, List, Optional, Set, Tuple
+
+try:
+    import yaml as _yaml
+    _YAML_AVAILABLE = True
+except ImportError:
+    _YAML_AVAILABLE = False
+
+from fastapi import APIRouter, Depends, Header
+from pydantic import BaseModel
+from sqlalchemy import select, and_
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from common_querys import can_access_workspace, get_user_by_username
+from config import get_db
+from models import ApiSpec, Node, Api, ApiCase
+from utils import ExceptionHandler, create_response
+
+router = APIRouter()
+
+MAX_PATHS = 500
+MAX_REF_DEPTH = 10
+
+
+# ---------- Pydantic schemas ----------
+
+class SpecImportBody(BaseModel):
+    """Request body for POST /spec/import.
+
+    Attributes:
+        workspace_id: Workspace to import into.
+        name: Display name for the stored spec record.
+        spec_text: Raw spec string (JSON or YAML); mutually exclusive with spec_json.
+        spec_json: Pre-parsed spec dict; mutually exclusive with spec_text.
+        version: Optional version label to store on the spec record.
+        parent_node_id: Optional existing folder to nest generated nodes under; ``None`` creates at root.
+    """
+
+    workspace_id: int
+    name: str
+    spec_text: Optional[str] = None
+    spec_json: Optional[Dict[str, Any]] = None
+    version: Optional[str] = None
+    parent_node_id: Optional[int] = None
+
+
+# ---------- Helpers ----------
+
+def _parse_raw(body: SpecImportBody) -> Dict[str, Any]:
+    """What it does: Return a parsed dict from spec_json or spec_text; raise ValueError on bad input."""
+    if body.spec_json:
+        return body.spec_json
+    if body.spec_text:
+        text = body.spec_text.strip()
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            if _YAML_AVAILABLE:
+                return _yaml.safe_load(text)
+            raise ValueError("spec_text is not valid JSON and pyyaml is not installed")
+    raise ValueError("Either spec_json or spec_text must be provided")
+
+
+def _detect_format(raw: Dict[str, Any]) -> str:
+    """What it does: Return 'swagger' when the spec contains a top-level swagger key, else 'openapi'."""
+    if "swagger" in raw:
+        return "swagger"
+    return "openapi"
+
+
+def _resolve_ref(ref_path: str, root: Dict[str, Any], seen: Optional[Set[str]] = None, depth: int = 0) -> Any:
+    """What it does: Inline a $ref pointer within the same document; raises ValueError on circular or external refs."""
+    if seen is None:
+        seen = set()
+    if not ref_path.startswith("#/"):
+        raise ValueError(f"External $ref not allowed: {ref_path}")
+    if ref_path in seen:
+        raise ValueError(f"Circular $ref detected: {ref_path}")
+    if depth > MAX_REF_DEPTH:
+        raise ValueError("$ref nesting too deep (max 10 levels)")
+    seen.add(ref_path)
+    parts = ref_path.lstrip("#/").split("/")
+    node = root
+    for part in parts:
+        part = part.replace("~1", "/").replace("~0", "~")
+        if not isinstance(node, dict) or part not in node:
+            raise ValueError(f"$ref target not found: {ref_path}")
+        node = node[part]
+    return _inline_refs(node, root, seen, depth + 1)
+
+
+def _inline_refs(obj: Any, root: Dict[str, Any], seen: Optional[Set[str]] = None, depth: int = 0) -> Any:
+    """What it does: Recursively replace all $ref values with their inlined definitions from root."""
+    if seen is None:
+        seen = set()
+    if isinstance(obj, dict):
+        if "$ref" in obj:
+            return _resolve_ref(obj["$ref"], root, set(seen), depth)
+        return {k: _inline_refs(v, root, seen, depth) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_inline_refs(item, root, seen, depth) for item in obj]
+    return obj
+
+
+def _schema_to_example_body(schema: Any) -> Dict[str, Any]:
+    """What it does: Generate a skeleton example dict from a JSON schema object for use as ApiCase body."""
+    if not isinstance(schema, dict):
+        return {}
+    t = schema.get("type", "object")
+    if t == "object":
+        props = schema.get("properties", {})
+        return {k: _schema_to_example_body(v) for k, v in props.items()}
+    if t == "array":
+        items = schema.get("items", {})
+        return [_schema_to_example_body(items)]
+    defaults = {"string": "", "integer": 0, "number": 0.0, "boolean": False, "null": None}
+    return defaults.get(t, "")
+
+
+def _extract_paths_openapi(parsed: Dict[str, Any]) -> List[Tuple[str, str, Dict[str, Any]]]:
+    """What it does: Return a flat list of (method, path, operation) tuples from an OpenAPI 3.x paths object."""
+    results = []
+    paths = parsed.get("paths", {})
+    for path, path_item in paths.items():
+        if not isinstance(path_item, dict):
+            continue
+        # path-level parameters to merge into each operation
+        path_params = path_item.get("parameters", [])
+        for method in ("get", "post", "put", "patch", "delete", "head", "options"):
+            op = path_item.get(method)
+            if not isinstance(op, dict):
+                continue
+            # merge path-level params
+            merged_op = dict(op)
+            all_params = path_params + op.get("parameters", [])
+            merged_op["parameters"] = all_params
+            results.append((method.upper(), path, merged_op))
+    return results
+
+
+def _extract_paths_swagger(raw: Dict[str, Any], parsed: Dict[str, Any]) -> List[Tuple[str, str, Dict[str, Any]]]:
+    """What it does: Return (method, path, operation) tuples from a Swagger 2.0 spec, normalising path with basePath."""
+    base = raw.get("basePath", "")
+    results = []
+    paths = parsed.get("paths", {})
+    for path, path_item in paths.items():
+        if not isinstance(path_item, dict):
+            continue
+        path_params = path_item.get("parameters", [])
+        for method in ("get", "post", "put", "patch", "delete", "head", "options"):
+            op = path_item.get(method)
+            if not isinstance(op, dict):
+                continue
+            merged_op = dict(op)
+            merged_op["parameters"] = path_params + op.get("parameters", [])
+            full_path = f"{base.rstrip('/')}{path}"
+            results.append((method.upper(), full_path, merged_op))
+    return results
+
+
+def _operation_to_case(op: Dict[str, Any]) -> Tuple[Dict, Dict, Dict]:
+    """What it does: Extract headers, query params, and body dict from an OpenAPI operation object."""
+    headers: Dict[str, str] = {}
+    params: Dict[str, str] = {}
+    body: Dict[str, Any] = {}
+
+    for param in op.get("parameters", []):
+        if not isinstance(param, dict):
+            continue
+        name = param.get("name", "")
+        loc = param.get("in", "")
+        example = param.get("example", "")
+        schema = param.get("schema", {})
+        default = schema.get("default", example) if isinstance(schema, dict) else example
+        if loc == "header":
+            headers[name] = str(default)
+        elif loc in ("query", "path"):
+            params[name] = str(default)
+
+    # requestBody (OpenAPI 3) or body param (Swagger 2)
+    request_body = op.get("requestBody", {})
+    if isinstance(request_body, dict):
+        content = request_body.get("content", {})
+        json_schema = (
+            content.get("application/json", {}).get("schema") or
+            content.get("application/x-www-form-urlencoded", {}).get("schema")
+        )
+        if json_schema:
+            body = _schema_to_example_body(json_schema)
+
+    return headers, params, body
+
+
+async def _get_or_create_folder(
+    db: AsyncSession, workspace_id: int, name: str, parent_id: Optional[int]
+) -> int:
+    """What it does: Return the id of an existing folder node matching name+parent, creating it if absent."""
+    q = select(Node).where(
+        and_(
+            Node.workspace_id == workspace_id,
+            Node.name == name,
+            Node.parent_id == parent_id,
+            Node.type == "folder",
+        )
+    )
+    existing = (await db.execute(q)).scalar_one_or_none()
+    if existing:
+        return existing.id
+    folder = Node(workspace_id=workspace_id, name=name, type="folder", parent_id=parent_id)
+    db.add(folder)
+    await db.flush()
+    return folder.id
+
+
+# ---------- Route handler ----------
+
+@router.post("/spec/import")
+async def import_spec(
+    payload: SpecImportBody,
+    username: str = Header(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """POST /spec/import — parse an OpenAPI or Swagger spec and generate nodes, apis, and cases in the workspace.
+
+    Steps:
+        - Step 1: Authenticate user and verify editor access on the target workspace.
+        - Step 2: Parse raw spec string or dict; detect format (openapi/swagger).
+        - Step 3: Inline all internal $ref pointers; reject external refs and circular refs.
+        - Step 4: Extract (method, path, operation) tuples; enforce 500-path cap.
+        - Step 5: For each operation, create a Node + Api + ApiCase; deduplicate names.
+        - Step 6: Persist ApiSpec record; commit; return stats.
+    """
+    try:
+        # Step 1: auth + RBAC
+        user = await get_user_by_username(db, username)
+        if not user:
+            return create_response(400, error_message="User not found")
+        access = await can_access_workspace(db, payload.workspace_id, user.id, min_role="editor")
+        if not access:
+            return create_response(403, error_message="Access denied")
+
+        # Step 2: parse
+        try:
+            raw = _parse_raw(payload)
+        except (ValueError, Exception) as e:
+            return create_response(400, error_message=f"Spec parse error: {e}")
+
+        fmt = _detect_format(raw)
+
+        # Step 3: inline refs
+        try:
+            parsed = _inline_refs(raw, raw)
+        except ValueError as e:
+            return create_response(400, error_message=str(e))
+
+        # Step 4: extract operations
+        if fmt == "swagger":
+            ops = _extract_paths_swagger(raw, parsed)
+        else:
+            ops = _extract_paths_openapi(parsed)
+
+        if len(ops) > MAX_PATHS:
+            return create_response(400, error_message=f"Spec exceeds {MAX_PATHS} path limit ({len(ops)} found)")
+
+        # Step 5: create nodes/apis/cases
+        nodes_created = apis_created = cases_created = 0
+        parent_id = payload.parent_node_id
+
+        for method, path, op in ops:
+            op_id = op.get("operationId") or op.get("summary") or f"{method} {path}"
+            node_name = op_id[:255]
+
+            # deduplicate node name within same parent
+            q = select(Node).where(
+                and_(
+                    Node.workspace_id == payload.workspace_id,
+                    Node.name == node_name,
+                    Node.parent_id == parent_id,
+                    Node.type == "file",
+                )
+            )
+            existing_node = (await db.execute(q)).scalar_one_or_none()
+            if existing_node:
+                node_name = f"{node_name} (imported)"
+
+            node = Node(
+                workspace_id=payload.workspace_id,
+                name=node_name,
+                type="file",
+                parent_id=parent_id,
+            )
+            db.add(node)
+            await db.flush()
+            nodes_created += 1
+
+            api = Api(
+                file_id=node.id,
+                name=op.get("summary") or f"{method} {path}",
+                method=method,
+                endpoint=path,
+                description=op.get("description") or "",
+                is_active=True,
+            )
+            db.add(api)
+            await db.flush()
+            apis_created += 1
+
+            headers, params, body = _operation_to_case(op)
+            case = ApiCase(
+                api_id=api.id,
+                name="default",
+                headers=headers,
+                params=params,
+                body=body if body else {},
+                expected={},
+            )
+            db.add(case)
+            cases_created += 1
+
+        # Step 6: persist spec record
+        version = payload.version or parsed.get("info", {}).get("version")
+        spec_record = ApiSpec(
+            workspace_id=payload.workspace_id,
+            name=payload.name,
+            version=version,
+            format=fmt,
+            raw=raw,
+            parsed=parsed,
+        )
+        db.add(spec_record)
+        await db.flush()
+        spec_id = spec_record.id
+
+        await db.commit()
+        return create_response(
+            201,
+            data={
+                "spec_id": spec_id,
+                "format": fmt,
+                "stats": {
+                    "nodes": nodes_created,
+                    "apis": apis_created,
+                    "cases": cases_created,
+                },
+            },
+        )
+    except Exception as e:
+        await db.rollback()
+        return ExceptionHandler(e)

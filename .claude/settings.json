@@ -11,13 +11,15 @@
         ]
       }
     ],
-    "Stop": [
+    "PostToolUse": [
       {
-        "matcher": "",
+        "matcher": "Edit|Write",
         "hooks": [
           {
             "type": "command",
-            "command": "cd $PROJECT_DIR && graphify update . 2>/dev/null || true"
+            "command": "cd $PROJECT_DIR && graphify update . > /dev/null 2>&1 &",
+            "timeout": 10,
+            "statusMessage": ""
           }
         ]
       }

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import MethodBadge from '../MethodBadge/MethodBadge';
 import styles from './TabBar.module.css';
 
-const STORAGE_KEY = 'polaris_open_tabs';
+const STORAGE_KEY = 'apipilot_open_tabs';
 const MAX_NAME_LEN = 24;
 
 function loadTabs() {

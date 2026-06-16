@@ -8,8 +8,9 @@ import re
 from typing import Any, Dict, List, Optional
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import Depends, Header, HTTPException
 
-from models import Header, Node, User, VerifyLogin, Workspace, Environment, Api, WorkspaceMember
+from models import Header, Node, User, VerifyLogin, Workspace, Environment, Api, WorkspaceMember, AuditLog, CollectionVariable
 
 from sqlalchemy.orm import selectinload
 
@@ -691,3 +692,200 @@ async def get_workspace_variables(db: AsyncSession, workspace_id: int) -> dict:
         return variables_dict
     except Exception as e:
         return {}
+
+
+async def write_audit(
+    db: AsyncSession,
+    username: str,
+    action: str,
+    entity_type: str,
+    entity_id: Optional[int] = None,
+    workspace_id: Optional[int] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+    ip: Optional[str] = None,
+) -> None:
+    """
+    What it does: Append an immutable audit row to audit_logs inside the caller's transaction.
+    Args:
+        username: Email of the acting user.
+        action: Verb string, e.g. ``"node.create"``, ``"api.delete"``.
+        entity_type: Object type acted on, e.g. ``"node"``, ``"api_case"``.
+        entity_id: Numeric ID of the affected object; ``None`` when not applicable.
+        workspace_id: Workspace context; ``None`` for account-level actions.
+        metadata: Extra context dict (before/after values); ``None`` when not needed.
+        ip: Client IP; ``None`` when not available.
+    Notes:
+        - Must be called before ``db.commit()`` so the audit row is part of the same transaction.
+    """
+    db.add(AuditLog(
+        username=username,
+        workspace_id=workspace_id,
+        action=action,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        extra=metadata,
+        ip=ip,
+    ))
+
+
+def require_role(min_role: str):
+    """
+    What it does: Return a FastAPI dependency that verifies the caller has at least min_role in the workspace.
+    Args:
+        min_role: Minimum role required — ``"viewer"``, ``"editor"``, ``"admin"``, or ``"owner"``.
+    Returns:
+        User: The authenticated user when the role check passes.
+    Raises:
+        HTTPException: 401 when no valid user found; 403 when role is insufficient.
+    """
+    from config import get_db
+
+    async def _dep(
+        workspace_id: int,
+        username: str = Header(...),
+        db: AsyncSession = Depends(get_db),
+    ) -> User:
+        user = await get_user_by_username(db, username)
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
+        ok = await can_access_workspace(db, workspace_id, user.id, min_role=min_role)
+        if not ok:
+            raise HTTPException(status_code=403, detail="Access denied")
+        return user
+
+    return _dep
+
+
+async def get_collection_variables(db: AsyncSession, file_id: int) -> Dict[str, Any]:
+    """
+    What it does: Walk the ancestor path leaf→root and merge collection variables with child overriding parent; raw (unmasked) values returned.
+    Args:
+        file_id: Node id of the file (leaf) to start collection variable resolution from.
+    Returns:
+        dict: Merged key→value mapping of collection variables; child nodes override ancestors; empty dict when no variables defined.
+    Steps:
+        - Step 1: Build ancestor path root→file via get_folder_path_to_root
+        - Step 2: Reverse to leaf→root order so child values overwrite parents
+        - Step 3: For each node in leaf→root order, fetch CollectionVariable rows and merge
+        - Step 4: Decrypt secret values; return merged dict
+    """
+    from vault import decrypt as dec_secret
+
+    # Step 1: Build root→file path
+    path = await get_folder_path_to_root(db, file_id)
+    if not path:
+        return {}
+
+    node_ids = [n["id"] for n in path]
+
+    # Step 3: Fetch all collection variables for nodes in path in one query
+    result = await db.execute(
+        select(CollectionVariable).where(CollectionVariable.node_id.in_(node_ids))
+    )
+    rows = result.scalars().all()
+
+    # Group by node_id for ordered merge
+    by_node: Dict[int, list] = {nid: [] for nid in node_ids}
+    for row in rows:
+        if row.node_id in by_node:
+            by_node[row.node_id].append(row)
+
+    # Step 2 & 4: Merge root→leaf (last writer = leaf = highest priority per spec decision #2)
+    merged: Dict[str, Any] = {}
+    for node_info in path:  # root→leaf order; later overwrites earlier
+        for row in by_node.get(node_info["id"], []):
+            try:
+                value = dec_secret(row.value) if row.is_secret else row.value
+            except ValueError:
+                value = row.value
+            merged[row.key] = value
+
+    return merged
+
+
+async def build_scope_chain(
+    db: AsyncSession,
+    file_id: int,
+    username: str,
+    workspace_id: int,
+    local_context: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """
+    What it does: Merge all four variable scopes (global→collection→environment→local) for a file into a single dict; local context wins.
+    Args:
+        file_id: Node id of the file being executed.
+        username: User email; used to fetch global variables.
+        workspace_id: Workspace id; used to fetch the active environment.
+        local_context: Run-time variables (e.g. extracted from a flow step); ``None`` treated as empty.
+    Returns:
+        dict: Merged variable map with precedence local > env > collection > global.
+    Steps:
+        - Step 1: Fetch global variables for the user
+        - Step 2: Fetch collection variables for the file's ancestor chain
+        - Step 3: Fetch active environment variables for the workspace
+        - Step 4: Merge in precedence order; return result
+    """
+    from routers.variables.global_variables import get_global_variables_for_user
+    from utils import merge_scopes, get_environment_variables
+    from sqlalchemy import select as sa_select
+
+    # Step 1
+    global_vars = await get_global_variables_for_user(username)
+
+    # Step 2
+    collection_vars = await get_collection_variables(db, file_id)
+
+    # Step 3
+    env_vars: Dict[str, Any] = {}
+    env_result = await db.execute(
+        sa_select(Environment).where(
+            Environment.workspace_id == workspace_id,
+            Environment.is_active == True,
+        )
+    )
+    active_env = env_result.scalar_one_or_none()
+    if active_env and active_env.variables:
+        env_vars = dict(active_env.variables)
+
+    # Step 4: global < collection < env < local
+    return merge_scopes(global_vars, collection_vars, env_vars, local_context or {})
+
+
+async def resolve_auth(db: AsyncSession, file_id: int) -> Optional[Dict[str, Any]]:
+    """
+    What it does: Walk the ancestor path from root to the file node and return the deepest auth config found, with the file-level API auth taking priority over any folder-level auth.
+    Args:
+        file_id: Node id of the file whose auth config should be resolved.
+    Returns:
+        dict: Auth config dict ``{"type": "...", "config": {...}}`` from the winning node.
+        None: Returned when no auth config is defined on any ancestor or the file itself.
+    Steps:
+        - Step 1: Build the ancestor path root→file using get_folder_path_to_root
+        - Step 2: Walk the path and collect the last-seen auth config (child overrides parent)
+        - Step 3: Check the file node's Api.extra_meta.auth as the leaf (highest priority)
+        - Step 4: Return the winning auth config or None
+    Notes:
+        - Folder-level auth requires a future Node.extra_meta column; this function is safe to call now and will automatically pick it up once that column exists.
+    """
+    # Step 1: Build path root→file
+    path = await get_folder_path_to_root(db, file_id)
+    if not path:
+        return None
+
+    # Step 2: Walk folders root→leaf, last writer wins
+    resolved: Optional[Dict[str, Any]] = None
+    for node_info in path:
+        if node_info["type"] == "folder":
+            # Folder auth is a future extension (Node.extra_meta not yet defined).
+            # Placeholder: no-op until the column exists.
+            pass
+
+    # Step 3: File-level auth from Api.extra_meta.auth is the leaf — highest priority
+    api_result = await db.execute(select(Api).where(Api.file_id == file_id))
+    api = api_result.scalar_one_or_none()
+    if api and api.extra_meta:
+        file_auth = api.extra_meta.get("auth")
+        if file_auth and file_auth.get("type", "none") != "none":
+            resolved = file_auth
+
+    return resolved  # Step 4
