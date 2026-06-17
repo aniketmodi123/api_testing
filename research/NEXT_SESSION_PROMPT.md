@@ -4,28 +4,23 @@ TASK: Deep research only — no coding.
 
 ## HOW THIS SESSION WORKS
 
-This prompt drives research with a 2-subagent parallel pipeline.
+Sequential only — one feature at a time. No parallel subagents.
 
 At session start:
 1. Read RESEARCH_GAPS.md (create if missing).
 2. Print the pending feature list with numbers — like a menu.
-3. STOP. Ask the user TWO questions before doing anything:
-   a. "Which feature(s) should I research? Enter number(s) in order (e.g. 1, 3, 5 — or 'all pending')."
-   b. "Each feature's research is fully independent (no shared state, no cross-dependencies). Should I run 2 subagents in parallel to speed this up? Each subagent takes one feature; when one finishes it picks the next. (yes / no)"
-4. Wait for user answers before proceeding.
+3. STOP. Ask the user ONE question:
+   "Which feature(s) should I research? Enter number(s) in order (e.g. 1, 3, 5 — or 'all pending')."
+4. Wait for user answer before proceeding.
+5. Research one feature at a time, in user's specified order.
+6. After each feature completes, report done and ask: "Continue to next, or pick new ones?"
 
-If user says YES to parallel:
-- Spawn 2 subagents simultaneously.
-- Assign: Agent 1 → feature #1, Agent 2 → feature #2 from the user's selected list.
-- As soon as either agent finishes, immediately assign it the next unstarted feature from the list.
-- Continue until all selected features are done.
-- Each agent works fully independently — never wait for the other to finish before assigning new work.
+RESUME RULE: Check RESEARCH_GAPS.md status column for each feature.
+- `pending` → not started, include in menu
+- `redo` → was researched but BEFORE current source list / prompt standard existed; treat as pending, include in menu with "(REDO)" label
+- `done` → skip entirely, do NOT show in menu
 
-If user says NO to parallel:
-- Research one feature at a time, in user's specified order.
-- After each feature completes, report done and ask: "Continue to next, or pick new ones?"
-
-RESUME RULE: Check RESEARCH_GAPS.md to see which features already done. Only show PENDING features in the menu.
+Show both `pending` and `redo` features in the menu. Never re-research a `done` feature unless user explicitly asks.
 
 ---
 
@@ -40,39 +35,80 @@ research/RESEARCH_GAPS.md   ← create if missing; tracks progress
 
 ## Step 1 — Per-feature loop (repeat for every selected feature)
 
-IMPORTANT: Live web research is MANDATORY for every feature — even ones previously marked complete or partially researched. Old spec files may be stale or incomplete. Always fetch current Postman docs fresh.
+IMPORTANT: Live web research is MANDATORY. Old spec files may be stale. Always fetch Postman docs fresh.
+
+**SPEC QUALITY BAR**: The goal is a spec so complete that a dev can implement the feature in one pass with zero ambiguity. Use `research/04-variables/spec.md` as the quality benchmark — every feature spec must match that level of detail before marking done.
+
+## Sources (check in this order)
+
+### 1. Official Postman Docs
+| Source | URL pattern |
+|---|---|
+| Postman Learning Center | `learning.postman.com/docs/...` |
+| Postman API Docs | `learning.postman.com/docs/developer/intro-apis/` |
+| Postman Collection Format | `schema.getpostman.com/json/collection/v2.1.0/collection.json` |
+| Postman Collection Format reference | `learning.postman.com/collection-format` |
+| Postman Blog / Changelog | `blog.postman.com` |
+
+### 2. Reference Repos (read logic only — do NOT copy or depend on)
+| Repo | What to extract |
+|---|---|
+| `hoppscotch/hoppscotch` | FE UI patterns, component structure, state shape |
+| `usebruno/bruno` → `@usebruno/lang`, `filestore` | Data model, file format, parser logic |
+| `postmanlabs/newman` | Collection-runner logic, iteration, data file handling |
+| `postmanlabs/postman-collection` | Request/collection object model |
+| `postmanlabs/postman-code-generators` | Codegen templates per language |
+| `Kong/insomnia` | Desktop app behavior reference |
+| `postmanlabs/schemas` | OpenAPI / Collection schema definitions |
+
+Use `deepwiki.com/<owner>/<repo>` for fast repo summaries. Only check repos relevant to current feature.
+
+---
 
 For each feature:
-1. Read its 4 files: README.md, research.md, spec.md, test_matrix.md
-   — treat these as a baseline only, not ground truth
+1. Read only `spec.md` — baseline only, not ground truth
 2. Live web search — REQUIRED, never skip:
-   - Search using the terms in the table below
-   - Sources: site:learning.postman.com, site:postman.com/docs, recent blog posts, changelogs
-   - Fetch and read at least 2–3 actual pages per feature
-   - Look for: sub-features, UI patterns, edge cases, gotchas, new additions since last research
-   - Note: Postman ships fast — assume anything over 3 months old in spec files is potentially stale
-3. Gap check — Postman current state vs APIPilot spec:
-   - Sub-features missing from spec?
-   - Endpoints missing from backend?
-   - UI components missing from FE spec?
-   - Edge cases / gotchas missing?
-   - Any Postman feature that doesn't exist in APIPilot at all?
-4. Update spec.md — add/complete FE section with:
-   - Component breakdown (name, props, what it renders)
-   - API calls (exact endpoint + response fields consumed)
-   - State shape (local state vs Redux/store)
-   - Library decision (chart lib, canvas lib, diff lib — pick specific, justify)
-   - UX decisions informed by live Postman research
-5. Update research.md — add live Postman findings, source URLs, new gaps found
-6. Update test_matrix.md — add missing test cases from live research
-7. Update README.md — adjust coverage % and missing list based on live findings
-8. Mark feature done in RESEARCH_GAPS.md before moving to next
+   - Use search terms from the table below
+   - Fetch the single most comprehensive official Postman docs page for this feature
+   - Look for: sub-features, exact API behavior, UI patterns, edge cases, gotchas, recent additions
+   - Postman ships fast — anything over 3 months old in spec files is potentially stale
+3. Check relevant reference repos (deepwiki first for overview, then drill into source if needed)
+4. Gap check — Postman current state vs APIPilot spec (BOTH BE and FE):
+   - BE: missing endpoints, missing DB models, missing business logic, missing validation rules
+   - FE: missing components, missing state, missing API calls wired up
+   - Missing sub-features, undocumented edge cases, features not in APIPilot at all
+5. Update `spec.md` only — must include ALL of the following sections that apply:
+
+   **Backend section:**
+   - New DB models (table name, all fields, types, constraints, FK relationships)
+   - New endpoints (method, path, min role, purpose, request body schema, response schema)
+   - Modified files (exact file path, what changes and why)
+   - Business logic (algorithms, precedence rules, resolution order)
+   - Validation rules (field constraints, error responses)
+   - Security rules (what is masked, what requires extra auth, audit logging)
+
+   **Frontend section:**
+   - Component inventory table (component name, location, purpose)
+   - Per-component TypeScript interface (props + key types)
+   - Component render description (what it shows, interaction behavior)
+   - API calls table (action, method, URL, when triggered)
+   - State shape (TypeScript interface for store/context slice)
+   - Library decisions (pick specific lib, justify — e.g. "CodeMirror 6 not Monaco: bundle size")
+
+   **Both:**
+   - Decision table (numbered, decision → choice → reason)
+   - Edge cases table (numbered, trap → fix)
+   - Deferred items (what is explicitly out of scope + why)
+
+6. Mark feature done in RESEARCH_GAPS.md before moving to next — set status to `done` regardless of whether it was `pending` or `redo`. Update the "New Gaps Found" column with count and short summary of gaps found this session.
+
+DO NOT update research.md, test_matrix.md, or README.md — spec.md only.
 
 ---
 
 ## Feature Order + Search Terms
 
-### Batch A — FE Missing (highest priority)
+### Batch A — Missing / Incomplete (highest priority)
 
 | # | Folder | Search Terms |
 |---|---|---|
@@ -108,6 +144,17 @@ For each feature:
 | 25 | research/alerts/ | "postman monitor alerts" "postman notifications" "postman webhook alert" |
 | 26 | research/25-administration/ | "postman admin" "postman comparison" "postman pricing features" |
 | 27 | research/multi-request-groups/ | "postman multi request" "postman request groups" "postman bulk" |
+
+### Batch C — Never researched / thin specs (added 2026-06-17)
+
+| # | Folder | Search Terms |
+|---|---|---|
+| 28 | research/01-api-request-builder/ | "postman request builder" "postman params tab" "postman body types" "postman pre-request" "postman form-data" "postman binary upload" "postman curl import" 2025 |
+| 29 | research/02-api-execution-engine/ | "postman send request internals" "postman request lifecycle" "postman pre-request script" "postman variable resolution order" "postman redirect" "postman timeout" |
+| 30 | research/03-response-viewer/ | "postman response viewer" "postman response body" "postman pretty raw preview" "postman response cookies" "postman response headers" "postman response search" |
+| 31 | research/22-security/ | "postman security" "postman SSRF" "postman TLS" "postman certificate" "postman proxy settings" "postman CORS" |
+| 32 | research/20-grpc/ | "postman grpc" "postman protobuf" "postman grpc unary streaming" "postman proto file" |
+| 33 | research/21-soap/ | "postman soap" "postman wsdl" "postman xml envelope" "postman soap request" |
 
 ---
 
