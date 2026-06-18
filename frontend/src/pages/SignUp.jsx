@@ -46,40 +46,40 @@ export default function SignUp() {
   };
 
   return (
-    <div className="container">
-      <div className="card">
-        <h1 className="title">Create account</h1>
-        <p className="subtitle">Sign up to get started</p>
-        <form onSubmit={submit} className="stack">
-          <label className="hint">Email</label>
+    <div className={styles.page}>
+      <div className={styles.card}>
+        <div className={styles.logo}>
+          <div className={styles.logoMark}>A</div>
+          <div className={styles.logoName}>API Tester</div>
+        </div>
+        <h1 className={styles.title}>Create account</h1>
+        <p className={styles.subtitle}>Sign up to get started</p>
+        <form onSubmit={submit} className={styles.stack}>
+          <label className={styles.label}>Email</label>
           <input
-            className="input"
+            className={styles.input}
             type="email"
             value={email}
             onChange={e => setEmail(e.target.value)}
             autoComplete="email"
             required
           />
-          <label className="hint">Password</label>
+          <label className={styles.label}>Password</label>
           <input
-            className="input"
+            className={styles.input}
             type="password"
             value={password}
             onChange={e => setPassword(e.target.value)}
             autoComplete="new-password"
             required
           />
-          {error && <div className={styles.err}>{error}</div>}
-          {ok && (
-            <div className="hint" style={{ color: '#16a34a' }}>
-              {ok}
-            </div>
-          )}
-          <div className={styles.actions}>
-            <button disabled={loading} className="btn">
+          {error && <div className={styles.error}>{error}</div>}
+          {ok && <div className={styles.success}>{ok}</div>}
+          <div className={styles.stack}>
+            <button disabled={loading} className={styles.submitBtn}>
               {loading ? 'Creating...' : 'Sign up'}
             </button>
-            <div className="hint">
+            <div className={styles.hint}>
               Already have an account?{' '}
               <Link className={styles.link} to="/sign-in">
                 Sign in

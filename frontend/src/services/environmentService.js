@@ -462,8 +462,8 @@ export class EnvironmentService {
     return [
       {
         name: 'api_testing',
-        displayName: 'API Testing',
-        description: 'Common variables for API testing',
+        displayName: 'ApiPilot',
+        description: 'Common variables for ApiPilot',
         variables: [
           {
             key: 'devurl',

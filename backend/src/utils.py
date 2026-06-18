@@ -615,14 +615,109 @@ def _make_dynamic_context() -> dict:
     """What it does: Generate a single-use dynamic token set so all tokens are stable within one resolve call."""
     import uuid as _uuid
     import random as _random
-    import string as _string
-    _rand_user = "".join(_random.choices(_string.ascii_lowercase, k=8))
-    _rand_domain = "".join(_random.choices(_string.ascii_lowercase, k=6))
-    return {
-        "$uuid": str(_uuid.uuid4()),
-        "$randomInt": str(_random.randint(1, 99999)),
-        "$randomEmail": f"{_rand_user}@{_rand_domain}.com",
+    from datetime import datetime, timezone as _tz
+
+    try:
+        from faker import Faker as _Faker
+        _f = _Faker()
+    except ImportError:
+        _f = None
+
+    _now = datetime.now(_tz.utc)
+    _ts_sec = int(_now.timestamp())
+    _guid = str(_uuid.uuid4())
+
+    ctx: dict = {
+        # --- canonical timestamp tokens ---
+        "$timestamp": str(_ts_sec),
+        "$isoTimestamp": _now.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+        # --- GUID ---
+        "$guid": _guid,
+        "$randomUUID": _guid,
+        # --- legacy (keep for backward compat) ---
+        "$uuid": _guid,
+        # --- numbers ---
+        "$randomInt": str(_random.randint(0, 1000)),
+        "$randomFloat": f"{_random.uniform(0.0, 1.0):.2f}",
+        # --- boolean ---
+        "$randomBoolean": _random.choice(["true", "false"]),
     }
+
+    if _f:
+        ctx.update({
+            # internet / contact
+            "$randomEmail": _f.email(),
+            "$randomExampleEmail": _f.ascii_email(),
+            "$randomUserName": _f.user_name(),
+            "$randomUrl": _f.url(),
+            "$randomDomainName": _f.domain_name(),
+            "$randomDomainSuffix": _f.tld(),
+            "$randomDomainWord": _f.domain_word(),
+            "$randomIP": _f.ipv4(),
+            "$randomIPV6": _f.ipv6(),
+            "$randomMACAddress": _f.mac_address(),
+            "$randomProtocol": _random.choice(["http", "https"]),
+            "$randomPassword": _f.password(),
+            "$randomUserAgent": _f.user_agent(),
+            "$randomSemver": f"{_random.randint(0,9)}.{_random.randint(0,99)}.{_random.randint(0,999)}",
+            # names
+            "$randomFirstName": _f.first_name(),
+            "$randomLastName": _f.last_name(),
+            "$randomFullName": _f.name(),
+            "$randomNamePrefix": _f.prefix(),
+            "$randomNameSuffix": _f.suffix(),
+            # phone / finance
+            "$randomPhoneNumber": _f.phone_number(),
+            "$randomCurrencyCode": _f.currency_code(),
+            "$randomCurrencyName": _f.currency_name(),
+            "$randomCurrencySymbol": _f.currency_symbol(),
+            # company
+            "$randomCompanyName": _f.company(),
+            "$randomCompanySuffix": _f.company_suffix(),
+            "$randomJobTitle": _f.job(),
+            # address / location
+            "$randomCity": _f.city(),
+            "$randomStreetName": _f.street_name(),
+            "$randomStreetAddress": _f.street_address(),
+            "$randomCountry": _f.country(),
+            "$randomCountryCode": _f.country_code(),
+            "$randomLatitude": str(_f.latitude()),
+            "$randomLongitude": str(_f.longitude()),
+            "$randomZipCode": _f.zipcode(),
+            "$randomTimeZone": _f.timezone(),
+            # text / lorem
+            "$randomAlphaNumeric": _random.choice("abcdefghijklmnopqrstuvwxyz0123456789"),
+            "$randomWord": _f.word(),
+            "$randomWords": " ".join(_f.words(_random.randint(1, 5))),
+            "$randomLoremWord": _f.word(),
+            "$randomLoremWords": " ".join(_f.words(3)),
+            "$randomLoremSentence": _f.sentence(),
+            "$randomLoremSentences": " ".join(_f.sentences(_random.randint(2, 6))),
+            "$randomLoremParagraph": _f.paragraph(),
+            # color / file
+            "$randomHexColor": _f.hex_color(),
+            "$randomMimeType": _f.mime_type(),
+            "$randomFileName": _f.file_name(),
+            "$randomFileExtension": _f.file_extension(),
+            "$randomFilePath": _f.file_path(),
+            "$randomDirectoryPath": _f.file_path(depth=2).rsplit("/", 1)[0],
+        })
+    else:
+        # fallback when faker not installed
+        import string as _string
+        _rand_user = "".join(_random.choices(_string.ascii_lowercase, k=8))
+        _rand_domain = "".join(_random.choices(_string.ascii_lowercase, k=6))
+        ctx["$randomEmail"] = f"{_rand_user}@{_rand_domain}.com"
+        ctx["$randomUserName"] = _rand_user
+        ctx["$randomFirstName"] = "John"
+        ctx["$randomLastName"] = "Doe"
+        ctx["$randomFullName"] = "John Doe"
+        ctx["$randomWord"] = "lorem"
+        ctx["$randomWords"] = "lorem ipsum dolor"
+        ctx["$randomLoremSentence"] = "Lorem ipsum dolor sit amet."
+        ctx["$randomAlphaNumeric"] = _random.choice("abcdefghijklmnopqrstuvwxyz0123456789")
+
+    return ctx
 
 
 def resolve_variables(data: Any, variables: dict, ts: int | None = None, _dyn: dict | None = None) -> Any:

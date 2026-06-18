@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from 'react-resizable-panels';
 import BulkTestPanel from '../../components/BulkTestPanel/BulkTestPanel.jsx';
 import CollectionTree from '../../components/CollectionTree/CollectionTree';
+import VariableScopePanel from '../../components/VariableScopePanel/VariableScopePanel';
 import { EnvironmentManager } from '../../components/EnvironmentManager';
 import EnvironmentDetail from '../../components/EnvironmentManager/EnvironmentDetail';
 import EnvironmentForm from '../../components/EnvironmentManager/EnvironmentForm';
@@ -21,6 +22,7 @@ export default function Home() {
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState('collections');
+  const [showScopePanel, setShowScopePanel] = useState(false);
 
   // Variable modal states
   const [showVariableModal, setShowVariableModal] = useState(false);
@@ -189,7 +191,17 @@ export default function Home() {
           <PanelGroup orientation="horizontal" className={styles.panelGroup}>
             <Panel defaultSize="20%" minSize="12%" maxSize="40%" className={styles.treePanel}>
               {activeTab === 'collections' && (
-                <CollectionTree onSelectRequest={handleSelectRequest} />
+                <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+                  <div style={{ flex: 1, overflow: 'hidden' }}>
+                    <CollectionTree onSelectRequest={handleSelectRequest} />
+                  </div>
+                  <div
+                    style={{ borderTop: '1px solid var(--border)', flexShrink: 0, cursor: 'pointer', padding: '4px 10px', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', userSelect: 'none', display: 'flex', alignItems: 'center', gap: 4 }}
+                    onClick={() => setShowScopePanel(v => !v)}
+                  >
+                    ⊞ Variable Scopes
+                  </div>
+                </div>
               )}
               {activeTab === 'environments' && (
                 <EnvironmentManager
@@ -270,6 +282,13 @@ export default function Home() {
           onClose={handleCloseVariableModal}
         />
       )}
+
+      <VariableScopePanel
+        open={showScopePanel}
+        onClose={() => setShowScopePanel(false)}
+        nodeId={selectedNode?.id}
+        workspaceId={activeWorkspace?.id}
+      />
     </div>
   );
 }

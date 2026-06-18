@@ -23,7 +23,7 @@ from ssrf import assert_safe_url
 from routers.variables.global_variables import get_global_variables_for_user
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from common_querys import get_user_by_username, verify_node_ownership, get_headers, resolve_auth
+from common_querys import get_user_by_username, verify_node_ownership, get_headers, resolve_auth, build_scope_chain
 from config import get_db
 from models import Environment, Node
 from auth_strategies import apply_auth_async
@@ -204,25 +204,10 @@ async def execute_api_direct(
 
         workspace_id = file_node.workspace_id
 
-        # 1. Get global variables (lowest priority)
-        global_vars = await get_global_variables_for_user(username)
-
-        # 2. Get environment variables (overrides global)
-        env_variables = {}
-        if request.environment_id:
-            env_variables = await get_environment_variables(request.environment_id)
-        else:
-            env_query = select(Environment).where(
-                Environment.workspace_id == workspace_id,
-                Environment.is_active == True
-            )
-            env_result = await db.execute(env_query)
-            active_environment = env_result.scalar_one_or_none()
-            if active_environment:
-                env_variables = await get_environment_variables(active_environment.id)
-
-        # Merge scopes: global < env
-        merged_variables = merge_scopes(global_vars, env_variables)
+        # Build 4-scope chain: global < collection < env < local
+        merged_variables = await build_scope_chain(
+            db, file_id=request.file_id, username=username, workspace_id=workspace_id
+        )
 
         # 3. Get merged headers using get_headers (includes parent folders and file)
         folder_path, folder_ids, headers_map, merge_result = await get_headers(db, request.file_id)

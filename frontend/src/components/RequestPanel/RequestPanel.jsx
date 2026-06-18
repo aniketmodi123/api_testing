@@ -15,6 +15,7 @@ import TestResultsGrid from '../TestResultsGrid';
 import { Button, JsonEditor, VariableInput, VariableAwareInput } from '../common';
 import WebSocketPanel from '../WebSocketPanel/WebSocketPanel';
 import AuthBuilder from './AuthBuilder';
+import CollectionVarEditor from '../CollectionVarEditor/CollectionVarEditor';
 import { api as backendApi } from '../../api';
 import styles from './RequestPanel.module.css';
 import './buttonStyles.css';
@@ -2141,6 +2142,10 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
 
             {/* Validation buttons have been removed as requested */}
           </div>
+        )}
+
+        {activeTab === 'variables' && (
+          <CollectionVarEditor nodeId={selectedNode?.id} />
         )}
 
         {activeTab === 'apiTests' && (

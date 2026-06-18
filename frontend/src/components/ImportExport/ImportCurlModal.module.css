@@ -6,30 +6,31 @@
   align-items: center;
   justify-content: center;
   z-index: 1000;
+  backdrop-filter: blur(2px);
 }
 
 .modal {
-  background: var(--p0-surface, var(--surface));
-  border: 1px solid var(--p0-border, var(--border));
-  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
   width: 560px;
   max-width: 95vw;
-  padding: 24px;
+  padding: var(--space-4);
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  gap: var(--space-3);
+  box-shadow: var(--shadow-lg);
 }
 
 .title {
   margin: 0;
-  font-size: 16px;
+  font-size: var(--text-lg);
   font-weight: 600;
   color: var(--text);
 }
 
 .label {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
   margin-bottom: 6px;
   display: block;
@@ -38,12 +39,12 @@
 .textarea {
   width: 100%;
   min-height: 140px;
-  font-family: var(--font-mono, monospace);
-  font-size: 12px;
-  padding: 10px;
-  border: 1px solid var(--p0-border, var(--border));
-  border-radius: 4px;
-  background: var(--p0-bg, var(--background));
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
   color: var(--text);
   resize: vertical;
   box-sizing: border-box;
@@ -51,16 +52,17 @@
 
 .textarea:focus {
   outline: none;
-  border-color: var(--p0-primary, var(--primary));
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-dim);
 }
 
 .preview {
-  background: var(--p0-surface-2, var(--surface-2));
-  border: 1px solid var(--p0-border, var(--border));
-  border-radius: 4px;
-  padding: 10px;
-  font-size: 12px;
-  font-family: var(--font-mono, monospace);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
   color: var(--text);
   white-space: pre-wrap;
   word-break: break-all;
@@ -69,37 +71,37 @@
 }
 
 .error {
-  color: var(--error, #ef4444);
-  font-size: 12px;
+  color: var(--error);
+  font-size: var(--text-sm);
 }
 
 .actions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   justify-content: flex-end;
 }
 
 .cancelBtn {
-  padding: 8px 16px;
+  padding: var(--space-2) var(--space-3);
   background: none;
-  border: 1px solid var(--p0-border, var(--border));
-  border-radius: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   color: var(--text);
-  font-size: 13px;
+  font-size: var(--text-sm);
   cursor: pointer;
 }
 
 .cancelBtn:hover {
-  background: var(--p0-surface-2, var(--surface-2));
+  background: var(--hover-background);
 }
 
 .importBtn {
-  padding: 8px 16px;
-  background: var(--p0-primary, var(--primary));
+  padding: var(--space-2) var(--space-3);
+  background: var(--accent);
   color: #fff;
   border: none;
-  border-radius: 4px;
-  font-size: 13px;
+  border-radius: var(--radius);
+  font-size: var(--text-sm);
   cursor: pointer;
 }
 

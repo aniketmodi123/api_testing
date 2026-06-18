@@ -19,12 +19,28 @@ const WorkspaceContext = createContext({
 
 export function WorkspaceProvider({ children }) {
   const [workspaces, setWorkspaces] = useState([]);
-  const [activeWorkspace, setActiveWorkspace] = useState(null);
+  const [activeWorkspace, setActiveWorkspace] = useState(() => {
+    try {
+      const stored = localStorage.getItem('activeWorkspace');
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [workspaceTree, setWorkspaceTree] = useState(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [shouldLoadWorkspaces, setShouldLoadWorkspaces] = useState(false);
+
+  // Persist activeWorkspace so StrictMode remounts restore it immediately
+  useEffect(() => {
+    if (activeWorkspace) {
+      localStorage.setItem('activeWorkspace', JSON.stringify(activeWorkspace));
+    } else {
+      localStorage.removeItem('activeWorkspace');
+    }
+  }, [activeWorkspace]);
 
   // Auto-enable workspace loading if user is authenticated
   useEffect(() => {

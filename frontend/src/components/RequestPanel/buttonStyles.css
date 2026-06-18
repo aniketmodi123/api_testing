@@ -3,35 +3,50 @@
   display: flex;
   align-items: center;
   height: 34px;
-  margin: 0 0 0 10px;
+  margin: 0 0 0 var(--space-2);
 }
 
 /* These styles will override the module CSS */
 button.overrideSendButton {
-  background-color: #4d5969 !important;
+  background: var(--accent) !important;
   color: white !important;
   border: none !important;
-  padding: 0 15px !important;
-  border-radius: 4px 0 0 4px !important;
+  padding: 0 var(--space-3) !important;
+  border-radius: var(--radius) 0 0 var(--radius) !important;
   cursor: pointer !important;
-  font-size: 14px !important;
+  font-size: var(--text-sm) !important;
   height: 100% !important;
-  font-weight: normal !important;
+  font-weight: 600 !important;
   min-width: 70px;
+  transition: background 0.12s !important;
+}
+
+button.overrideSendButton:hover:not(:disabled) {
+  background: var(--accent-hover) !important;
+}
+
+button.overrideSendButton:disabled {
+  opacity: 0.5 !important;
+  cursor: not-allowed !important;
 }
 
 /* Record as Case button */
 .recordCaseButton {
-  margin-left: 10px;
-  padding: 0 15px;
-  background-color: #ffffff;
-  color: #000000;
-  border: 1px solid #ddd;
-  border-radius: 4px 0 0 4px;
+  margin-left: var(--space-2);
+  padding: 0 var(--space-3);
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius) 0 0 var(--radius);
   cursor: pointer;
   height: 32px;
-  font-weight: normal;
-  font-size: 14px;
+  font-weight: 500;
+  font-size: var(--text-sm);
+  transition: background 0.12s;
+}
+
+.recordCaseButton:hover {
+  background: var(--surface-3);
 }
 
 .recordCaseButtonContainer {

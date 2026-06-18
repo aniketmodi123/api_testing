@@ -2,43 +2,50 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 10px;
+  padding: var(--space-2);
+  background: var(--surface-1);
+  border-radius: var(--radius);
 }
 
 .header {
+  height: 36px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-}
-
-.title {
-  font-size: 12px;
+  padding: 0 var(--space-3);
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
+  flex-shrink: 0;
+}
+
+.title {
+  flex: 1;
 }
 
 .addBtn {
-  font-size: 12px;
-  padding: 3px 10px;
-  background: var(--p0-primary, var(--primary));
-  color: #fff;
+  font-size: var(--text-sm);
+  padding: var(--space-0) var(--space-2);
+  background: var(--accent);
+  color: var(--text-inverse);
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius);
   cursor: pointer;
 }
 
-.addBtn:hover { opacity: 0.85; }
+.addBtn:hover {
+  opacity: 0.85;
+}
 
 .error {
-  font-size: 12px;
-  color: var(--error, #ef4444);
+  font-size: var(--text-sm);
+  color: var(--error);
   padding: 4px 6px;
 }
 
 .empty {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
   padding: 10px 0;
 }
@@ -47,9 +54,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 8px;
-  background: var(--p0-surface-2, var(--surface-2));
-  border-radius: 4px;
+  padding: var(--space-1) var(--space-2);
+  background: var(--surface-2);
+  border-radius: var(--radius);
   gap: 8px;
 }
 
@@ -63,26 +70,26 @@
 }
 
 .typeBadge {
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 600;
   padding: 2px 6px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   text-transform: uppercase;
   flex-shrink: 0;
 }
 
 .typeBadge.webhook {
-  background: rgba(99, 102, 241, 0.15);
-  color: #6366f1;
+  background: var(--accent-dim);
+  color: var(--accent);
 }
 
 .typeBadge.email {
-  background: rgba(34, 197, 94, 0.15);
-  color: #22c55e;
+  background: var(--success-dim);
+  color: var(--success);
 }
 
 .target {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -92,7 +99,7 @@
 }
 
 .conditions {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   white-space: nowrap;
   flex-shrink: 0;
@@ -105,24 +112,24 @@
 }
 
 .editBtn {
-  font-size: 11px;
+  font-size: var(--text-xs);
   padding: 2px 8px;
-  border: 1px solid var(--p0-border, var(--border));
-  border-radius: 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text);
   cursor: pointer;
 }
 
 .editBtn:hover {
-  border-color: var(--p0-primary, var(--primary));
-  color: var(--p0-primary, var(--primary));
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .deleteBtn {
   background: none;
   border: none;
-  color: var(--error, #ef4444);
+  color: var(--error);
   cursor: pointer;
   font-size: 14px;
   padding: 2px 4px;
@@ -133,9 +140,9 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 10px;
-  background: var(--p0-surface-2, var(--surface-2));
-  border-radius: 6px;
+  padding: var(--space-2);
+  background: var(--surface-2);
+  border-radius: var(--radius);
 }
 
 .formRow {
@@ -145,23 +152,32 @@
 }
 
 .label {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
 }
 
-.select, .input {
-  font-size: 12px;
-  padding: 5px 8px;
-  border: 1px solid var(--p0-border, var(--border));
-  border-radius: 4px;
-  background: var(--p0-bg, var(--background));
+.select,
+.input {
+  height: 28px;
+  padding: 0 var(--space-2);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   color: var(--text);
+  font-size: var(--text-sm);
+  width: 100%;
+  transition: border-color 0.12s;
+}
+.select:focus,
+.input:focus {
+  outline: none;
+  border-color: var(--accent);
 }
 
 .checkboxRow {
   display: flex;
   gap: 12px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--text);
 }
 
@@ -179,23 +195,26 @@
 }
 
 .cancelBtn {
-  font-size: 12px;
-  padding: 4px 12px;
-  border: 1px solid var(--p0-border, var(--border));
-  border-radius: 4px;
+  font-size: var(--text-sm);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   background: transparent;
   color: var(--text);
   cursor: pointer;
 }
 
 .saveBtn {
-  font-size: 12px;
-  padding: 4px 14px;
-  background: var(--p0-primary, var(--primary));
-  color: #fff;
+  font-size: var(--text-sm);
+  padding: var(--space-1) var(--space-3);
+  background: var(--accent);
+  color: var(--text-inverse);
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius);
   cursor: pointer;
 }
 
-.saveBtn:disabled { opacity: 0.6; cursor: not-allowed; }
+.saveBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

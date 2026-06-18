@@ -19,3 +19,4 @@ jsonschema
 websockets
 cryptography
 jsonpath-ng
+faker

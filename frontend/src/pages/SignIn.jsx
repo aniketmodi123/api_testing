@@ -29,41 +29,42 @@ export default function SignIn() {
   };
 
   return (
-    <div className="container">
-      <div className="card">
-        <h1 className="title">Welcome back</h1>
-        <p className="subtitle">Sign in to continue</p>
-        <form onSubmit={submit} className="stack">
-          <label className="hint">Email</label>
+    <div className={styles.page}>
+      <div className={styles.card}>
+        <div className={styles.logo}></div>
+        <h1 className={styles.title}>Welcome back</h1>
+        <p className={styles.subtitle}>Sign in to continue</p>
+        <form onSubmit={submit} className={styles.stack}>
+          <label className={styles.label}>Email</label>
           <input
-            className="input"
+            className={styles.input}
             type="email"
             value={email}
             onChange={e => setEmail(e.target.value)}
             autoComplete="email"
           />
-          <label className="hint">Password</label>
+          <label className={styles.label}>Password</label>
           <input
-            className="input"
+            className={styles.input}
             type="password"
             value={password}
             onChange={e => setPassword(e.target.value)}
             autoComplete="current-password"
           />
           {(error || localError) && (
-            <div className={styles.err}>{error || localError}</div>
+            <div className={styles.error}>{error || localError}</div>
           )}
-          <div className={styles.actions}>
-            <button disabled={loading} className="btn">
+          <div className={styles.stack}>
+            <button disabled={loading} className={styles.submitBtn}>
               {loading ? 'Signing in...' : 'Sign in'}
             </button>
-            <div className="hint">
+            <div className={styles.hint}>
               New here?{' '}
               <Link className={styles.link} to="/sign-up">
                 Create account
               </Link>
             </div>
-            <div className="hint">
+            <div className={styles.hint}>
               <Link className={styles.link} to="/forgot-password">
                 Forgot password?
               </Link>

@@ -2,232 +2,194 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .selectorButton {
   display: flex;
   align-items: center;
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 6px 12px;
-  cursor: pointer;
-  font-size: 14px;
+  gap: var(--space-2);
+  height: 32px;
+  padding: 0 var(--space-2);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
   color: var(--text);
-  background-color: var(--background-lighter);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  max-width: 280px;
+  transition:
+    background 0.12s,
+    color 0.12s;
+}
+.selectorButton:hover {
+  background: var(--surface-3);
+}
+
+.triggerIcon {
+  flex-shrink: 0;
+  color: var(--text-muted);
 }
 
 .workspaceName {
-  margin-right: 8px;
-  max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  max-width: 220px;
 }
 
 .dropdownIcon {
-  font-size: 10px;
-  transition: transform 0.2s;
+  flex-shrink: 0;
+  color: var(--text-muted);
 }
 
-.selectorButton:hover {
-  background-color: var(--hover-background);
+.membersToggleBtn {
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  color: var(--text-subtle);
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    color 0.1s,
+    background 0.1s;
+}
+.membersToggleBtn:hover {
+  color: var(--text);
+  background: var(--surface-3);
 }
 
+/* Dropdown */
 .dropdown {
   position: absolute;
-  top: 100%;
+  top: calc(100% + 6px);
   left: 0;
-  width: 250px;
-  background-color: var(--background);
+  background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 4px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  z-index: 100;
-  margin-top: 4px;
+  border-radius: var(--radius-lg, 10px);
+  box-shadow: var(--shadow-lg);
+  z-index: 200;
+  min-width: 620px;
+  max-width: 680px;
   overflow: hidden;
+  padding: var(--space-2) 0;
+  animation: fadeIn 0.12s ease;
+}
+
+/* Two-pane body: list (left) + detail (right) */
+.dropdownBody {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
 }
 
 .dropdownHeader {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--border);
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3) var(--space-3);
 }
 
-.dropdownHeader h3 {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.newButton {
-  background-color: var(--primary);
-  color: white;
-  border: none;
-  border-radius: 3px;
-  padding: 4px 8px;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.newButton:hover {
-  background-color: var(--primary-dark);
-}
-
-.createForm {
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--border);
-}
-
-.createInput {
-  width: 100%;
-  padding: 8px;
+.searchInput {
+  flex: 1;
+  height: 36px;
+  padding: 0 var(--space-3);
+  background: var(--surface-1);
   border: 1px solid var(--border);
-  border-radius: 4px;
-  background-color: var(--input-background);
+  border-radius: var(--radius);
   color: var(--text);
-  font-size: 14px;
-  margin-bottom: 8px;
-  resize: vertical;
-  font-family: inherit;
+  font-size: var(--text-sm);
+  font-family: var(--font-ui);
+}
+.searchInput::placeholder {
+  color: var(--text-subtle);
+}
+.searchInput:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-dim);
 }
 
-.createActions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.createButton,
-.cancelButton {
-  padding: 6px 12px;
-  border-radius: 4px;
-  font-size: 12px;
+.createTopButton {
+  height: 36px;
+  padding: 0 var(--space-3);
+  background: var(--surface-3);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: var(--text-sm);
+  font-weight: 500;
   cursor: pointer;
-  border: none;
+  flex-shrink: 0;
+  transition:
+    background 0.12s,
+    border-color 0.12s;
 }
-
-.createButton {
-  background-color: var(--primary);
-  color: white;
+.createTopButton:hover {
+  background: var(--surface-2);
+  border-color: var(--text-subtle);
 }
-
-.createButton:hover:not(:disabled) {
-  background-color: var(--primary-dark);
-}
-
-.createButton:disabled {
-  background-color: var(--disabled);
+.createTopButton:disabled {
+  opacity: 0.5;
   cursor: not-allowed;
-}
-
-.cancelButton {
-  background-color: transparent;
-  color: var(--text);
-  border: 1px solid var(--border);
-}
-
-.cancelButton:hover {
-  background-color: var(--hover-background);
 }
 
 .workspaceList {
-  max-height: 300px;
+  max-height: 160px; /* 4 items × 40px */
   overflow-y: auto;
+  padding: 0 var(--space-2);
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
 }
 
-.loadingItem,
-.emptyItem {
-  padding: 10px 16px;
-  color: var(--text-muted);
-  text-align: center;
-  font-style: italic;
+.workspaceList::-webkit-scrollbar {
+  width: 4px;
 }
 
-.workspaceItem {
-  padding: 10px 16px;
-  cursor: pointer;
-  transition: background-color 0.2s;
+.workspaceList::-webkit-scrollbar-track {
+  background: transparent;
 }
 
-.workspaceItem:hover {
-  background-color: var(--hover-background);
+.workspaceList::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
 }
 
-.workspaceItem.active {
-  background-color: var(--selected-item-background);
-  color: var(--primary);
-  font-weight: 500;
+.workspaceList::-webkit-scrollbar-thumb:hover {
+  background: var(--text-subtle);
 }
 
 .workspaceItem {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-}
-
-.deleteWorkspaceButton {
-  visibility: hidden;
-  opacity: 0;
-  background: none;
-  border: none;
-  color: #ff5252;
-  font-size: 16px;
-  font-weight: bold;
+  height: 40px;
+  padding: 0 var(--space-2);
+  gap: var(--space-3);
   cursor: pointer;
-  margin-left: auto;
-  padding: 0 8px;
-  transition: opacity 0.2s;
+  color: var(--text);
+  font-size: var(--text-sm);
+  border-radius: var(--radius);
+  transition: background 0.08s;
+}
+.workspaceItem:hover {
+  background: var(--surface-3);
+}
+.workspaceItem.active .workspaceItemName {
+  font-weight: 700;
+}
+.workspaceItem.active .itemIcon {
+  color: var(--text);
 }
 
-.workspaceItem:hover .deleteWorkspaceButton {
-  visibility: visible;
-  opacity: 1;
-}
-
-.deleteConfirmation {
-  padding: 15px;
-  background-color: var(--header-bg, #23272f);
-  border-radius: 4px;
-  margin: 10px;
-  border: 1px solid var(--border-color, #353a40);
-  color: var(--text, #fff);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
-}
-
-.deleteWarning {
-  color: #ff5252;
-  font-size: 12px;
-  margin-top: 5px;
-}
-
-.deleteActions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 15px;
-  gap: 10px;
-}
-
-.deleteButton {
-  background-color: #ff5252;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  padding: 5px 10px;
-  cursor: pointer;
-  font-size: 12px;
-}
-
-.deleteButton:hover {
-  background-color: #ff1a1a;
-}
-
-.deleteButton:disabled {
-  background-color: #ffcccc;
-  cursor: not-allowed;
+.itemIcon {
+  flex-shrink: 0;
+  color: var(--text-muted);
 }
 
 .workspaceItemName {
@@ -235,32 +197,332 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  margin-right: 4px;
+  font-weight: 500;
 }
 
-.membersToggleBtn {
-  background: none;
+/* Footer — "View all workspaces" */
+.dropdownFooter {
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+
+.viewAllButton {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: calc(100% - 2 * var(--space-2));
+  margin: 0 var(--space-2);
+  height: 40px;
+  padding: 0 var(--space-2);
+  background: transparent;
   border: none;
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: 500;
   cursor: pointer;
-  font-size: 14px;
-  padding: 4px 6px;
-  border-radius: 4px;
+  transition: background 0.08s;
+}
+.viewAllButton:hover {
+  background: var(--surface-3);
+}
+
+.footerIcon {
+  flex-shrink: 0;
   color: var(--text-muted);
+}
+
+/* Row hover actions (edit + delete) */
+.itemActions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.workspaceItem:hover .itemActions {
+  opacity: 1;
+}
+
+.itemActionBtn {
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: var(--text-subtle);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition:
+    color 0.1s,
+    background 0.1s;
+}
+.itemActionBtn:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+
+.deleteWorkspaceButton {
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: var(--text-subtle);
+  border-radius: var(--radius-sm);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
   line-height: 1;
+  padding: 0;
+  transition:
+    color 0.1s,
+    background 0.1s;
+}
+.deleteWorkspaceButton:hover {
+  color: var(--error);
+  background: var(--error-dim);
+}
+
+/* Create form */
+.createForm {
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.createInput {
+  width: 100%;
+  height: 28px;
+  padding: 0 var(--space-2);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: var(--text-xs);
+  resize: none;
+  font-family: var(--font-ui);
+}
+.createInput:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.createActions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+.cancelButton {
+  height: 24px;
+  padding: 0 var(--space-2);
+  background: var(--surface-3);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.createButton {
+  height: 24px;
+  padding: 0 var(--space-2);
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  cursor: pointer;
+}
+.createButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Delete confirmation */
+.deleteConfirmation {
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+.deleteConfirmation p {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin: 0 0 var(--space-1);
+}
+.deleteWarning {
+  color: var(--error) !important;
+}
+.deleteActions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+  margin-top: var(--space-2);
+}
+.deleteButton {
+  height: 24px;
+  padding: 0 var(--space-2);
+  background: var(--error-dim);
+  color: var(--error);
+  border: 1px solid var(--error);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+.deleteButton:hover {
+  background: var(--error);
+  color: white;
+}
+
+/* Loading / empty */
+.loadingItem,
+.emptyItem {
+  padding: var(--space-3);
+  text-align: center;
+  font-size: var(--text-xs);
+  color: var(--text-subtle);
+}
+
+/* ACTIVE tag on the currently selected row */
+.activeTag {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--success, #3fb950);
+  background: var(--success-dim, rgba(63, 185, 80, 0.12));
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+
+/* Detail pane (right column) */
+.detailPane {
+  border-left: 1px solid var(--border);
+  padding: var(--space-2) var(--space-3);
+  min-width: 0;
+}
+
+.detailEmpty {
+  color: var(--text-subtle);
+  font-size: var(--text-xs);
+  padding: var(--space-3) 0;
+  text-align: center;
+}
+
+.detailHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.detailIcon {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.detailName {
+  flex: 1;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detailDescription {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.metaRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+  font-size: var(--text-xs);
+}
+
+.metaLabel {
+  color: var(--text-subtle);
   flex-shrink: 0;
 }
-.membersToggleBtn:hover { background: var(--hover-background); }
 
+.metaValue {
+  color: var(--text);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.idPill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 2px 4px 2px var(--space-2);
+  max-width: 60%;
+}
+
+.idText {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.copyBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 4px;
+  border: none;
+  background: transparent;
+  color: var(--text-subtle);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 600;
+  transition:
+    color 0.1s,
+    background 0.1s;
+}
+.copyBtn:hover {
+  color: var(--text);
+  background: var(--surface-3);
+}
+
+/* Members panel popover */
 .membersPanelPopover {
   position: absolute;
   top: calc(100% + 4px);
   left: 0;
-  min-width: 300px;
-  max-width: 380px;
-  background: var(--surface-panel, var(--background));
-  border: 1px solid var(--border-color, var(--border));
-  border-radius: 8px;
-  padding: 12px 16px;
-  z-index: 1000;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  z-index: 200;
+  min-width: 280px;
+  animation: fadeIn 0.12s ease;
 }

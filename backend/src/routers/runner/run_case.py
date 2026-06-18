@@ -20,7 +20,7 @@ from config import (
     get_db
 )
 
-from common_querys import verify_node_ownership, get_user_by_username, get_workspace_variables, get_headers, resolve_auth
+from common_querys import verify_node_ownership, get_user_by_username, get_workspace_variables, get_headers, resolve_auth, build_scope_chain
 from auth_strategies import apply_auth
 from models import Api
 
@@ -67,7 +67,7 @@ async def get_file_api(
         if not folder_path:
             return create_response(206, error_message="Folder not found")
 
-        workspace_variables = await get_workspace_variables(db, file_node.workspace_id)
+        workspace_variables = await build_scope_chain(db, file_id=req.file_id, username=username, workspace_id=file_node.workspace_id)
 
         resolved_endpoint = resolve_variables(api.endpoint, workspace_variables)
         resolved_headers = resolve_variables(merge_result.get("merged_headers", {}), workspace_variables)

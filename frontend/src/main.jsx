@@ -4,7 +4,7 @@ import { Provider } from 'react-redux';
 import {
   Navigate,
   Route,
-  HashRouter as Router,
+  BrowserRouter as Router,
   Routes,
 } from 'react-router-dom';
 import App from './App.jsx';

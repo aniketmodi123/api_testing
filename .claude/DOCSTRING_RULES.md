@@ -1,4 +1,4 @@
-# Docstring Rules — API Testing Backend
+# Docstring Rules — ApiPilot Backend
 
 ## Which format to use
 

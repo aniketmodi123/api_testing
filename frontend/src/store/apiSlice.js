@@ -170,7 +170,7 @@ const baseQueryWithAuth = async (args, api, extraOptions) => {
 export const apiSlice = createApi({
   reducerPath: 'api',
   baseQuery: baseQueryWithAuth,
-  tagTypes: ['Workspace', 'User', 'Environment', 'Node', 'ApiCase', 'Header', 'GlobalVariable', 'BulkTestSchedule', 'BulkTestExecution', 'ScheduleAlert', 'WorkspaceMember'],
+  tagTypes: ['Workspace', 'User', 'Environment', 'Node', 'ApiCase', 'Header', 'GlobalVariable', 'BulkTestSchedule', 'BulkTestExecution', 'ScheduleAlert', 'WorkspaceMember', 'CollectionVariable'],
   endpoints: builder => ({
     // Authentication endpoints
     signIn: builder.mutation({
@@ -255,62 +255,8 @@ export const apiSlice = createApi({
       }),
     }),
 
-    // Workspace endpoints
-    getWorkspaces: builder.query({
-      query: () => '/workspace/list',
-      providesTags: ['Workspace'],
-    }),
-
-    getWorkspaceTree: builder.query({
-      query: workspaceId => `/workspace/${workspaceId}`,
-      providesTags: (result, error, workspaceId) => [
-        { type: 'Workspace', id: workspaceId },
-        'Node',
-      ],
-      transformResponse: response => {
-        // Return the original structure to maintain compatibility with CollectionTree
-        // The component expects file_tree with children, not collections with items
-        console.log('getWorkspaceTree response:', response);
-        return response;
-      },
-    }),
-
-    createWorkspace: builder.mutation({
-      query: workspaceData => ({
-        url: '/workspace/create',
-        method: 'POST',
-        body: workspaceData,
-      }),
-      invalidatesTags: ['Workspace'],
-    }),
-
-    updateWorkspace: builder.mutation({
-      query: ({ workspaceId, ...workspaceData }) => ({
-        url: `/workspace/${workspaceId}`,
-        method: 'PUT',
-        body: workspaceData,
-      }),
-      invalidatesTags: (result, error, { workspaceId }) => [
-        { type: 'Workspace', id: workspaceId },
-        'Workspace',
-      ],
-    }),
-
-    deleteWorkspace: builder.mutation({
-      query: workspaceId => ({
-        url: `/workspace/${workspaceId}`,
-        method: 'DELETE',
-      }),
-      invalidatesTags: ['Workspace'],
-    }),
-
-    getBulkTestingTree: builder.query({
-      query: workspaceId => `/workspace/${workspaceId}?include_apis=true`,
-      providesTags: (result, error, workspaceId) => [
-        { type: 'Workspace', id: workspaceId },
-        'ApiCase',
-      ],
-    }),
+    // Workspace CRUD lives in workspaceService + store/workspace.jsx (single source).
+    // RTK-Query workspace endpoints were removed — they had no callers.
 
     // Node operations
     moveNode: builder.mutation({
@@ -740,6 +686,7 @@ export const apiSlice = createApi({
     // Global Variables (Phase 2)
     getGlobalVariables: builder.query({
       query: () => '/variables/global',
+      transformResponse: response => response?.data ?? [],
       providesTags: ['GlobalVariable'],
     }),
 
@@ -758,6 +705,52 @@ export const apiSlice = createApi({
         method: 'DELETE',
       }),
       invalidatesTags: ['GlobalVariable'],
+    }),
+
+    // Collection Variables
+    getCollectionVariables: builder.query({
+      query: nodeId => `/node/${nodeId}/variables`,
+      transformResponse: response => response?.data ?? [],
+      providesTags: (result, error, nodeId) => [{ type: 'CollectionVariable', id: nodeId }],
+    }),
+
+    upsertCollectionVariables: builder.mutation({
+      query: ({ nodeId, variables }) => ({
+        url: `/node/${nodeId}/variables`,
+        method: 'PUT',
+        body: { variables },
+      }),
+      invalidatesTags: (result, error, { nodeId }) => [{ type: 'CollectionVariable', id: nodeId }],
+    }),
+
+    deleteCollectionVariable: builder.mutation({
+      query: ({ nodeId, key }) => ({
+        url: `/node/${nodeId}/variables/${encodeURIComponent(key)}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: (result, error, { nodeId }) => [{ type: 'CollectionVariable', id: nodeId }],
+    }),
+
+    revealCollectionVariable: builder.mutation({
+      query: ({ nodeId, key }) => ({
+        url: `/node/${nodeId}/variables/${encodeURIComponent(key)}/reveal`,
+        method: 'GET',
+      }),
+    }),
+
+    revealGlobalVariable: builder.mutation({
+      query: key => ({
+        url: `/variables/global/${encodeURIComponent(key)}/reveal`,
+        method: 'GET',
+      }),
+    }),
+
+    resolvePreview: builder.mutation({
+      query: ({ text, file_id, local_context }) => ({
+        url: '/resolve/preview',
+        method: 'POST',
+        body: { text, file_id, local_context: local_context || null },
+      }),
     }),
 
     // Schedule Alerts (Phase 5)
@@ -853,14 +846,6 @@ export const {
   useRequestPasswordResetMutation,
   useResetPasswordMutation,
 
-  // Workspace hooks
-  useGetWorkspacesQuery,
-  useGetWorkspaceTreeQuery,
-  useCreateWorkspaceMutation,
-  useUpdateWorkspaceMutation,
-  useDeleteWorkspaceMutation,
-  useGetBulkTestingTreeQuery,
-
   // Node hooks
   useMoveNodeMutation,
   useCopyNodeMutation,
@@ -907,6 +892,16 @@ export const {
   useGetGlobalVariablesQuery,
   useUpsertGlobalVariablesMutation,
   useDeleteGlobalVariableMutation,
+  useRevealGlobalVariableMutation,
+
+  // Collection Variable hooks
+  useGetCollectionVariablesQuery,
+  useUpsertCollectionVariablesMutation,
+  useDeleteCollectionVariableMutation,
+  useRevealCollectionVariableMutation,
+
+  // Resolve preview
+  useResolvePreviewMutation,
 
   // Bulk Import hook (Phase 3)
   useBulkImportNodesMutation,

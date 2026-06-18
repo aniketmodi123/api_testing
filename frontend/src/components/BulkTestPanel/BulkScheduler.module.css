@@ -14,20 +14,20 @@
 
 .modal {
   background-color: var(--background);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
   width: 90%;
   max-width: 500px;
   max-height: 90vh;
   overflow: hidden;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
 }
 
 .modalHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 20px;
+  padding: var(--space-4);
   border-bottom: 1px solid var(--border);
   background-color: var(--background-lighter);
 }
@@ -35,14 +35,14 @@
 .modalHeader h3 {
   margin: 0;
   color: var(--text);
-  font-size: 18px;
+  font-size: var(--text-lg);
   font-weight: 600;
 }
 
 .closeButton {
   background: none;
   border: none;
-  font-size: 24px;
+  font-size: var(--text-xl);
   color: var(--text-secondary);
   cursor: pointer;
   padding: 0;
@@ -51,7 +51,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
+  border-radius: var(--radius);
 }
 
 .closeButton:hover {
@@ -60,13 +60,13 @@
 }
 
 .modalContent {
-  padding: 20px;
+  padding: var(--space-4);
   max-height: calc(90vh - 120px);
   overflow-y: auto;
 }
 
 .formGroup {
-  margin-bottom: 20px;
+  margin-bottom: var(--space-4);
 }
 
 .formGroup label {
@@ -74,40 +74,42 @@
   margin-bottom: 6px;
   color: var(--text);
   font-weight: 500;
-  font-size: 14px;
+  font-size: var(--text-sm);
 }
 
 .formGroup input,
 .formGroup select {
   width: 100%;
-  padding: 10px 12px;
+  height: 36px;
+  padding: var(--space-2);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  background-color: var(--background);
+  border-radius: var(--radius);
+  background-color: var(--surface-2);
   color: var(--text);
-  font-size: 14px;
+  font-size: var(--text-sm);
   box-sizing: border-box;
+  transition: border-color 0.12s;
 }
 
 .formGroup input:focus,
 .formGroup select:focus {
   outline: none;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 2px rgba(var(--primary-rgb), 0.1);
+  border-color: var(--accent);
 }
 
 .selectedSummary {
-  padding: 10px 12px;
+  padding: var(--space-2) var(--space-3);
   background-color: var(--background-lighter);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius);
   color: var(--text-secondary);
-  font-size: 14px;
+  font-size: var(--text-sm);
 }
 
 .daysOfWeek {
-  display: flex;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  gap: var(--space-2);
   flex-wrap: wrap;
   margin-top: 6px;
 }
@@ -116,12 +118,12 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   background-color: var(--background-lighter);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius);
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 500;
   transition: all 0.2s;
   user-select: none;
@@ -137,7 +139,7 @@
 }
 
 .dayCheckbox input[type="checkbox"]:checked + span {
-  color: var(--primary);
+  color: var(--accent);
 }
 
 .toggleLabel {
@@ -145,7 +147,7 @@
   align-items: center;
   gap: 8px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--text-sm);
   margin-bottom: 0 !important;
 }
 
@@ -156,10 +158,10 @@
 
 .modalActions {
   display: flex;
-  gap: 12px;
+  gap: var(--space-3);
   justify-content: flex-end;
-  margin-top: 24px;
-  padding-top: 20px;
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
   border-top: 1px solid var(--border);
 }
 
@@ -167,8 +169,8 @@
   background-color: var(--background);
   color: var(--text);
   border: 1px solid var(--border);
-  padding: 10px 20px;
-  border-radius: 6px;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
@@ -180,10 +182,10 @@
 
 .scheduleButton {
   background-color: var(--primary);
-  color: white;
+  color: var(--text-inverse);
   border: none;
-  padding: 10px 20px;
-  border-radius: 6px;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius);
   font-weight: 500;
   cursor: pointer;
   transition: background-color 0.2s;
@@ -219,7 +221,7 @@
 
   .dayCheckbox {
     padding: 6px 8px;
-    font-size: 11px;
+    font-size: var(--text-xs);
   }
 
   .modalActions {
@@ -235,11 +237,11 @@
 .scheduleInfo {
   background-color: var(--background-lighter);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius);
   padding: 12px;
   margin: 0;
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: var(--text-sm);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -248,7 +250,7 @@
 .scheduleHint {
   margin: 6px 0 0 0;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-style: italic;
   line-height: 1.4;
 }
@@ -268,7 +270,7 @@
 
 .intervalUnit {
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: var(--text-sm);
   font-weight: 500;
 }
 
@@ -282,16 +284,16 @@
 
 .quickOptions span {
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: var(--text-sm);
   margin-right: 4px;
 }
 
 .quickOption {
   background: var(--background-lighter);
   border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 4px 8px;
-  font-size: 11px;
+  border-radius: var(--radius);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-xs);
   cursor: pointer;
   transition: all 0.2s ease;
   color: var(--text-muted);
@@ -299,12 +301,12 @@
 
 .quickOption:hover {
   background: var(--hover-background);
-  border-color: var(--primary);
+  border-color: var(--accent);
   color: var(--text);
 }
 
 .quickOption.active {
-  background: var(--primary);
-  border-color: var(--primary);
-  color: white;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--text-inverse);
 }

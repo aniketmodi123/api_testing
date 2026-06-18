@@ -2,17 +2,18 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-family: var(--p0-font-mono);
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  border-radius: 3px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  border-radius: var(--radius-sm);
+  text-transform: uppercase;
+  font-family: var(--font-mono);
   white-space: nowrap;
   flex-shrink: 0;
 }
 
 .sm {
-  font-size: 10px;
-  padding: 1px 5px;
+  font-size: 9px;
+  padding: 2px 5px;
   min-width: 42px;
 }
 
@@ -26,4 +27,33 @@
   font-size: 13px;
   padding: 3px 10px;
   min-width: 64px;
+}
+
+.GET {
+  color: var(--method-get);
+  background: rgba(34, 197, 94, 0.12);
+}
+.POST {
+  color: var(--method-post);
+  background: rgba(59, 130, 246, 0.12);
+}
+.PUT {
+  color: var(--method-put);
+  background: rgba(245, 158, 11, 0.12);
+}
+.PATCH {
+  color: var(--method-patch);
+  background: rgba(167, 139, 250, 0.12);
+}
+.DELETE {
+  color: var(--method-delete);
+  background: rgba(239, 68, 68, 0.12);
+}
+.HEAD {
+  color: var(--method-head);
+  background: rgba(6, 182, 212, 0.12);
+}
+.OPTIONS {
+  color: var(--method-options);
+  background: rgba(139, 92, 246, 0.12);
 }

@@ -6,32 +6,33 @@
   align-items: center;
   justify-content: center;
   z-index: 1000;
+  backdrop-filter: blur(2px);
 }
 
 .modal {
-  background: var(--p0-surface, var(--surface));
-  border: 1px solid var(--p0-border, var(--border));
-  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
   width: 480px;
   max-width: 95vw;
-  padding: 24px;
+  padding: var(--space-4);
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  gap: var(--space-3);
+  box-shadow: var(--shadow-lg);
 }
 
 .title {
   margin: 0;
-  font-size: 16px;
+  font-size: var(--text-lg);
   font-weight: 600;
   color: var(--text);
 }
 
 .dropzone {
-  border: 2px dashed var(--p0-border, var(--border));
-  border-radius: 6px;
-  padding: 32px 20px;
+  border: 2px dashed var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-6) var(--space-4);
   text-align: center;
   cursor: pointer;
   transition: border-color 0.2s;
@@ -39,8 +40,8 @@
 
 .dropzone:hover,
 .dropzone.active {
-  border-color: var(--p0-primary, var(--primary));
-  background: rgba(99, 102, 241, 0.04);
+  border-color: var(--accent);
+  background: var(--accent-dim);
 }
 
 .dropzone input {
@@ -48,56 +49,56 @@
 }
 
 .dropLabel {
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 
 .fileName {
-  font-size: 12px;
-  color: var(--p0-primary, var(--primary));
-  margin-top: 8px;
+  font-size: var(--text-xs);
+  color: var(--accent);
+  margin-top: var(--space-2);
 }
 
 .info {
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--text-muted);
-  background: var(--p0-surface-2, var(--surface-2));
-  border-radius: 4px;
-  padding: 8px 12px;
+  background: var(--surface-1);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
 }
 
 .error {
-  color: var(--error, #ef4444);
-  font-size: 12px;
+  color: var(--error);
+  font-size: var(--text-sm);
 }
 
 .actions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   justify-content: flex-end;
 }
 
 .cancelBtn {
-  padding: 8px 16px;
+  padding: var(--space-2) var(--space-3);
   background: none;
-  border: 1px solid var(--p0-border, var(--border));
-  border-radius: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   color: var(--text);
-  font-size: 13px;
+  font-size: var(--text-sm);
   cursor: pointer;
 }
 
 .cancelBtn:hover {
-  background: var(--p0-surface-2, var(--surface-2));
+  background: var(--hover-background);
 }
 
 .importBtn {
-  padding: 8px 16px;
-  background: var(--p0-primary, var(--primary));
+  padding: var(--space-2) var(--space-3);
+  background: var(--accent);
   color: #fff;
   border: none;
-  border-radius: 4px;
-  font-size: 13px;
+  border-radius: var(--radius);
+  font-size: var(--text-sm);
   cursor: pointer;
 }
 

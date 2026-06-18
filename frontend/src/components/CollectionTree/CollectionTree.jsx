@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNode } from '../../store/node';
 import { useWorkspace } from '../../store/workspace';
+import { toPostmanCollection } from '../../utils/importExport';
 import { Button } from '../common';
 import ConfirmModal from '../ConfirmModal/ConfirmModal';
 import HeaderEditor from '../HeaderEditor/HeaderEditor';
+import ImportFileModal from '../ImportExport/ImportFileModal';
 import LookingLoader from '../LookingLoader/LookingLoader';
 import MoveCopyPanel from '../MoveCopyPanel';
-import ImportFileModal from '../ImportExport/ImportFileModal';
-import { toPostmanCollection } from '../../utils/importExport';
 import styles from './CollectionTree.module.css';
 
 // Recursive component for rendering node items (folders and files)
@@ -104,100 +104,125 @@ const NodeItem = ({
   if (level > MAX_LEVEL) return null;
 
   if (node.type === 'folder') {
+    const isExpanded = expandedFolders.includes(node.id);
     return (
-      <div className={`${styles.subFolder} ${level > 0 ? styles.nested : ''}`}>
+      <div className={styles.nodeWrapper}>
         <div
-          className={styles.folderHeader}
+          className={`${styles.nodeRow} ${styles.folderRow}`}
+          style={{ paddingLeft: `${8 + level * 16}px` }}
           onClick={() => toggleFolder(node.id)}
+          onContextMenu={handleMenuClick}
         >
-          <span className={styles.expansionIcon}>
-            {expandedFolders.includes(node.id) ? '▼' : '▶'}
+          <span
+            className={`${styles.chevron} ${isExpanded ? styles.chevronOpen : ''}`}
+          >
+            ▶
           </span>
-          <span className={styles.folderName}>{node.name}</span>
-          <div className={styles.nodeActions}>
-            <Button
-              variant="secondary"
-              size="small"
-              onClick={handleMenuClick}
-              title="Actions"
+          <span className={styles.folderIcon}>📁</span>
+          <span className={styles.nodeName}>{node.name}</span>
+          <div
+            className={styles.nodeActions}
+            onClick={e => e.stopPropagation()}
+          >
+            <button
+              className={styles.nodeActionBtn}
+              title="Add item"
+              onClick={e => handleAction('createfolder', e)}
             >
-              ⋮
-            </Button>
-            {menuOpen && (
-              <div
-                className={styles.contextMenu}
-                style={{
-                  top: `${menuPosition.y}px`,
-                  left: `${menuPosition.x}px`,
-                }}
-                ref={menuRef}
-              >
-                <div
-                  className={`${styles.menuItem} ${styles.createItem}`}
-                  onClick={e => handleAction('createfolder', e)}
-                >
-                  Create Folder
-                </div>
-                <div
-                  className={styles.menuItem}
-                  onClick={e => handleAction('rename', e)}
-                >
-                  Rename
-                </div>
-                <div
-                  className={styles.menuItem}
-                  onClick={e => handleAction('moveorcopy', e)}
-                >
-                  Move/Copy
-                </div>
-                {node.type === 'folder' && (
-                  <div
-                    className={`${styles.menuItem} ${styles.headersItem}`}
-                    onClick={e => handleAction('headers', e)}
-                  >
-                    Edit Headers
-                  </div>
-                )}
-                {node.type === 'folder' && (
-                  <div
-                    className={styles.menuItem}
-                    onClick={e => handleAction('export', e)}
-                  >
-                    Export as Postman
-                  </div>
-                )}
-                {node.type === 'folder' && (
-                  <div
-                    className={styles.menuItem}
-                    onClick={e => handleAction('importcollection', e)}
-                  >
-                    Import Collection
-                  </div>
-                )}
-                <div
-                  className={styles.menuItem}
-                  onClick={e => handleAction('delete', e)}
-                >
-                  Delete
-                </div>
-              </div>
-            )}
+              +
+            </button>
+            <button
+              className={styles.nodeActionBtn}
+              title="Rename"
+              onClick={e => handleAction('rename', e)}
+            >
+              ✎
+            </button>
+            <button
+              className={styles.nodeActionBtn}
+              title="Delete"
+              onClick={e => handleAction('delete', e)}
+            >
+              ✕
+            </button>
           </div>
         </div>
 
-        {node.children && expandedFolders.includes(node.id) && (
-          <div className={styles.folderItems}>
+        {menuOpen && (
+          <div
+            ref={menuRef}
+            className={styles.contextMenu}
+            style={{
+              position: 'fixed',
+              top: menuPosition.y,
+              left: menuPosition.x,
+              zIndex: 1000,
+            }}
+          >
+            <div
+              className={`${styles.menuItem} ${styles.createItem}`}
+              onClick={e => handleAction('createfolder', e)}
+            >
+              Create Folder
+            </div>
+            <div
+              className={styles.menuItem}
+              onClick={e => handleAction('rename', e)}
+            >
+              Rename
+            </div>
+            <div
+              className={styles.menuItem}
+              onClick={e => handleAction('moveorcopy', e)}
+            >
+              Move/Copy
+            </div>
+            {node.type === 'folder' && (
+              <div
+                className={`${styles.menuItem} ${styles.headersItem}`}
+                onClick={e => handleAction('headers', e)}
+              >
+                Edit Headers
+              </div>
+            )}
+            {node.type === 'folder' && (
+              <div
+                className={styles.menuItem}
+                onClick={e => handleAction('export', e)}
+              >
+                Export as Postman
+              </div>
+            )}
+            {node.type === 'folder' && (
+              <div
+                className={styles.menuItem}
+                onClick={e => handleAction('importcollection', e)}
+              >
+                Import Collection
+              </div>
+            )}
+            <div
+              className={styles.menuItem}
+              onClick={e => handleAction('delete', e)}
+            >
+              Delete
+            </div>
+          </div>
+        )}
+
+        {isExpanded && node.children && node.children.length > 0 && (
+          <div className={styles.children}>
             {node.children.map(childNode => (
               <NodeItem
                 key={childNode.id}
                 node={childNode}
+                level={level + 1}
                 expandedFolders={expandedFolders}
                 toggleFolder={toggleFolder}
                 handleDeleteNode={handleDeleteNode}
                 handleSelectRequest={handleSelectRequest}
                 selectedItem={selectedItem}
                 getMethodColor={getMethodColor}
-                level={level + 1}
                 handleRenameAction={handleRenameAction}
                 handleMoveCopyAction={handleMoveCopyAction}
                 handleCreateNewItem={handleCreateNewItem}
@@ -213,58 +238,72 @@ const NodeItem = ({
     );
   } else {
     return (
-      <div
-        className={`${styles.requestItem} ${selectedItem === node.id ? styles.selected : ''}`}
-        onClick={() => handleSelectRequest(node)}
-      >
-        <span
-          className={styles.methodBadge}
-          style={{
-            backgroundColor: getMethodColor(node.method || 'GET'),
-          }}
+      <div className={styles.nodeWrapper}>
+        <div
+          className={`${styles.nodeRow} ${styles.fileRow} ${selectedItem === node.id || selectedItem?.id === node.id ? styles.selected : ''}`}
+          style={{ paddingLeft: `${8 + level * 16}px` }}
+          onClick={() => handleSelectRequest(node)}
+          onContextMenu={handleMenuClick}
         >
-          {node.method || 'GET'}
-        </span>
-        <span className={styles.requestName}>{node.name}</span>
-        <div className={styles.nodeActions}>
-          <Button
-            variant="secondary"
-            size="small"
-            onClick={handleMenuClick}
-            title="Actions"
+          <span
+            className={styles.methodBadge}
+            style={{ color: getMethodColor(node.method) }}
           >
-            ⋮
-          </Button>
-          {menuOpen && (
-            <div
-              className={styles.contextMenu}
-              style={{
-                top: `${menuPosition.y}px`,
-                left: `${menuPosition.x}px`,
-              }}
-              ref={menuRef}
+            {(node.method || 'GET').toUpperCase().slice(0, 3)}
+          </span>
+          <span className={styles.nodeName}>{node.name}</span>
+          <div
+            className={styles.nodeActions}
+            onClick={e => e.stopPropagation()}
+          >
+            <button
+              className={styles.nodeActionBtn}
+              title="Rename"
+              onClick={e => handleAction('rename', e)}
             >
-              <div
-                className={styles.menuItem}
-                onClick={e => handleAction('rename', e)}
-              >
-                Rename
-              </div>
-              <div
-                className={styles.menuItem}
-                onClick={e => handleAction('moveorcopy', e)}
-              >
-                Move/Copy
-              </div>
-              <div
-                className={styles.menuItem}
-                onClick={e => handleAction('delete', e)}
-              >
-                Delete
-              </div>
-            </div>
-          )}
+              ✎
+            </button>
+            <button
+              className={styles.nodeActionBtn}
+              title="Delete"
+              onClick={e => handleAction('delete', e)}
+            >
+              ✕
+            </button>
+          </div>
         </div>
+
+        {menuOpen && (
+          <div
+            ref={menuRef}
+            className={styles.contextMenu}
+            style={{
+              position: 'fixed',
+              top: menuPosition.y,
+              left: menuPosition.x,
+              zIndex: 1000,
+            }}
+          >
+            <div
+              className={styles.menuItem}
+              onClick={e => handleAction('rename', e)}
+            >
+              Rename
+            </div>
+            <div
+              className={styles.menuItem}
+              onClick={e => handleAction('moveorcopy', e)}
+            >
+              Move/Copy
+            </div>
+            <div
+              className={styles.menuItem}
+              onClick={e => handleAction('delete', e)}
+            >
+              Delete
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -546,7 +585,9 @@ export default function CollectionTree({ onSelectRequest }) {
   const handleExportFolder = node => {
     const subtree = [node];
     const collection = toPostmanCollection(subtree, node.name);
-    const blob = new Blob([JSON.stringify(collection, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify(collection, null, 2)], {
+      type: 'application/json',
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;

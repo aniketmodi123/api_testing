@@ -50,7 +50,7 @@ try:
         connect_args={
             "ssl": ssl_context,
             "server_settings": {
-                "application_name": "api_testing"
+                "application_name": "apipilot"
             }
         }
     )

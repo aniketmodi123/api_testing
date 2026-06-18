@@ -120,7 +120,7 @@ async def health_check():
 async def root():
     """GET / — return service name, version, and key endpoint links."""
     return {
-        "message": "API Testing Backend",
+        "message": "ApiPilot Backend",
         "version": "1.0",
         "docs": "/swagger",
         "health": "/health",

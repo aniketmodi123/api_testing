@@ -110,7 +110,12 @@ export default function EnvironmentManager({
       {/* Global Variables section (always shown) */}
       <GlobalVariablesPanel />
 
-      <div style={{ borderTop: '1px solid var(--p0-border, var(--border))', margin: '0' }} />
+      <div
+        style={{
+          borderTop: '1px solid var(--p0-border, var(--border))',
+          margin: '0',
+        }}
+      />
 
       {/* Main Content — Environments */}
       <div className={styles.content}>
@@ -121,7 +126,7 @@ export default function EnvironmentManager({
             <h3>No environments created yet</h3>
             <p>
               Create your first environment to manage variables for different
-              stages of your API testing workflow.
+              stages of your ApiPilot workflow.
             </p>
           </div>
         ) : (

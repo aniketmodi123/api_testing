@@ -1,7 +1,7 @@
 import { apiService } from '../services/apiService';
 
 /**
- * Advanced API testing utilities
+ * Advanced ApiPilot utilities
  */
 export const apiTestingUtils = {
   /**

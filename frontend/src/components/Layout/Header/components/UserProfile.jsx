@@ -29,11 +29,7 @@ const UserProfile = ({ username }) => {
   };
 
   return (
-    <div
-      className={styles.buttonContainer}
-      ref={dropdownRef}
-      style={{ marginLeft: '1rem' }}
-    >
+    <div className={styles.buttonContainer} ref={dropdownRef}>
       <button
         className={styles.button}
         onClick={() => setShowDropdown(!showDropdown)}

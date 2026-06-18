@@ -12,7 +12,7 @@
 }
 
 .label {
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
@@ -21,14 +21,14 @@
 
 .modeToggle {
   display: flex;
-  border: 1px solid var(--p0-border, var(--border));
-  border-radius: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   overflow: hidden;
 }
 
 .modeBtn {
   padding: 3px 10px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   background: transparent;
   border: none;
   cursor: pointer;
@@ -36,8 +36,8 @@
 }
 
 .modeBtn.active {
-  background: var(--p0-primary, var(--primary));
-  color: #fff;
+  background: var(--accent);
+  color: var(--text-inverse);
 }
 
 .rows {
@@ -50,60 +50,62 @@
   display: flex;
   align-items: flex-start;
   gap: 6px;
-  padding: 6px 8px;
-  background: var(--p0-surface-2, var(--surface-2));
-  border-radius: 4px;
+  padding: var(--space-1) var(--space-2);
+  background: var(--surface-2);
+  border-radius: var(--radius);
   flex-wrap: wrap;
 }
 
 .select {
-  font-size: 12px;
-  padding: 4px 6px;
-  border: 1px solid var(--p0-border, var(--border));
-  border-radius: 4px;
-  background: var(--p0-bg, var(--background));
+  height: 28px;
+  padding: 0 var(--space-2);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   color: var(--text);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  appearance: none;
   min-width: 170px;
   flex-shrink: 0;
 }
 
 .selectSm {
-  font-size: 12px;
-  padding: 4px 6px;
-  border: 1px solid var(--p0-border, var(--border));
-  border-radius: 4px;
-  background: var(--p0-bg, var(--background));
-  color: var(--text);
+  composes: select;
   flex-shrink: 0;
 }
 
 .input {
   flex: 1;
   min-width: 80px;
-  font-size: 12px;
-  padding: 4px 6px;
-  border: 1px solid var(--p0-border, var(--border));
-  border-radius: 4px;
-  background: var(--p0-bg, var(--background));
+  height: 28px;
+  padding: 0 var(--space-2);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   color: var(--text);
+  font-size: var(--text-sm);
+  width: 100%;
+  transition: border-color 0.12s;
 }
 
 .inputSm {
+  composes: input;
   width: 140px;
   flex-shrink: 0;
-  font-size: 12px;
-  padding: 4px 6px;
-  border: 1px solid var(--p0-border, var(--border));
-  border-radius: 4px;
-  background: var(--p0-bg, var(--background));
-  color: var(--text);
+}
+
+.input:focus,
+.select:focus {
+  outline: none;
+  border-color: var(--accent);
 }
 
 .schemaEditor {
   flex: 1;
   min-width: 200px;
-  border: 1px solid var(--p0-border, var(--border));
-  border-radius: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   overflow: hidden;
 }
 
@@ -111,10 +113,10 @@
   background: none;
   border: none;
   cursor: pointer;
-  color: var(--error, #ef4444);
-  font-size: 16px;
+  color: var(--error);
+  font-size: var(--text-base);
   padding: 2px 4px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   line-height: 1;
   flex-shrink: 0;
   align-self: center;
@@ -126,18 +128,18 @@
 
 .addBtn {
   align-self: flex-start;
-  font-size: 12px;
+  font-size: var(--text-sm);
   padding: 4px 10px;
   background: transparent;
-  border: 1px dashed var(--p0-border, var(--border));
-  border-radius: 4px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
   color: var(--text-muted);
   cursor: pointer;
 }
 
 .addBtn:hover {
-  border-color: var(--p0-primary, var(--primary));
-  color: var(--p0-primary, var(--primary));
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .jsonMode {
@@ -147,8 +149,8 @@
 }
 
 .jsonError {
-  font-size: 11px;
-  color: var(--error, #ef4444);
+  font-size: var(--text-xs);
+  color: var(--error);
   padding: 3px 6px;
 }
 
@@ -156,6 +158,6 @@
   font-size: 11px;
   color: var(--warning, #f59e0b);
   background: rgba(245, 158, 11, 0.1);
-  border-radius: 4px;
+  border-radius: var(--radius);
   padding: 4px 8px;
 }
