@@ -1,12 +1,18 @@
+.tabBarWrapper {
+  display: flex;
+  align-items: stretch;
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--border);
+  height: var(--tab-bar-height);
+  flex-shrink: 0;
+}
+
 .tabBar {
   display: flex;
   align-items: stretch;
   overflow-x: auto;
   overflow-y: hidden;
-  background: var(--surface-1);
-  border-bottom: 1px solid var(--border);
-  height: var(--tab-bar-height);
-  flex-shrink: 0;
+  flex: 1;
   scrollbar-width: none;
 }
 .tabBar::-webkit-scrollbar {
@@ -89,6 +95,15 @@
 .closeBtn:hover {
   background: var(--surface-3);
   color: var(--error);
+}
+
+.scratchTab {
+  font-style: italic;
+}
+.scratchTab .tabName::after {
+  content: ' ✦';
+  font-size: 8px;
+  opacity: 0.6;
 }
 
 .newTabBtn {

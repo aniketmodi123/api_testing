@@ -303,8 +303,8 @@
 }
 
 .nodeActionBtn {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   border: none;
   background: transparent;
   color: var(--text-subtle);
@@ -313,7 +313,9 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  font-size: 11px;
+  font-size: 13px;
+  letter-spacing: -1px;
+  line-height: 1;
   transition:
     color 0.1s,
     background 0.1s;

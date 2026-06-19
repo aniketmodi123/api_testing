@@ -183,55 +183,47 @@ async def execute_api_direct(
     username: str = FastAPIHeader(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """POST /api/execute-direct — resolve variables (global → env), merge folder headers, and fire the external HTTP request; return response with timing and resolved metadata."""
+    """POST /api/execute-direct — resolve variables (global → env), merge folder headers, and fire the external HTTP request; return response with timing and resolved metadata. When file_id is None (ephemeral/scratch request), skips DB scope chain and auth injection — fires with only the variables and headers supplied in the request body."""
     try:
         # Verify user permissions
         user = await get_user_by_username(db, username)
         if not user:
             return create_response(400, error_message="User not found")
 
-        # Verify node ownership
-        if not await verify_node_ownership(db, request.file_id, user.id):
-            return create_response(400, error_message="Access denied")
+        if request.file_id is not None:
+            # Saved request: verify ownership, load scope chain + folder headers + auth
+            if not await verify_node_ownership(db, request.file_id, user.id):
+                return create_response(400, error_message="Access denied")
 
-        # Get file details to find workspace
-        file_query = select(Node).where(Node.id == request.file_id)
-        file_result = await db.execute(file_query)
-        file_node = file_result.scalar_one_or_none()
+            file_query = select(Node).where(Node.id == request.file_id)
+            file_result = await db.execute(file_query)
+            file_node = file_result.scalar_one_or_none()
+            if not file_node:
+                return create_response(206, error_message="File not found")
 
-        if not file_node:
-            return create_response(206, error_message="File not found")
+            workspace_id = file_node.workspace_id
+            merged_variables = await build_scope_chain(
+                db, file_id=request.file_id, username=username, workspace_id=workspace_id
+            )
+            _, __, ___, merge_result = await get_headers(db, request.file_id)
+            merged_headers = merge_result.get("merged_headers", {})
+        else:
+            # Ephemeral/scratch request: no DB lookup, no scope chain, no folder headers
+            merged_variables = {}
+            merged_headers = {}
 
-        workspace_id = file_node.workspace_id
-
-        # Build 4-scope chain: global < collection < env < local
-        merged_variables = await build_scope_chain(
-            db, file_id=request.file_id, username=username, workspace_id=workspace_id
-        )
-
-        # 3. Get merged headers using get_headers (includes parent folders and file)
-        folder_path, folder_ids, headers_map, merge_result = await get_headers(db, request.file_id)
-        merged_headers = merge_result.get("merged_headers", {})
-
-
-        # 4. Resolve variables in all request parts using merged scope
+        # Resolve variables in all request parts
         resolved_url = resolve_variables(request.url, merged_variables)
         resolved_headers = resolve_variables(merged_headers, merged_variables)
         resolved_params = resolve_variables(request.params, merged_variables)
         resolved_body = None
 
         if request.body is not None:
-            if isinstance(request.body, str):
-                resolved_body = resolve_variables(request.body, merged_variables)
-            elif isinstance(request.body, dict):
-                resolved_body = resolve_variables(request.body, merged_variables)
-            elif isinstance(request.body, list):
+            if isinstance(request.body, (str, dict, list)):
                 resolved_body = resolve_variables(request.body, merged_variables)
             else:
                 resolved_body = request.body
 
-        # 5. Merge headers (merged + request + defaults)
-        # Determine default Content-Type based on body_type
         body_type = (request.body_type or 'JSON').upper()
         if body_type in ('FORM-DATA', 'URL-ENCODED'):
             default_content_type = 'application/x-www-form-urlencoded'
@@ -245,35 +237,32 @@ async def execute_api_direct(
             **resolve_variables(request.headers, merged_variables),
         }
 
-        # Add ngrok headers if needed
         if resolved_url and ('.ngrok.' in resolved_url or 'ngrok-free.app' in resolved_url):
             final_headers['ngrok-skip-browser-warning'] = 'true'
 
-        # Inject per-API auth (apikey/bearer/basic/jwt/aws_sigv4).
-        # resolve_auth walks folder→file ancestry; leaf wins (research.md gotcha #2).
-        # Manual Authorization headers set above take precedence — auth inject only
-        # fills keys not already present to prevent double-auth (research.md gotcha #1).
-        auth_config = await resolve_auth(db, request.file_id)
-        if auth_config:
-            body_bytes: bytes | None = None
-            if resolved_body is not None:
-                if isinstance(resolved_body, (dict, list)):
-                    body_bytes = json.dumps(resolved_body).encode("utf-8")
-                elif isinstance(resolved_body, str):
-                    body_bytes = resolved_body.encode("utf-8")
-            auth_headers, auth_params = await apply_auth_async(
-                auth_config,
-                method=request.method.upper(),
-                url=resolved_url,
-                existing_headers=final_headers,
-                body_bytes=body_bytes,
-                db=db,
-                owner_username=username,
-            )
-            for k, v in auth_headers.items():
-                if k not in final_headers:
-                    final_headers[k] = v
-            resolved_params = {**auth_params, **resolved_params}
+        # Inject per-API auth only for saved requests (ephemeral has no auth config in DB)
+        if request.file_id is not None:
+            auth_config = await resolve_auth(db, request.file_id)
+            if auth_config:
+                body_bytes: bytes | None = None
+                if resolved_body is not None:
+                    if isinstance(resolved_body, (dict, list)):
+                        body_bytes = json.dumps(resolved_body).encode("utf-8")
+                    elif isinstance(resolved_body, str):
+                        body_bytes = resolved_body.encode("utf-8")
+                auth_headers, auth_params = await apply_auth_async(
+                    auth_config,
+                    method=request.method.upper(),
+                    url=resolved_url,
+                    existing_headers=final_headers,
+                    body_bytes=body_bytes,
+                    db=db,
+                    owner_username=username,
+                )
+                for k, v in auth_headers.items():
+                    if k not in final_headers:
+                        final_headers[k] = v
+                resolved_params = {**auth_params, **resolved_params}
 
         # 5. Fire the request via shared send_request
         timeout = request.options.get('timeout', 30.0)

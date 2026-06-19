@@ -60,7 +60,7 @@
 }
 
 .errorIndicator {
-  color: #ef4444;
+  color: var(--error);
   font-size: 12px;
   font-weight: 500;
   display: flex;
@@ -149,8 +149,8 @@
 }
 
 .textarea.error {
-  border-left: 3px solid #ef4444;
-  background-color: rgba(239, 68, 68, 0.05);
+  border-left: 3px solid var(--error);
+  background-color: var(--error-dim);
 }
 
 .textarea::placeholder {
@@ -246,12 +246,12 @@
 
 /* Status indicators */
 .validIcon {
-  color: #10b981;
+  color: var(--success);
   font-size: 14px;
 }
 
 .invalidIcon {
-  color: #ef4444;
+  color: var(--error);
   font-size: 14px;
 }
 

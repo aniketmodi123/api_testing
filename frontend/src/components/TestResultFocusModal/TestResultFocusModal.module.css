@@ -78,24 +78,24 @@
 }
 
 .status.pass {
-  background: rgba(34, 197, 94, 0.1);
-  color: #22c55e;
-  border: 1px solid rgba(34, 197, 94, 0.2);
+  background: var(--success-dim);
+  color: var(--success);
+  border: 1px solid color-mix(in srgb, var(--success) 20%, transparent);
 }
 
 .status.fail {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
-  border: 1px solid rgba(239, 68, 68, 0.2);
+  background: var(--error-dim);
+  color: var(--error);
+  border: 1px solid color-mix(in srgb, var(--error) 20%, transparent);
 }
 
 .statusOk {
-  color: #22c55e;
+  color: var(--success);
   font-weight: 600;
 }
 
 .statusBad {
-  color: #ef4444;
+  color: var(--error);
   font-weight: 600;
 }
 
@@ -123,8 +123,8 @@
 }
 
 .runBtn {
-  background: #22c55e;
-  border: 1px solid #16a34a;
+  background: var(--success);
+  border: 1px solid color-mix(in srgb, var(--success) 70%, black);
   color: white;
   padding: 8px 12px;
   border-radius: 8px;
@@ -135,13 +135,13 @@
 }
 
 .runBtn:hover {
-  background: #16a34a;
-  border-color: #15803d;
+  background: color-mix(in srgb, var(--success) 80%, black);
+  border-color: color-mix(in srgb, var(--success) 60%, black);
 }
 
 .editBtn {
-  background: #3b82f6;
-  border: 1px solid #2563eb;
+  background: var(--accent);
+  border: 1px solid var(--accent-hover);
   color: white;
   padding: 8px 12px;
   border-radius: 8px;
@@ -152,12 +152,12 @@
 }
 
 .editBtn:hover {
-  background: #2563eb;
-  border-color: #1d4ed8;
+  background: var(--accent-hover);
+  border-color: color-mix(in srgb, var(--accent-hover) 70%, black);
 }
 
 .editIndicator {
-  color: #3b82f6;
+  color: var(--accent);
   font-size: 12px;
   font-weight: 500;
 }

@@ -338,24 +338,37 @@ export const EnvironmentProvider = ({ children }) => {
     }
   };
 
+  // Duplicate environment
+  const duplicateEnvironment = async sourceEnv => {
+    if (!activeWorkspace?.id) return false;
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const newEnvironment = await environmentService.duplicateEnvironment(
+        activeWorkspace.id,
+        sourceEnv
+      );
+
+      setEnvironments(prev => [...prev, newEnvironment]);
+      showSuccess(`Environment "${newEnvironment.name}" created`);
+      return newEnvironment;
+    } catch (error) {
+      handleError(error, 'Failed to duplicate environment');
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   /**
    * Variable Management Functions
    */
 
   // Load variables for selected environment
-  // Helper function to convert variables dict to array format
   const convertVariablesToArray = variablesDict => {
-    if (!variablesDict || typeof variablesDict !== 'object') {
-      return [];
-    }
-
-    return Object.entries(variablesDict).map(([key, value], index) => ({
-      id: index + 1, // Simple ID for React keys
-      key,
-      value,
-      description: '', // No description in simple format
-      is_enabled: true, // Always enabled in simple format
-    }));
+    return environmentService.decodeVariablesDict(variablesDict);
   };
 
   const loadVariables = async (environmentId = selectedEnvironment?.id) => {
@@ -628,6 +641,7 @@ export const EnvironmentProvider = ({ children }) => {
     updateEnvironment,
     activateEnvironment,
     deleteEnvironment,
+    duplicateEnvironment,
     selectEnvironment,
 
     // Variable management

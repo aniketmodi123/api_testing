@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { parseCurl } from '../../utils/importExport';
 import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from 'react-resizable-panels';
 import CodeMirror from '@uiw/react-codemirror';
 import { json as jsonLang } from '@codemirror/lang-json';
@@ -363,6 +364,7 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
   const { activeWorkspace } = useWorkspace();
   const {
     getApi,
+    refreshApi,
     getTestCases,
     testCases,
     activeApi,
@@ -376,6 +378,7 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
     saveTestCase,
     deleteTestCase,
     bulkDeleteTestCases,
+    isFromCache,
   } = useApi();
 
   const [method, setMethod] = useState(
@@ -384,7 +387,16 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
   const [url, setUrl] = useState(
     activeRequest?.url || selectedNode?.url || selectedNode?.endpoint || ''
   );
+
+  // Wrap setters to mark panel dirty when user edits anything
+  const setMethodDirty = v => { setMethod(v); setIsDirty(true); };
+  const setUrlDirty = v => { setUrl(v); setIsDirty(true); };
+  const setHeadersDirty = v => { setHeaders(v); setIsDirty(true); };
+  const setParamsDirty = v => { setParams(v); setIsDirty(true); };
+  const setBodyContentDirty = v => { setBodyContent(v); setIsDirty(true); };
+  const setBodyTypeDirty = v => { setBodyType(v); setIsDirty(true); };
   const [isUpdatingConfig, setIsUpdatingConfig] = useState(false);
+  const [isSending, setIsSending] = useState(false);
   const [showTestCaseForm, setShowTestCaseForm] = useState(false);
   const [editingTestCaseId, setEditingTestCaseId] = useState(null);
   const [bodyContent, setBodyContent] = useState('');
@@ -571,6 +583,7 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
   useEffect(() => {
     if (selectedNode) {
       setMethod(selectedNode.method || 'GET');
+      setIsDirty(false);
 
       // Clear test results when switching files
       clearTestResults();
@@ -629,8 +642,9 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
 
   const [activeTab, setActiveTab] = useState('api');
   const [responseTab, setResponseTab] = useState('body');
-  const [isSending, setIsSending] = useState(false);
   const [response, setResponse] = useState(null);
+  const [isDirty, setIsDirty] = useState(false);
+  const [requestTimeout, setRequestTimeout] = useState(30);
   const [excelCopied, setExcelCopied] = useState(false);
   const [selectedTestCases, setSelectedTestCases] = useState([]);
   const [defaultValidationSchema, setDefaultValidationSchema] = useState({
@@ -753,23 +767,26 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
   };
 
   // Function to directly call the API with current parameters
-  const handleDirectApiCall = async () => {
+  const handleDirectApiCall = useCallback(async () => {
     setIsSending(true);
     try {
-      // Prepare params from state
+      // Build params and headers from live UI state — not from saved DB copy
       const paramsObj = {};
-      params.forEach(p => {
-        if (p.key) paramsObj[p.key] = p.value;
-      });
+      params.forEach(p => { if (p.key) paramsObj[p.key] = p.value; });
+
+      const headersObj = {};
+      headers.forEach(h => { if (h.key) headersObj[h.key] = h.value; });
+
       const response = await BackendApiCallService.executeApiCall({
-        fileId: selectedNode?.id,
-        environmentId: activeEnvironment?.id,
+        fileId: selectedNode?.id ?? null,
+        environmentId: activeEnvironment?.id ?? null,
         method: method,
         url: url,
-        headers: extractValue(activeApi, 'headers', {}),
+        headers: headersObj,
         params: paramsObj,
         body: method !== 'GET' ? normalizeBody(bodyContent, bodyType, bodyType === 'graphql' ? { query: gqlQuery, variables: gqlVariables } : null) : null,
         bodyType: bodyType,
+        options: { timeout: requestTimeout },
       });
 
       // Format response for display to match UI expectations
@@ -827,7 +844,20 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
     } finally {
       setIsSending(false);
     }
-  };
+  }, [selectedNode, activeEnvironment, method, url, headers, params, bodyContent, bodyType, gqlQuery, gqlVariables, requestTimeout]);
+
+  // Cmd+Enter (Mac) / Ctrl+Enter (Win) fires Send
+  useEffect(() => {
+    const onKeyDown = e => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        e.preventDefault();
+        if (!isSending && url) handleDirectApiCall();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [isSending, url, handleDirectApiCall]);
+
   // Function to validate the API using backend validation endpoint
   const handleValidateApi = async () => {
     setIsSending(true);
@@ -852,17 +882,20 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
         extractValue(activeApi, 'validationSchema.response') ||
         defaultValidationSchema;
 
-      // Use the dedicated validation endpoint
+      const headersObj = {};
+      headers.forEach(h => { if (h.key) headersObj[h.key] = h.value; });
+
       const validationResponse =
         await BackendApiCallService.executeWithValidation({
-          fileId: selectedNode?.id,
-          environmentId: activeEnvironment?.id,
+          fileId: selectedNode?.id ?? null,
+          environmentId: activeEnvironment?.id ?? null,
           method: method,
           url: url,
-          headers: extractValue(activeApi, 'headers', {}),
+          headers: headersObj,
           params: paramsObj,
           body: method !== 'GET' ? normalizeBody(bodyContent, bodyType, bodyType === 'graphql' ? { query: gqlQuery, variables: gqlVariables } : null) : null,
           expected: validationSchema,
+          options: { timeout: requestTimeout },
         });
 
       // Format response for display with validation results
@@ -910,96 +943,6 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
     }
   };
 
-  const handleSend = async () => {
-    setIsSending(true);
-
-    try {
-      // If we have a file node selected, try to run the API test
-      if (selectedNode?.type === 'file' && selectedNode?.id) {
-        const result = await runTest(selectedNode.id);
-        setActiveTab('apiTests');
-
-        if (result) {
-          // Handle the standard response format with response_code and data structure
-          if (result.data && typeof result.data === 'object') {
-            const apiResponseData = result.data;
-            const responseCode =
-              result.status || apiResponseData.response_code || 200;
-
-            setResponse({
-              status: responseCode,
-              statusText:
-                responseCode >= 200 && responseCode < 300 ? 'OK' : 'Error',
-              time: apiResponseData.time || '0 ms',
-              size:
-                apiResponseData.size ||
-                `${JSON.stringify(apiResponseData).length} B`,
-              body: apiResponseData, // Keep the full response data for display
-              headers: apiResponseData.headers || {},
-            });
-          } else {
-            // Direct response object
-            setResponse({
-              status: result.status || 200,
-              statusText: result.statusText || 'OK',
-              time: '0 ms',
-              size: `${JSON.stringify(result).length} B`,
-              body: result,
-              headers: result.headers || {},
-            });
-          }
-        } else {
-          // No result returned
-          setResponse({
-            status: 404,
-            statusText: 'No Response',
-            time: '0 ms',
-            size: '0 B',
-            body: { message: 'No response received from API' },
-            headers: {},
-          });
-        }
-      } else {
-        // Fallback to simulated response
-        setTimeout(() => {
-          setResponse({
-            status: 200,
-            statusText: 'OK',
-            time: '123 ms',
-            size: '532 B',
-            body: {
-              status: 'success',
-              data: [
-                { id: 1, name: 'Item 1' },
-                { id: 2, name: 'Item 2' },
-              ],
-            },
-            headers: {
-              'content-type': 'application/json',
-              'x-powered-by': 'Example Server',
-              date: new Date().toUTCString(),
-            },
-          });
-          setIsSending(false);
-        }, 800);
-      }
-    } catch (error) {
-      console.error('Error sending request:', error);
-      setResponse({
-        status: error.response?.status || 500,
-        statusText: error.response?.statusText || 'Error',
-        time: '0 ms',
-        size: '0 B',
-        body: {
-          error: error.message || 'Unknown error occurred',
-          details: error.response?.data || null,
-        },
-        headers: error.response?.headers || {},
-      });
-    } finally {
-      setIsSending(false);
-    }
-  };
 
   // Handler functions for the detailed test result modal
   const handleOpenDetailedResult = testResult => {
@@ -1171,6 +1114,47 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
       : String(response.body ?? '')
     : '';
 
+  const handleUrlPaste = e => {
+    const text = e.clipboardData?.getData('text') || '';
+    if (!text.trimStart().toLowerCase().startsWith('curl ')) return;
+    e.preventDefault();
+    const parsed = parseCurl(text);
+    if (!parsed) return;
+
+    if (parsed.method) setMethodDirty(parsed.method);
+
+    if (parsed.url) {
+      try {
+        const urlObj = new URL(parsed.url);
+        setUrlDirty(parsed.url);
+        const queryParams = [];
+        urlObj.searchParams.forEach((value, key) => {
+          queryParams.push({ key, value, description: '' });
+        });
+        if (queryParams.length) setParamsDirty(queryParams);
+      } catch {
+        setUrlDirty(parsed.url);
+      }
+    }
+
+    const headerEntries = Object.entries(parsed.headers || {});
+    if (headerEntries.length) {
+      setHeadersDirty(headerEntries.map(([key, value]) => ({ key, value, description: '' })));
+    }
+
+    if (parsed.body != null) {
+      const isObj = typeof parsed.body === 'object';
+      const bodyStr = isObj ? JSON.stringify(parsed.body, null, 2) : parsed.body;
+      try {
+        JSON.parse(bodyStr);
+        setBodyTypeDirty('JSON');
+      } catch {
+        setBodyTypeDirty('raw');
+      }
+      setBodyContentDirty(bodyStr);
+    }
+  };
+
   const isWebSocketUrl = url && (url.startsWith('ws://') || url.startsWith('wss://'));
 
   if (isWebSocketUrl) {
@@ -1181,7 +1165,8 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
           <VariableAwareInput
             className={styles.urlInput}
             value={url}
-            onChange={setUrl}
+            onChange={setUrlDirty}
+            onPaste={handleUrlPaste}
             variables={variables || {}}
             placeholder="ws:// or wss://"
           />
@@ -1198,7 +1183,7 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
         <select
           className={styles.methodSelector}
           value={method}
-          onChange={e => setMethod(e.target.value)}
+          onChange={e => setMethodDirty(e.target.value)}
         >
           <option value="GET">GET</option>
           <option value="POST">POST</option>
@@ -1212,17 +1197,41 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
         <VariableAwareInput
           className={styles.urlInput}
           value={url}
-          onChange={setUrl}
+          onChange={setUrlDirty}
+          onPaste={handleUrlPaste}
           variables={variables || {}}
-          placeholder="Enter request URL (use {{VARIABLE_NAME}} for variables)"
+          placeholder="Paste a URL or cURL command here"
         />
 
+        {isFromCache && selectedNode?.id && (
+          <button
+            className={styles.cacheRefreshBtn}
+            title="Loaded from local cache — click to fetch fresh data from server"
+            onClick={() => {
+              refreshApi(selectedNode.id).catch(err =>
+                console.error('Refresh failed:', err)
+              );
+            }}
+          >
+            ↻ cached
+          </button>
+        )}
+
         <div className={styles.buttonGroup}>
+          <input
+            type="number"
+            className={styles.timeoutInput}
+            value={requestTimeout}
+            min={1}
+            max={300}
+            title="Request timeout (seconds)"
+            onChange={e => setRequestTimeout(Number(e.target.value) || 30)}
+          />
           <div className="sendButtonContainer">
             <Button
               variant="primary"
               className={`${styles.sendButton} overrideSendButton`}
-              onClick={handleDirectApiCall} // Now uses direct call functionality instead of handleSend
+              onClick={handleDirectApiCall}
               disabled={isSending || !url}
             >
               {isSending ? 'Sending...' : 'Send'}
@@ -1355,6 +1364,7 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
                 if (!activeApi) {
                   await getApi(selectedNode.id);
                 }
+                setIsDirty(false);
               } catch (err) {
                 console.error('Error saving API configuration:', err);
                 alert(`Failed to save configuration: ${err.message}`);
@@ -1363,9 +1373,9 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
               }
             }}
             disabled={isUpdatingConfig}
-            title="Save API"
+            title={isDirty ? 'Unsaved changes — click to save' : 'Save API'}
           >
-            {isUpdatingConfig ? 'Saving...' : 'Save'}
+            {isUpdatingConfig ? 'Saving...' : isDirty ? '● Save' : 'Save'}
           </Button>
           <div className="dropdownContainer">
             <Button
@@ -1746,7 +1756,7 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
                       onChange={e => {
                         const newParams = [...params];
                         newParams[idx].key = e.target.value;
-                        setParams(newParams);
+                        setParamsDirty(newParams);
                       }}
                       placeholder="Key"
                     />
@@ -1758,7 +1768,7 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
                       onChange={e => {
                         const newParams = [...params];
                         newParams[idx].value = e.target.value;
-                        setParams(newParams);
+                        setParamsDirty(newParams);
                       }}
                       placeholder="Value"
                     />
@@ -1770,7 +1780,7 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
                       onChange={e => {
                         const newParams = [...params];
                         newParams[idx].description = e.target.value;
-                        setParams(newParams);
+                        setParamsDirty(newParams);
                       }}
                       placeholder="Description"
                     />
@@ -1788,7 +1798,7 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
                     defaultValue={''}
                     onBlur={e => {
                       if (e.target.value) {
-                        setParams([
+                        setParamsDirty([
                           ...params,
                           { key: e.target.value, value: '', description: '' },
                         ]);
@@ -1842,7 +1852,7 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
                       onChange={e => {
                         const newHeaders = [...headers];
                         newHeaders[idx].key = e.target.value;
-                        setHeaders(newHeaders);
+                        setHeadersDirty(newHeaders);
                       }}
                       placeholder="Key"
                     />
@@ -1854,7 +1864,7 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
                       onChange={e => {
                         const newHeaders = [...headers];
                         newHeaders[idx].value = e.target.value;
-                        setHeaders(newHeaders);
+                        setHeadersDirty(newHeaders);
                       }}
                       placeholder="Value"
                     />
@@ -1866,7 +1876,7 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
                       onChange={e => {
                         const newHeaders = [...headers];
                         newHeaders[idx].description = e.target.value;
-                        setHeaders(newHeaders);
+                        setHeadersDirty(newHeaders);
                       }}
                       placeholder="Description"
                     />
@@ -1885,7 +1895,7 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
                     defaultValue={''}
                     onBlur={e => {
                       if (e.target.value) {
-                        setHeaders([
+                        setHeadersDirty([
                           ...headers,
                           { key: e.target.value, value: '', description: '' },
                         ]);
@@ -1922,8 +1932,8 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
               <div
                 className={`${styles.bodyTypeBadge} ${bodyType === 'none' ? styles.active : ''}`}
                 onClick={() => {
-                  setBodyType('none');
-                  setBodyContent('');
+                  setBodyTypeDirty('none');
+                  setBodyContentDirty('');
                 }}
               >
                 none
@@ -1931,15 +1941,12 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
               <div
                 className={`${styles.bodyTypeBadge} ${bodyType === 'raw' ? styles.active : ''}`}
                 onClick={() => {
-                  setBodyType('raw');
-                  // If coming from JSON, try to remove formatting
+                  setBodyTypeDirty('raw');
                   if (bodyType === 'JSON') {
                     try {
                       const obj = JSON.parse(bodyContent);
-                      setBodyContent(JSON.stringify(obj));
-                    } catch (e) {
-                      // Keep content as is if not valid JSON
-                    }
+                      setBodyContentDirty(JSON.stringify(obj));
+                    } catch (e) {}
                   }
                 }}
               >
@@ -1948,24 +1955,18 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
               <div
                 className={`${styles.bodyTypeBadge} ${bodyType === 'JSON' ? styles.active : ''}`}
                 onClick={() => {
-                  setBodyType('JSON');
-                  // If coming from raw and content might be JSON, try to format it
+                  setBodyTypeDirty('JSON');
                   if (bodyType === 'raw' && bodyContent.trim()) {
                     try {
                       const obj = JSON.parse(bodyContent);
-                      setBodyContent(JSON.stringify(obj, null, 2));
+                      setBodyContentDirty(JSON.stringify(obj, null, 2));
                     } catch (e) {
-                      // If not valid JSON, initialize with empty JSON object
-                      if (
-                        !bodyContent.includes('{') &&
-                        !bodyContent.includes('[')
-                      ) {
-                        setBodyContent('{}');
+                      if (!bodyContent.includes('{') && !bodyContent.includes('[')) {
+                        setBodyContentDirty('{}');
                       }
                     }
                   } else if (bodyType === 'none' || !bodyContent) {
-                    // Set a default JSON if coming from none
-                    setBodyContent(`{}`);
+                    setBodyContentDirty('{}');
                   }
                 }}
               >
@@ -1974,16 +1975,9 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
               <div
                 className={`${styles.bodyTypeBadge} ${bodyType === 'XML' ? styles.active : ''}`}
                 onClick={() => {
-                  setBodyType('XML');
+                  setBodyTypeDirty('XML');
                   if (bodyType === 'none' || !bodyContent) {
-                    // Set a default XML if coming from none
-                    setBodyContent(`<root>
-  <name>Example</name>
-  <data>
-    <id>1</id>
-    <description>Sample request body</description>
-  </data>
-</root>`);
+                    setBodyContentDirty(`<root>\n  <name>Example</name>\n</root>`);
                   }
                 }}
               >
@@ -1991,19 +1985,19 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
               </div>
               <div
                 className={`${styles.bodyTypeBadge} ${bodyType === 'form-data' ? styles.active : ''}`}
-                onClick={() => setBodyType('form-data')}
+                onClick={() => setBodyTypeDirty('form-data')}
               >
                 form-data
               </div>
               <div
                 className={`${styles.bodyTypeBadge} ${bodyType === 'url-encoded' ? styles.active : ''}`}
-                onClick={() => setBodyType('url-encoded')}
+                onClick={() => setBodyTypeDirty('url-encoded')}
               >
                 url-encoded
               </div>
               <div
                 className={`${styles.bodyTypeBadge} ${bodyType === 'graphql' ? styles.active : ''}`}
-                onClick={() => setBodyType('graphql')}
+                onClick={() => setBodyTypeDirty('graphql')}
               >
                 GraphQL
               </div>
@@ -2016,7 +2010,7 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
                 minHeight="120px"
                 extensions={[jsonLang()]}
                 theme={isDarkMode ? oneDark : undefined}
-                onChange={val => setBodyContent(val)}
+                onChange={val => setBodyContentDirty(val)}
                 className={styles.bodyCodeMirror}
                 basicSetup={{ lineNumbers: true, foldGutter: true }}
               />
@@ -2025,13 +2019,13 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
               <KeyValueBodyTable
                 rows={bodyType === 'form-data' ? formDataRows : urlEncodedRows}
                 setRows={bodyType === 'form-data' ? setFormDataRows : setUrlEncodedRows}
-                onSerialize={serialized => setBodyContent(serialized)}
+                onSerialize={serialized => setBodyContentDirty(serialized)}
               />
             )}
             {bodyType !== 'none' && bodyType !== 'JSON' && bodyType !== 'form-data' && bodyType !== 'url-encoded' && (
               <JsonEditor
                 value={bodyContent}
-                onChange={setBodyContent}
+                onChange={setBodyContentDirty}
                 placeholder={
                   bodyType === 'raw'
                     ? 'Enter raw text'
@@ -2096,7 +2090,7 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
                   </button>
                 </div>
                 {gqlSchemaError && (
-                  <div style={{ color: '#ef4444', fontSize: 11, marginBottom: 4 }}>{gqlSchemaError}</div>
+                  <div style={{ color: 'var(--error)', fontSize: 11, marginBottom: 4 }}>{gqlSchemaError}</div>
                 )}
                 <CodeMirror
                   value={gqlQuery}

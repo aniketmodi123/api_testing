@@ -84,7 +84,7 @@ export default function TestResultCard({
               width: testResult.total_cases > 0
                 ? `${(testResult.passed / testResult.total_cases) * 100}%`
                 : '0%',
-              background: testResult.failed === 0 ? '#22c55e' : testResult.passed > 0 ? '#f59e0b' : '#ef4444',
+              background: testResult.failed === 0 ? 'var(--success)' : testResult.passed > 0 ? 'var(--warning)' : 'var(--error)',
             }}
           />
           <span className={styles.summaryLabel}>

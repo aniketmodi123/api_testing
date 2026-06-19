@@ -1,15 +1,3 @@
 {
-  "hooks": {
-    "UserPromptSubmit": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "echo '{\"hookSpecificOutput\":{\"hookEventName\":\"UserPromptSubmit\",\"additionalContext\":\"GRAPHIFY FIRST — for any codebase question (find, trace, locate, similar, callers, structure): use graphify query or graphify explain BEFORE grep/find/Read. Drop to raw files only when graph lacks line-level detail.\"}}'"
-          }
-        ]
-      }
-    ]
-  }
+  "hooks": {}
 }

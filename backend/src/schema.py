@@ -1255,7 +1255,7 @@ class ApiExecuteRequest(BaseModel):
         expected: Assertion criteria dict; ``None`` skips assertions.
     """
 
-    file_id: int = Field(..., description="File ID containing the API")
+    file_id: Optional[int] = Field(None, description="File ID containing the API; None for ephemeral/scratch requests")
     environment_id: Optional[int] = Field(None, description="Environment ID for variable resolution")
     method: str = Field("GET", description="HTTP method")
     url: str = Field(..., description="API endpoint URL")

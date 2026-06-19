@@ -150,3 +150,12 @@
   font-size: 14px;
   flex-shrink: 0;
 }
+
+.logoutItem {
+  color: var(--error, #e05252);
+}
+
+.logoutItem:hover {
+  color: var(--error, #e05252);
+  background: color-mix(in srgb, var(--error, #e05252) 10%, transparent);
+}

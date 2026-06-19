@@ -10,10 +10,10 @@ import styles from './VariableScopePanel.module.css';
 const SCOPE_ORDER = ['global', 'collection', 'environment', 'local'];
 
 const SCOPE_META = {
-  global:      { label: 'Global',      color: '#f59e0b' },
-  collection:  { label: 'Collection',  color: '#10b981' },
-  environment: { label: 'Environment', color: '#0ea5e9' },
-  local:       { label: 'Local',       color: '#8b5cf6' },
+  global:      { label: 'Global',      color: 'var(--warning)' },
+  collection:  { label: 'Collection',  color: 'var(--success)' },
+  environment: { label: 'Environment', color: 'var(--info)' },
+  local:       { label: 'Local',       color: 'var(--accent)' },
 };
 
 export default function VariableScopePanel({ nodeId, workspaceId, open, onClose }) {

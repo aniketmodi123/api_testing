@@ -31,29 +31,33 @@
 
 .GET {
   color: var(--method-get);
-  background: rgba(34, 197, 94, 0.12);
+  background: color-mix(in srgb, var(--method-get) 12%, transparent);
 }
 .POST {
   color: var(--method-post);
-  background: rgba(59, 130, 246, 0.12);
+  background: color-mix(in srgb, var(--method-post) 12%, transparent);
 }
 .PUT {
   color: var(--method-put);
-  background: rgba(245, 158, 11, 0.12);
+  background: color-mix(in srgb, var(--method-put) 12%, transparent);
 }
 .PATCH {
   color: var(--method-patch);
-  background: rgba(167, 139, 250, 0.12);
+  background: color-mix(in srgb, var(--method-patch) 12%, transparent);
 }
 .DELETE {
   color: var(--method-delete);
-  background: rgba(239, 68, 68, 0.12);
+  background: color-mix(in srgb, var(--method-delete) 12%, transparent);
 }
 .HEAD {
   color: var(--method-head);
-  background: rgba(6, 182, 212, 0.12);
+  background: color-mix(in srgb, var(--method-head) 12%, transparent);
 }
 .OPTIONS {
   color: var(--method-options);
-  background: rgba(139, 92, 246, 0.12);
+  background: color-mix(in srgb, var(--method-options) 12%, transparent);
+}
+.DEFAULT {
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--text-muted) 12%, transparent);
 }

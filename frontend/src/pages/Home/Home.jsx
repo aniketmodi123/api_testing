@@ -1,15 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from 'react-resizable-panels';
 import BulkTestPanel from '../../components/BulkTestPanel/BulkTestPanel.jsx';
 import CollectionTree from '../../components/CollectionTree/CollectionTree';
-import VariableScopePanel from '../../components/VariableScopePanel/VariableScopePanel';
 import { EnvironmentManager } from '../../components/EnvironmentManager';
 import EnvironmentDetail from '../../components/EnvironmentManager/EnvironmentDetail';
 import EnvironmentForm from '../../components/EnvironmentManager/EnvironmentForm';
-import VariableModal from '../../components/EnvironmentManager/VariableModal';
+import GlobalVariablesPanel from '../../components/EnvironmentManager/GlobalVariablesPanel';
 import HistoryPanel from '../../components/HistoryPanel/HistoryPanel';
 import IconSidebar from '../../components/IconSidebar';
+import NodeDetailPanel from '../../components/NodeDetailPanel/NodeDetailPanel';
 import RequestPanel from '../../components/RequestPanel/RequestPanel';
 import TabBar, { useTabBar } from '../../components/TabBar';
 import { useEnvironment } from '../../store/environment';
@@ -22,15 +21,12 @@ export default function Home() {
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState('collections');
-  const [showScopePanel, setShowScopePanel] = useState(false);
-
-  // Variable modal states
-  const [showVariableModal, setShowVariableModal] = useState(false);
-  const [editingVariable, setEditingVariable] = useState(null);
 
   // Environment form states
   const [showEnvironmentForm, setShowEnvironmentForm] = useState(false);
   const [editingEnvironment, setEditingEnvironment] = useState(null);
+  const [showGlobalPanel, setShowGlobalPanel] = useState(false);
+  const [nodeDetailNode, setNodeDetailNode] = useState(null);
 
   const {
     activeWorkspace,
@@ -41,20 +37,31 @@ export default function Home() {
     refreshWorkspaces,
   } = useWorkspace();
 
-  const { selectedNode, setSelectedNode } = useNode();
+  const { selectedNode, setSelectedNode, nodes: nodeList } = useNode();
 
   const {
     variables,
     activeEnvironment,
     selectedEnvironment,
-    setSelectedEnvironment,
+    selectEnvironment,
     createEnvironment,
     updateEnvironment,
-    createEnvironmentFromTemplate,
     createEnvironmentWithDefaults,
   } = useEnvironment();
 
-  const { tabs, activeTabId, openTab, closeTab, setActiveTabId, updateTabMethod } = useTabBar(workspaceTree);
+  // file_tree is only present after CollectionTree mutations; initial load uses a different shape.
+  // Fall back to flat nodeList from useNode() which is always populated after workspace loads.
+  const fileTree = workspaceTree?.file_tree ?? nodeList ?? null;
+
+  const { tabs, activeTabId, openTab, openScratchTab, closeTab, setActiveTabId, updateTabMethod } = useTabBar(fileTree);
+
+  // On refresh: workspaceTree loads after tabs are restored from localStorage.
+  // Once tree is available, auto-select the persisted active tab so the panel shows the right request.
+  useEffect(() => {
+    if (!fileTree?.length || !activeTabId || selectedNode) return;
+    const node = findNodeById(fileTree, activeTabId);
+    if (node) setSelectedNode({ ...node });
+  }, [fileTree, activeTabId]);
 
   // Derive tab from URL on mount and when URL changes
   useEffect(() => {
@@ -77,6 +84,7 @@ export default function Home() {
 
   const handleTabChange = tab => {
     setActiveTab(tab);
+    setNodeDetailNode(null);
     if (tab === 'collections') navigate('/collections');
     else if (tab === 'environments') navigate('/environments');
     else if (tab === 'bulkTest') navigate('/bulk-test');
@@ -85,32 +93,52 @@ export default function Home() {
 
   const handleSelectRequest = node => {
     setSelectedNode(node);
-    openTab(node);
+    if (node.type === 'folder') {
+      setNodeDetailNode(node);
+    } else {
+      setNodeDetailNode(null);
+      openTab(node);
+    }
   };
 
   const handleTabSelect = fileId => {
     setActiveTabId(fileId);
-    // Find node in workspace tree and restore it as selected node
-    const node = findNodeById(workspaceTree, fileId);
-    if (node) setSelectedNode(node);
+    setNodeDetailNode(null);
+    const node = findNodeById(fileTree, fileId);
+    if (node) {
+      // Spread to new object so useEffect([selectedNode]) fires even when switching back to same node
+      setSelectedNode({ ...node });
+    } else {
+      // Scratch tab — clear selectedNode so RequestPanel enters ephemeral mode
+      setSelectedNode(null);
+    }
+  };
+
+  const handleNewScratchTab = () => {
+    openScratchTab();
+    setNodeDetailNode(null);
+    setSelectedNode(null);
+  };
+
+  const handleGlobalSelect = () => {
+    setShowGlobalPanel(true);
+    setShowEnvironmentForm(false);
+    setEditingEnvironment(null);
+    selectEnvironment(null);
   };
 
   const handleEnvironmentSelect = environment => {
-    setSelectedEnvironment(environment);
+    selectEnvironment(environment);
     setShowEnvironmentForm(false);
     setEditingEnvironment(null);
+    setShowGlobalPanel(false);
   };
 
   const handleCreateEnvironment = () => {
     setShowEnvironmentForm(true);
     setEditingEnvironment(null);
-    setSelectedEnvironment(null);
-  };
-
-  const handleEditEnvironment = environment => {
-    setShowEnvironmentForm(true);
-    setEditingEnvironment(environment);
-    setSelectedEnvironment(null);
+    selectEnvironment(null);
+    setShowGlobalPanel(false);
   };
 
   const handleCancelEnvironmentForm = () => {
@@ -137,7 +165,7 @@ export default function Home() {
       if (result) {
         setShowEnvironmentForm(false);
         setEditingEnvironment(null);
-        if (!editingEnvironment) setSelectedEnvironment(result);
+        if (!editingEnvironment) selectEnvironment(result);
         return result;
       }
       return false;
@@ -146,21 +174,6 @@ export default function Home() {
       if (setModalError) setModalError('Failed to save environment. Please try again.');
       return false;
     }
-  };
-
-  const handleCreateVariable = () => {
-    setEditingVariable(null);
-    setShowVariableModal(true);
-  };
-
-  const handleEditVariable = variable => {
-    setEditingVariable(variable);
-    setShowVariableModal(true);
-  };
-
-  const handleCloseVariableModal = () => {
-    setShowVariableModal(false);
-    setEditingVariable(null);
   };
 
   const showSidePanel = activeTab !== 'bulkTest';
@@ -185,89 +198,90 @@ export default function Home() {
       )}
 
       <div className={styles.mainContent}>
-        <IconSidebar onTabChange={handleTabChange} />
-
-        {showSidePanel ? (
-          <PanelGroup orientation="horizontal" className={styles.panelGroup}>
-            <Panel defaultSize="20%" minSize="12%" maxSize="40%" className={styles.treePanel}>
+        {/* Left sidebar: nav tabs on top, tree content below — always visible */}
+        <div className={styles.leftSidebar}>
+          <IconSidebar onTabChange={handleTabChange} />
+          {showSidePanel && (
+            <div className={styles.treeContent}>
               {activeTab === 'collections' && (
-                <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-                  <div style={{ flex: 1, overflow: 'hidden' }}>
-                    <CollectionTree onSelectRequest={handleSelectRequest} />
-                  </div>
-                  <div
-                    style={{ borderTop: '1px solid var(--border)', flexShrink: 0, cursor: 'pointer', padding: '4px 10px', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', userSelect: 'none', display: 'flex', alignItems: 'center', gap: 4 }}
-                    onClick={() => setShowScopePanel(v => !v)}
-                  >
-                    ⊞ Variable Scopes
-                  </div>
-                </div>
+                <CollectionTree
+                  onSelectRequest={handleSelectRequest}
+                />
               )}
               {activeTab === 'environments' && (
                 <EnvironmentManager
                   onEnvironmentSelect={handleEnvironmentSelect}
                   onCreateEnvironment={handleCreateEnvironment}
-                  onEditEnvironment={handleEditEnvironment}
+                  onGlobalSelect={handleGlobalSelect}
+                  selectedGlobal={showGlobalPanel}
                 />
               )}
               {activeTab === 'history' && (
                 <HistoryPanel onSelectRequest={handleSelectRequest} />
               )}
-            </Panel>
-            <PanelResizeHandle className={styles.resizeHandle} />
-            <Panel className={styles.contentPanel}>
-              {activeTab === 'collections' || activeTab === 'history' ? (
+            </div>
+          )}
+        </div>
+
+        {/* Right content area */}
+        {showSidePanel ? (
+          <div className={styles.contentPanel}>
+            {activeTab === 'collections' || activeTab === 'history' ? (
+              nodeDetailNode ? (
+                <NodeDetailPanel
+                  node={nodeDetailNode}
+                  onClose={() => setNodeDetailNode(null)}
+                />
+              ) : (
                 <div className={styles.requestArea}>
-                  {tabs.length > 0 && (
-                    <TabBar
-                      tabs={tabs}
-                      activeTabId={activeTabId}
-                      onSelect={handleTabSelect}
-                      onClose={closeTab}
-                    />
-                  )}
+                  <TabBar
+                    tabs={tabs}
+                    activeTabId={activeTabId}
+                    onSelect={handleTabSelect}
+                    onClose={closeTab}
+                    onNewTab={handleNewScratchTab}
+                  />
                   <RequestPanel
                     activeRequest={selectedNode}
                     onMethodChange={(fileId, method) => updateTabMethod(fileId, method)}
                   />
                 </div>
-              ) : activeTab === 'environments' ? (
-                <div className={styles.variableManagementPanel}>
-                  {showEnvironmentForm ? (
-                    <EnvironmentForm
-                      onCancel={handleCancelEnvironmentForm}
-                      onSave={handleSaveEnvironment}
-                      initialData={editingEnvironment}
-                      isEdit={!!editingEnvironment}
-                    />
-                  ) : selectedEnvironment ? (
-                    <EnvironmentDetail
-                      environment={selectedEnvironment}
-                      variables={variables}
-                      isActive={activeEnvironment?.id === selectedEnvironment.id}
-                      onCreateVariable={handleCreateVariable}
-                      onEditVariable={handleEditVariable}
-                      onEditEnvironment={handleEditEnvironment}
-                    />
-                  ) : (
-                    <div className={styles.noEnvironmentSelected}>
-                      <div className={styles.noSelectionIcon}>🌍</div>
-                      <h3>Select an environment</h3>
-                      <p>
-                        Choose an environment from the left panel to view and manage its
-                        variables, or create a new environment.
-                      </p>
-                      <div className={styles.emptyActions}>
-                        <button className={styles.createButton} onClick={handleCreateEnvironment}>
-                          Create Environment
-                        </button>
-                      </div>
+              )
+            ) : activeTab === 'environments' ? (
+              <div className={styles.variableManagementPanel}>
+                {showGlobalPanel ? (
+                  <GlobalVariablesPanel />
+                ) : showEnvironmentForm ? (
+                  <EnvironmentForm
+                    onCancel={handleCancelEnvironmentForm}
+                    onSave={handleSaveEnvironment}
+                    initialData={editingEnvironment}
+                    isEdit={!!editingEnvironment}
+                  />
+                ) : selectedEnvironment ? (
+                  <EnvironmentDetail
+                    environment={selectedEnvironment}
+                    variables={variables}
+                    isActive={activeEnvironment?.id === selectedEnvironment.id}
+                  />
+                ) : (
+                  <div className={styles.noEnvironmentSelected}>
+                    <div className={styles.noSelectionIcon}>🌍</div>
+                    <h3>Select an environment</h3>
+                    <p>
+                      Choose an environment from the left panel to view and manage its
+                      variables, or create a new environment.
+                    </p>
+                    <div className={styles.emptyActions}>
+                      <button className={styles.createButton} onClick={handleCreateEnvironment}>
+                        Create Environment
+                      </button>
                     </div>
-                  )}
-                </div>
-              ) : null}
-            </Panel>
-          </PanelGroup>
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </div>
         ) : (
           <div className={styles.contentPanel}>
             <BulkTestPanel onSelectRequest={handleSelectRequest} />
@@ -275,37 +289,20 @@ export default function Home() {
         )}
       </div>
 
-      {showVariableModal && selectedEnvironment && (
-        <VariableModal
-          environment={selectedEnvironment}
-          editingVariable={editingVariable}
-          onClose={handleCloseVariableModal}
-        />
-      )}
-
-      <VariableScopePanel
-        open={showScopePanel}
-        onClose={() => setShowScopePanel(false)}
-        nodeId={selectedNode?.id}
-        workspaceId={activeWorkspace?.id}
-      />
     </div>
   );
 }
 
 function findNodeById(tree, id) {
-  if (!tree) return null;
-  for (const workspace of tree) {
-    const found = searchChildren(workspace.children, id);
-    if (found) return found;
-  }
-  return null;
+  if (!Array.isArray(tree)) return null;
+  return searchChildren(tree, id);
 }
 
 function searchChildren(children, id) {
   if (!children) return null;
+  // Use == to handle string/number mismatch from localStorage serialization
   for (const node of children) {
-    if (node.id === id) return node;
+    if (node.id == id) return node;
     if (node.children) {
       const found = searchChildren(node.children, id);
       if (found) return found;

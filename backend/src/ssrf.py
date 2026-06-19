@@ -1,12 +1,16 @@
 """
 What this file does: Provides assert_safe_url() to block SSRF targets — private CIDRs,
 link-local, loopback, and cloud metadata endpoints — before any outbound request is sent.
+Disabled by default (SSRF_PROTECTION=off); set SSRF_PROTECTION=strict to enable.
 """
 
 import ipaddress
 import socket
 from urllib.parse import urlparse
 import os
+
+# Set SSRF_PROTECTION=strict to enable blocking. Default is off — this is a local dev tool.
+_SSRF_ENABLED = os.environ.get("SSRF_PROTECTION", "off").lower() == "strict"
 
 # CSV of hostnames/IPs allowed even if they resolve to private space (e.g. "host.docker.internal")
 _ALLOWLIST = {
@@ -51,6 +55,9 @@ def assert_safe_url(url: str) -> None:
     Notes:
         - Hosts in SSRF_ALLOWLIST env var bypass the private-IP check (default: localhost variants).
     """
+    if not _SSRF_ENABLED:
+        return
+
     parsed = urlparse(url)
     host = parsed.hostname or ""
 

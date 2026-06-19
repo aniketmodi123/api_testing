@@ -156,8 +156,8 @@
 
 .warning {
   font-size: 11px;
-  color: var(--warning, #f59e0b);
-  background: rgba(245, 158, 11, 0.1);
+  color: var(--warning);
+  background: var(--warning-dim);
   border-radius: var(--radius);
   padding: 4px 8px;
 }

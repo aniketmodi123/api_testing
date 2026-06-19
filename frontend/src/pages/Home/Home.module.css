@@ -16,6 +16,29 @@
   background: var(--bg);
 }
 
+/* Left sidebar: nav bar on top + tree content below */
+.leftSidebar {
+  display: flex;
+  flex-direction: column;
+  width: 240px;
+  min-width: 160px;
+  max-width: 400px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  background: var(--surface-1);
+  overflow: hidden;
+  height: 100%;
+}
+
+/* Tree/list content inside the left sidebar */
+.treeContent {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
 /* react-resizable-panels wrapper */
 .panelGroup {
   flex: 1;

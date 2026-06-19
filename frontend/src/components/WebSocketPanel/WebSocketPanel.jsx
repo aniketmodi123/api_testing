@@ -86,7 +86,7 @@ export default function WebSocketPanel({ url }) {
     }
   };
 
-  const statusColor = status === 'connected' ? '#22c55e' : status === 'connecting' ? '#f59e0b' : '#6b7280';
+  const statusColor = status === 'connected' ? 'var(--success)' : status === 'connecting' ? 'var(--warning)' : 'var(--text-subtle)';
 
   return (
     <div className={styles.panel}>

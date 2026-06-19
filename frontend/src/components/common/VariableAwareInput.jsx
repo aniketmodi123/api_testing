@@ -14,7 +14,7 @@ import styles from './VariableAwareInput.module.css';
  */
 const VAR_RE = /\{\{([a-zA-Z_][a-zA-Z0-9_-]*)\}\}/g;
 
-export default function VariableAwareInput({ value = '', onChange, variables = {}, placeholder, className }) {
+export default function VariableAwareInput({ value = '', onChange, onPaste, variables = {}, placeholder, className }) {
   const [tooltip, setTooltip] = useState(null); // { key, resolved }
   const inputRef = useRef(null);
 
@@ -70,6 +70,7 @@ export default function VariableAwareInput({ value = '', onChange, variables = {
         className={styles.input}
         value={value}
         onChange={e => onChange(e.target.value)}
+        onPaste={onPaste}
         placeholder={placeholder}
         onMouseMove={handleMouseMove}
         onMouseLeave={() => setTooltip(null)}

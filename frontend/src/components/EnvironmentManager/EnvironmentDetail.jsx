@@ -1,454 +1,377 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useEnvironment } from '../../store/environment';
-import { formatDateTime } from '../../utils';
-import { Button } from '../common';
 import styles from './EnvironmentDetail.module.css';
-import VariableResolutionPanel from './VariableResolutionPanel';
 
-export default function EnvironmentDetail({
-  environment,
-  variables,
-  isActive,
-  onCreateVariable,
-  onEditVariable,
-  onEditEnvironment,
-}) {
-  const {
-    updateEnvironment,
-    activateEnvironment,
-    createVariable,
-    updateVariable,
-    deleteVariable,
-    saveVariables,
-    isLoading,
-  } = useEnvironment();
+const TYPES = ['text', 'secret', 'number', 'boolean', 'json'];
 
-  // Local state
-  const [activeTab, setActiveTab] = useState('variables'); // 'variables' or 'preview'
-  const [isEditing, setIsEditing] = useState(false);
-  const [editForm, setEditForm] = useState({
-    name: environment.name,
-    description: environment.description || '',
-  });
+const TYPE_LABELS = {
+  text: 'Text',
+  secret: 'Secret',
+  number: 'Number',
+  boolean: 'Boolean',
+  json: 'JSON',
+};
 
-  // Variables editing state
-  const [variablesData, setVariablesData] = useState(
-    variables.map(v => ({ ...v })) || []
-  );
-  const [newVariable, setNewVariable] = useState({ key: '', value: '' });
-  const [hasVariableChanges, setHasVariableChanges] = useState(false);
+function TypeBadge({ type, onChange, disabled }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
 
-  // Update variables data when environment or variables change
   useEffect(() => {
-    setVariablesData(variables.map(v => ({ ...v })) || []);
-    setNewVariable({ key: '', value: '' });
-    setHasVariableChanges(false);
-  }, [environment.id, variables]);
-
-  // Update edit form when environment changes
-  useEffect(() => {
-    setEditForm({
-      name: environment.name,
-      description: environment.description || '',
-    });
-  }, [environment]); // Changed to depend on the entire environment object
-
-  // Handle inline editing
-  const handleEditToggle = () => {
-    if (isEditing) {
-      // Reset form when canceling
-      setEditForm({
-        name: environment.name,
-        description: environment.description || '',
-      });
-    }
-    setIsEditing(!isEditing);
-  };
-
-  const handleSaveEnvironment = async () => {
-    const success = await updateEnvironment(environment.id, {
-      name: editForm.name.trim(),
-      description: editForm.description.trim() || null,
-    });
-
-    if (success) {
-      setIsEditing(false);
-    }
-  };
-
-  // Variable management handlers
-  const handleVariableChange = (index, field, value) => {
-    const updatedVariables = [...variablesData];
-    updatedVariables[index][field] = value;
-    setVariablesData(updatedVariables);
-    setHasVariableChanges(true);
-  };
-
-  const handleRemoveVariable = index => {
-    const updatedVariables = variablesData.filter((_, i) => i !== index);
-    setVariablesData(updatedVariables);
-    setHasVariableChanges(true);
-  };
-
-  const handleAddVariable = () => {
-    if (newVariable.key.trim() && newVariable.value.trim()) {
-      setVariablesData([
-        ...variablesData,
-        {
-          key: newVariable.key.trim(),
-          value: newVariable.value.trim(),
-          id: Date.now(), // Temporary ID for new variables
-        },
-      ]);
-      setNewVariable({ key: '', value: '' });
-      setHasVariableChanges(true);
-    }
-  };
-
-  const handleSaveVariables = async () => {
-    try {
-      // Prepare variables data for API (convert to proper format)
-      const variablesToSave = variablesData.map(variable => ({
-        key: variable.key,
-        value: variable.value,
-        description: variable.description || '',
-        is_enabled: variable.is_enabled !== false,
-      }));
-
-      // Use unified save endpoint (handles both create and update)
-      const success = await saveVariables(environment.id, variablesToSave);
-
-      if (success) {
-        setHasVariableChanges(false);
-      }
-    } catch (error) {
-      console.error('Error saving variables:', error);
-    }
-  };
-
-  const handleCancelVariableChanges = () => {
-    setVariablesData(variables.map(v => ({ ...v })) || []);
-    setNewVariable({ key: '', value: '' });
-    setHasVariableChanges(false);
-  };
-
-  const handleActivate = async () => {
-    await activateEnvironment(environment.id);
-  };
+    if (!open) return;
+    const handler = e => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
 
   return (
-    <div className={styles.environmentDetail}>
-      {/* Header */}
-      <div className={styles.header}>
-        <div className={styles.environmentInfo}>
-          {isEditing ? (
-            <div className={styles.editForm}>
-              <input
-                type="text"
-                value={editForm.name}
-                onChange={e =>
-                  setEditForm({ ...editForm, name: e.target.value })
-                }
-                className={styles.nameInput}
-                placeholder="Environment name"
-                maxLength={100}
-              />
-              <textarea
-                value={editForm.description}
-                onChange={e =>
-                  setEditForm({ ...editForm, description: e.target.value })
-                }
-                className={styles.descriptionInput}
-                placeholder="Environment description (optional)"
-                rows={2}
-                maxLength={500}
-              />
-            </div>
-          ) : (
-            <div className={styles.viewInfo}>
-              <div className={styles.titleRow}>
-                <h2 className={styles.environmentName}>{environment.name}</h2>
-                {isActive && (
-                  <span className={styles.activeBadge}>
-                    <span className={styles.activeDot}></span>
-                    Active
-                  </span>
-                )}
-              </div>
-
-              {environment.description && (
-                <p className={styles.environmentDescription}>
-                  {environment.description}
-                </p>
-              )}
-
-              <div className={styles.metaInfo}>
-                <div className={styles.metaItem}>
-                  <span className={styles.metaLabel}>Created:</span>
-                  <span className={styles.metaValue}>
-                    {formatDateTime(environment.created_at)}
-                  </span>
-                </div>
-                <div className={styles.metaItem}>
-                  <span className={styles.metaLabel}>Variables:</span>
-                  <span className={styles.metaValue}>
-                    {variables.length} variable
-                    {variables.length !== 1 ? 's' : ''}
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className={styles.headerActions}>
-          {isEditing ? (
-            <>
-              <Button
-                variant="secondary"
-                size="small"
-                onClick={handleEditToggle}
-                disabled={isLoading}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="primary"
-                size="small"
-                onClick={handleSaveEnvironment}
-                disabled={isLoading || !editForm.name.trim()}
-              >
-                Save
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button
-                variant="secondary"
-                size="small"
-                onClick={handleEditToggle}
-                disabled={isLoading}
-              >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path
-                    d="M11 4H4C3.46957 4 2.96086 4.21071 2.58579 4.58579C2.21071 4.96086 2 5.46957 2 6V20C2 20.5304 2.21071 21.0391 2.58579 21.4142C2.96086 21.7893 3.46957 22 4 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V13M18.5 2.5C18.8978 2.10217 19.4374 1.87868 20 1.87868C20.5626 1.87868 21.1022 2.10217 21.5 2.5C21.8978 2.89783 22.1213 3.43739 22.1213 4C22.1213 4.56261 21.8978 5.10217 21.5 5.5L12 15L8 16L9 12L18.5 2.5Z"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-                Edit
-              </Button>
-
-              {!isActive && (
-                <Button
-                  variant="primary"
-                  size="small"
-                  onClick={handleActivate}
-                  disabled={isLoading}
-                >
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <path
-                      d="M12 2L15.09 8.26L22 9L17 14L18.18 21L12 17.77L5.82 21L7 14L2 9L8.91 8.26L12 2Z"
-                      fill="currentColor"
-                    />
-                  </svg>
-                  Activate
-                </Button>
-              )}
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className={styles.tabs}>
-        <button
-          className={`${styles.tab} ${activeTab === 'variables' ? styles.activeTab : ''}`}
-          onClick={() => setActiveTab('variables')}
-        >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              d="M7 7H17M7 12H17M7 17H17"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-            />
+    <div className={styles.typeWrap} ref={ref}>
+      <button
+        className={`${styles.typeBadge} ${styles[`type_${type}`]}`}
+        onClick={() => !disabled && setOpen(o => !o)}
+        type="button"
+        title="Change variable type"
+        disabled={disabled}
+      >
+        {TYPE_LABELS[type] || 'Text'}
+        {!disabled && (
+          <svg width="8" height="8" viewBox="0 0 8 8" fill="none" style={{ marginLeft: 3, opacity: 0.7 }}>
+            <path d="M1 2.5L4 5.5L7 2.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
-          Variables ({variables.length})
-        </button>
-        <button
-          className={`${styles.tab} ${activeTab === 'preview' ? styles.activeTab : ''}`}
-          onClick={() => setActiveTab('preview')}
-        >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              d="M1 12C1 12 5 4 12 4C19 4 23 12 23 12C23 12 19 20 12 20C5 20 1 12 1 12Z"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            <circle
-              cx="12"
-              cy="12"
-              r="3"
-              stroke="currentColor"
-              strokeWidth="2"
-            />
-          </svg>
-          Preview
-        </button>
-      </div>
-
-      {/* Content */}
-      <div className={styles.content}>
-        {activeTab === 'variables' ? (
-          <div className={styles.variablesTab}>
-            <div className={styles.variablesHeader}>
-              <h3>Environment Variables</h3>
-              {hasVariableChanges && (
-                <div className={styles.buttonGroup}>
-                  <Button
-                    variant="secondary"
-                    size="small"
-                    onClick={handleCancelVariableChanges}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    variant="primary"
-                    size="small"
-                    onClick={handleSaveVariables}
-                  >
-                    Save Changes
-                  </Button>
-                </div>
-              )}
-            </div>
-
-            {/* Variables Table */}
-            <div className={styles.variablesTable}>
-              {variablesData.length > 0 && (
-                <div className={styles.tableHeader}>
-                  <div className={styles.tableCell}>Key</div>
-                  <div className={styles.tableCell}>Value</div>
-                  <div className={styles.tableActions}>Actions</div>
-                </div>
-              )}
-
-              {variablesData.map((variable, index) => (
-                <div key={variable.id || index} className={styles.tableRow}>
-                  <div className={styles.tableCell}>
-                    <input
-                      type="text"
-                      value={variable.key}
-                      onChange={e =>
-                        handleVariableChange(index, 'key', e.target.value)
-                      }
-                      className={styles.tableInput}
-                      placeholder="Variable key"
-                    />
-                  </div>
-                  <div className={styles.tableCell}>
-                    <input
-                      type="text"
-                      value={variable.value}
-                      onChange={e =>
-                        handleVariableChange(index, 'value', e.target.value)
-                      }
-                      className={styles.tableInput}
-                      placeholder="Variable value"
-                    />
-                  </div>
-                  <div className={styles.tableActions}>
-                    <button
-                      onClick={() => handleRemoveVariable(index)}
-                      className={styles.removeButton}
-                      title="Remove variable"
-                    >
-                      ×
-                    </button>
-                  </div>
-                </div>
-              ))}
-
-              {/* Add new variable row */}
-              <div className={styles.tableRow}>
-                <div className={styles.tableCell}>
-                  <input
-                    type="text"
-                    value={newVariable.key}
-                    onChange={e =>
-                      setNewVariable({ ...newVariable, key: e.target.value })
-                    }
-                    className={styles.tableInput}
-                    placeholder="New variable key"
-                  />
-                </div>
-                <div className={styles.tableCell}>
-                  <input
-                    type="text"
-                    value={newVariable.value}
-                    onChange={e =>
-                      setNewVariable({ ...newVariable, value: e.target.value })
-                    }
-                    className={styles.tableInput}
-                    placeholder="New variable value"
-                  />
-                </div>
-                <div className={styles.tableActions}>
-                  <button
-                    onClick={handleAddVariable}
-                    className={styles.addButton}
-                    disabled={
-                      !newVariable.key.trim() || !newVariable.value.trim()
-                    }
-                    title="Add variable"
-                  >
-                    +
-                  </button>
-                </div>
-              </div>
-
-              {variablesData.length === 0 && (
-                <div className={styles.emptyState}>
-                  No variables configured. Add one using the form above.
-                </div>
-              )}
-            </div>
-          </div>
-        ) : (
-          <VariableResolutionPanel
-            environment={environment}
-            variables={variables}
-          />
         )}
+      </button>
+      {open && (
+        <div className={styles.typeDropdown}>
+          {TYPES.map(t => (
+            <button
+              key={t}
+              className={`${styles.typeOption} ${t === type ? styles.typeOptionActive : ''}`}
+              onClick={() => { onChange(t); setOpen(false); }}
+              type="button"
+            >
+              <span className={`${styles.typeOptionDot} ${styles[`type_${t}`]}`} />
+              {TYPE_LABELS[t]}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SecretInput({ value, onChange, placeholder, disabled }) {
+  const [revealed, setRevealed] = useState(false);
+
+  return (
+    <div className={styles.secretWrap}>
+      <input
+        type={revealed ? 'text' : 'password'}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        disabled={disabled}
+        className={styles.cellInput}
+        autoComplete="off"
+      />
+      <button
+        type="button"
+        className={styles.revealBtn}
+        onClick={() => setRevealed(r => !r)}
+        title={revealed ? 'Hide value' : 'Reveal value'}
+      >
+        {revealed ? (
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+            <line x1="1" y1="1" x2="23" y2="23" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+          </svg>
+        ) : (
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+            <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8"/>
+          </svg>
+        )}
+      </button>
+    </div>
+  );
+}
+
+function emptyRow() {
+  return { key: '', value: '', initialValue: '', type: 'text', id: `new-${Date.now()}` };
+}
+
+export default function EnvironmentDetail({ environment, variables, isActive }) {
+  const { updateEnvironment, activateEnvironment, saveVariables, isLoading } = useEnvironment();
+
+  const [rows, setRows] = useState([]);
+  const [dirty, setDirty] = useState(false);
+  const [search, setSearch] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  // Name inline edit
+  const [editingName, setEditingName] = useState(false);
+  const [nameVal, setNameVal] = useState(environment.name);
+  const nameInputRef = useRef(null);
+
+  useEffect(() => {
+    const base = variables.map(v => ({ ...v, initialValue: v.initialValue ?? v.value }));
+    setRows(base);
+    setDirty(false);
+  }, [environment.id, variables]);
+
+  useEffect(() => {
+    setNameVal(environment.name);
+    setEditingName(false);
+  }, [environment.id, environment.name]);
+
+  useEffect(() => {
+    if (editingName && nameInputRef.current) nameInputRef.current.focus();
+  }, [editingName]);
+
+  const filtered = search.trim()
+    ? rows.filter(r =>
+        r.key.toLowerCase().includes(search.toLowerCase()) ||
+        r.value.toLowerCase().includes(search.toLowerCase())
+      )
+    : rows;
+
+  const handleChange = (id, field, value) => {
+    setRows(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
+    setDirty(true);
+  };
+
+  const handleAddRow = () => {
+    setRows(prev => [...prev, emptyRow()]);
+    setDirty(true);
+  };
+
+  const handleDeleteRow = id => {
+    setRows(prev => prev.filter(r => r.id !== id));
+    setDirty(true);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const validRows = rows.filter(r => r.key.trim());
+      await saveVariables(environment.id, validRows);
+      setDirty(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDiscard = () => {
+    const base = variables.map(v => ({ ...v, initialValue: v.initialValue ?? v.value }));
+    setRows(base);
+    setDirty(false);
+  };
+
+  const handleSaveName = async () => {
+    const trimmed = nameVal.trim();
+    if (!trimmed || trimmed === environment.name) {
+      setEditingName(false);
+      setNameVal(environment.name);
+      return;
+    }
+    await updateEnvironment(environment.id, { name: trimmed });
+    setEditingName(false);
+  };
+
+  const handleNameKeyDown = e => {
+    if (e.key === 'Enter') handleSaveName();
+    if (e.key === 'Escape') { setEditingName(false); setNameVal(environment.name); }
+  };
+
+  const handleActivate = () => activateEnvironment(environment.id);
+
+  return (
+    <div className={styles.detail}>
+      {/* ── Header ── */}
+      <div className={styles.header}>
+        <div className={styles.headerLeft}>
+          {editingName ? (
+            <input
+              ref={nameInputRef}
+              className={styles.nameInput}
+              value={nameVal}
+              onChange={e => setNameVal(e.target.value)}
+              onBlur={handleSaveName}
+              onKeyDown={handleNameKeyDown}
+              maxLength={100}
+            />
+          ) : (
+            <button
+              className={styles.nameBtn}
+              onClick={() => setEditingName(true)}
+              title="Click to rename"
+              type="button"
+            >
+              <span className={styles.envName}>{environment.name}</span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className={styles.editIcon}>
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          )}
+
+          {isActive ? (
+            <span className={styles.activeBadge}>
+              <span className={styles.activeDot} />
+              Active
+            </span>
+          ) : (
+            <button className={styles.setActiveBtn} onClick={handleActivate} disabled={isLoading} type="button">
+              Set as Active
+            </button>
+          )}
+        </div>
+
+        <div className={styles.headerRight}>
+          {dirty && (
+            <>
+              <button className={styles.discardBtn} onClick={handleDiscard} type="button">
+                Discard
+              </button>
+              <button
+                className={styles.saveBtn}
+                onClick={handleSave}
+                disabled={saving}
+                type="button"
+              >
+                {saving ? 'Saving…' : 'Save'}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* ── Search + Add ── */}
+      <div className={styles.toolbar}>
+        <div className={styles.searchWrap}>
+          <svg className={styles.searchIcon} width="13" height="13" viewBox="0 0 16 16" fill="none">
+            <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" strokeWidth="1.5"/>
+            <path d="M10.5 10.5L14 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+          </svg>
+          <input
+            className={styles.searchInput}
+            placeholder="Search variables…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          {search && (
+            <button className={styles.clearSearch} onClick={() => setSearch('')} type="button">×</button>
+          )}
+        </div>
+        <button className={styles.addBtn} onClick={handleAddRow} type="button">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M6 1v10M1 6h10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+          </svg>
+          Add Variable
+        </button>
+      </div>
+
+      {/* ── Table ── */}
+      <div className={styles.tableWrap}>
+        <table className={styles.table}>
+          <thead>
+            <tr>
+              <th className={styles.th} style={{ width: '22%' }}>Variable</th>
+              <th className={styles.th} style={{ width: '24%' }}>Initial Value</th>
+              <th className={styles.th} style={{ width: '24%' }}>Current Value</th>
+              <th className={styles.th} style={{ width: '14%' }}>Type</th>
+              <th className={styles.th} style={{ width: '16%' }} />
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0 && (
+              <tr>
+                <td colSpan={5} className={styles.empty}>
+                  {search ? `No variables matching "${search}"` : 'No variables. Click Add Variable to create one.'}
+                </td>
+              </tr>
+            )}
+            {filtered.map(row => (
+              <tr key={row.id} className={styles.row}>
+                {/* Variable Name */}
+                <td className={styles.td}>
+                  <input
+                    className={styles.cellInput}
+                    value={row.key}
+                    onChange={e => handleChange(row.id, 'key', e.target.value)}
+                    placeholder="variable_name"
+                    spellCheck={false}
+                  />
+                </td>
+
+                {/* Initial Value */}
+                <td className={styles.td}>
+                  {row.type === 'secret' ? (
+                    <SecretInput
+                      value={row.initialValue ?? row.value}
+                      onChange={e => handleChange(row.id, 'initialValue', e.target.value)}
+                      placeholder="initial value"
+                    />
+                  ) : (
+                    <input
+                      className={styles.cellInput}
+                      value={row.initialValue ?? row.value}
+                      onChange={e => handleChange(row.id, 'initialValue', e.target.value)}
+                      placeholder="initial value"
+                      spellCheck={false}
+                    />
+                  )}
+                </td>
+
+                {/* Current Value */}
+                <td className={styles.td}>
+                  {row.type === 'secret' ? (
+                    <SecretInput
+                      value={row.value}
+                      onChange={e => handleChange(row.id, 'value', e.target.value)}
+                      placeholder="current value"
+                    />
+                  ) : (
+                    <input
+                      className={`${styles.cellInput} ${styles.currentValue}`}
+                      value={row.value}
+                      onChange={e => handleChange(row.id, 'value', e.target.value)}
+                      placeholder="current value"
+                      spellCheck={false}
+                    />
+                  )}
+                </td>
+
+                {/* Type */}
+                <td className={styles.td}>
+                  <TypeBadge
+                    type={row.type || 'text'}
+                    onChange={t => handleChange(row.id, 'type', t)}
+                  />
+                </td>
+
+                {/* Actions */}
+                <td className={styles.td}>
+                  <button
+                    className={styles.deleteRowBtn}
+                    onClick={() => handleDeleteRow(row.id)}
+                    title="Delete variable"
+                    type="button"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+                      <path d="M19 7l-.867 12.142A2 2 0 0 1 16.138 21H7.862a2 2 0 0 1-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v3M4 7h16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* ── Footer count ── */}
+      <div className={styles.footer}>
+        {rows.filter(r => r.key.trim()).length} variable{rows.filter(r => r.key.trim()).length !== 1 ? 's' : ''}
+        {search && filtered.length !== rows.length && ` · ${filtered.length} shown`}
       </div>
     </div>
   );

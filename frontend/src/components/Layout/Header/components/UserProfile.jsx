@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { FiHome, FiKey, FiUser, FiUserX } from 'react-icons/fi';
+import { FiHome, FiKey, FiLogOut, FiUser, FiUserX } from 'react-icons/fi';
 import { Link, useLocation } from 'react-router-dom';
 import styles from './HeaderComponents.module.css';
 
-const UserProfile = ({ username }) => {
+const UserProfile = ({ username, onLogout }) => {
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef(null);
   const location = useLocation();
@@ -74,6 +74,13 @@ const UserProfile = ({ username }) => {
           >
             <FiUserX className={styles.menuIcon} /> Delete Account
           </Link>
+          <div className={styles.divider}></div>
+          <button
+            className={`${styles.dropdownItem} ${styles.logoutItem}`}
+            onClick={() => { closeDropdown(); onLogout(); }}
+          >
+            <FiLogOut className={styles.menuIcon} /> Logout
+          </button>
         </div>
       )}
     </div>

@@ -19,6 +19,9 @@ export const useApi = create((set, get) => ({
   error: null,
   testResults: null,
   testCaseDetails: null,
+  apiCache: {},        // fileId -> normalizedApi
+  testCaseCache: {},   // fileId -> test_cases[]
+  isFromCache: false,
 
   // Actions
   setLoading: isLoading => set({ isLoading }),
@@ -79,34 +82,57 @@ export const useApi = create((set, get) => ({
    * @param {boolean} includeCases - Whether to include test cases
    */
   getApi: async (fileId, includeCases = false) => {
+    const cached = get().apiCache[fileId];
+    if (cached) {
+      set({ activeApi: cached, isFromCache: true });
+      return { data: cached };
+    }
+    return get()._fetchApi(fileId, includeCases);
+  },
+
+  refreshApi: async (fileId) => {
+    // Drop both caches for this file then re-fetch everything in one call
+    set(state => {
+      const { [fileId]: _a, ...remainingApiCache } = state.apiCache;
+      const { [fileId]: _t, ...remainingTestCache } = state.testCaseCache;
+      return { apiCache: remainingApiCache, testCaseCache: remainingTestCache };
+    });
+    const result = await get()._fetchApi(fileId, true);
+    if (result?.data?.test_cases) {
+      set(state => ({
+        testCases: result.data.test_cases,
+        testCaseCache: { ...state.testCaseCache, [fileId]: result.data.test_cases },
+      }));
+    }
+  },
+
+  _fetchApi: async (fileId, includeCases = false) => {
     try {
-      set({ isLoading: true, error: null });
+      set({ isLoading: true, error: null, isFromCache: false });
       const result = await apiService.getApi(fileId, includeCases);
 
       if (result && result.data) {
-        // Further normalize the API data for UI consistency
         const normalizedApi = {
           ...result.data,
-          // Ensure method is set
           method: result.data.method || 'GET',
-          // Make sure URL is available (fallback to endpoint)
           url: result.data.url || result.data.endpoint || '',
-          // Ensure description is available
           description: result.data.description || '',
-          // Ensure headers are properly structured
           headers: result.data.headers || {},
         };
 
-        set({ activeApi: normalizedApi });
+        set(state => ({
+          activeApi: normalizedApi,
+          apiCache: { ...state.apiCache, [fileId]: normalizedApi },
+          isFromCache: false,
+        }));
 
-        // If test cases are included, update them as well
         if (includeCases && result.data.test_cases) {
           set({ testCases: result.data.test_cases });
         }
       } else {
-        // Clear previously active API/test cases when no data found
         set({
           activeApi: null,
+          isFromCache: false,
           ...(includeCases ? { testCases: [] } : {}),
         });
       }
@@ -131,7 +157,6 @@ export const useApi = create((set, get) => ({
       const result = await apiService.saveApi(fileId, apiData);
 
       if (result && result.data) {
-        // Update or add the API in the list and set as active
         set(state => {
           const existingApiIndex = state.apis.findIndex(
             api => api.file_id === fileId
@@ -139,17 +164,21 @@ export const useApi = create((set, get) => ({
           let updatedApis;
 
           if (existingApiIndex >= 0) {
-            // Update existing API
             updatedApis = [...state.apis];
             updatedApis[existingApiIndex] = result.data;
           } else {
-            // Add new API
             updatedApis = [...state.apis, result.data];
           }
 
+          // Invalidate both caches so next visit re-fetches fresh data
+          const { [fileId]: _a, ...remainingApiCache } = state.apiCache;
+          const { [fileId]: _t, ...remainingTestCache } = state.testCaseCache;
           return {
             apis: updatedApis,
             activeApi: result.data,
+            apiCache: remainingApiCache,
+            testCaseCache: remainingTestCache,
+            isFromCache: false,
           };
         });
       }
@@ -320,20 +349,26 @@ export const useApi = create((set, get) => ({
    * @param {number} fileId - File ID containing the API
    */
   getTestCases: async fileId => {
+    const cached = get().testCaseCache[fileId];
+    if (cached) {
+      set({ testCases: cached });
+      return { data: { test_cases: cached } };
+    }
+
     try {
       set({ isLoading: true, error: null });
-
-      // Instead of a separate call, we can leverage getApi with includeCases=true
-      // and extract test cases from there for efficiency
       const result = await apiService.getApi(fileId, true);
 
       if (result && result.data && result.data.test_cases) {
-        set({
+        set(state => ({
           testCases: result.data.test_cases,
-          activeApi: result.data, // Also update the active API
-        });
+          testCaseCache: { ...state.testCaseCache, [fileId]: result.data.test_cases },
+        }));
       } else {
-        set({ testCases: [] });
+        set(state => ({
+          testCases: [],
+          testCaseCache: { ...state.testCaseCache, [fileId]: [] },
+        }));
       }
 
       return result;

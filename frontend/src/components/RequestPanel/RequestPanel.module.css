@@ -54,6 +54,43 @@
 .buttonGroup {
   display: flex;
   gap: var(--space-1);
+  align-items: center;
+}
+
+.cacheRefreshBtn {
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-muted, #888);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: color 0.15s, border-color 0.15s;
+}
+.cacheRefreshBtn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.timeoutInput {
+  width: 52px;
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: var(--text-xs);
+  text-align: center;
+  flex-shrink: 0;
+}
+.timeoutInput:focus {
+  outline: none;
+  border-color: var(--accent);
 }
 
 .sendButton {

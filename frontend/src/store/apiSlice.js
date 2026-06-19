@@ -686,7 +686,7 @@ export const apiSlice = createApi({
     // Global Variables (Phase 2)
     getGlobalVariables: builder.query({
       query: () => '/variables/global',
-      transformResponse: response => response?.data ?? [],
+      transformResponse: response => Array.isArray(response) ? response : (response?.data ?? []),
       providesTags: ['GlobalVariable'],
     }),
 
@@ -710,7 +710,7 @@ export const apiSlice = createApi({
     // Collection Variables
     getCollectionVariables: builder.query({
       query: nodeId => `/node/${nodeId}/variables`,
-      transformResponse: response => response?.data ?? [],
+      transformResponse: response => Array.isArray(response) ? response : (response?.data ?? []),
       providesTags: (result, error, nodeId) => [{ type: 'CollectionVariable', id: nodeId }],
     }),
 

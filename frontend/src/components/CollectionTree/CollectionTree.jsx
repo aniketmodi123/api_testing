@@ -4,7 +4,6 @@ import { useWorkspace } from '../../store/workspace';
 import { toPostmanCollection } from '../../utils/importExport';
 import { Button } from '../common';
 import ConfirmModal from '../ConfirmModal/ConfirmModal';
-import HeaderEditor from '../HeaderEditor/HeaderEditor';
 import ImportFileModal from '../ImportExport/ImportFileModal';
 import LookingLoader from '../LookingLoader/LookingLoader';
 import MoveCopyPanel from '../MoveCopyPanel';
@@ -22,7 +21,6 @@ const NodeItem = ({
   handleRenameAction,
   handleMoveCopyAction,
   handleCreateNewItem,
-  handleEditHeaders,
   handleExportFolder,
   handleImportCollection,
   closeAllMenus,
@@ -79,14 +77,6 @@ const NodeItem = ({
       case 'moveorcopy':
         handleMoveCopyAction(node);
         break;
-      case 'headers':
-        // Only available for folders
-        if (node.type === 'folder' && handleEditHeaders) {
-          // Open the header editor modal for this folder
-          handleEditHeaders(node);
-        } else {
-        }
-        break;
       case 'export':
         if (handleExportFolder) handleExportFolder(node);
         break;
@@ -108,9 +98,9 @@ const NodeItem = ({
     return (
       <div className={styles.nodeWrapper}>
         <div
-          className={`${styles.nodeRow} ${styles.folderRow}`}
+          className={`${styles.nodeRow} ${styles.folderRow} ${selectedItem === node.id || selectedItem?.id === node.id ? styles.selected : ''}`}
           style={{ paddingLeft: `${8 + level * 16}px` }}
-          onClick={() => toggleFolder(node.id)}
+          onClick={() => { toggleFolder(node.id); handleSelectRequest(node); }}
           onContextMenu={handleMenuClick}
         >
           <span
@@ -126,24 +116,10 @@ const NodeItem = ({
           >
             <button
               className={styles.nodeActionBtn}
-              title="Add item"
-              onClick={e => handleAction('createfolder', e)}
+              title="More options"
+              onClick={handleMenuClick}
             >
-              +
-            </button>
-            <button
-              className={styles.nodeActionBtn}
-              title="Rename"
-              onClick={e => handleAction('rename', e)}
-            >
-              ✎
-            </button>
-            <button
-              className={styles.nodeActionBtn}
-              title="Delete"
-              onClick={e => handleAction('delete', e)}
-            >
-              ✕
+              ···
             </button>
           </div>
         </div>
@@ -177,14 +153,6 @@ const NodeItem = ({
             >
               Move/Copy
             </div>
-            {node.type === 'folder' && (
-              <div
-                className={`${styles.menuItem} ${styles.headersItem}`}
-                onClick={e => handleAction('headers', e)}
-              >
-                Edit Headers
-              </div>
-            )}
             {node.type === 'folder' && (
               <div
                 className={styles.menuItem}
@@ -226,7 +194,6 @@ const NodeItem = ({
                 handleRenameAction={handleRenameAction}
                 handleMoveCopyAction={handleMoveCopyAction}
                 handleCreateNewItem={handleCreateNewItem}
-                handleEditHeaders={handleEditHeaders}
                 handleExportFolder={handleExportFolder}
                 handleImportCollection={handleImportCollection}
                 closeAllMenus={closeAllMenus}
@@ -258,17 +225,10 @@ const NodeItem = ({
           >
             <button
               className={styles.nodeActionBtn}
-              title="Rename"
-              onClick={e => handleAction('rename', e)}
+              title="More options"
+              onClick={handleMenuClick}
             >
-              ✎
-            </button>
-            <button
-              className={styles.nodeActionBtn}
-              title="Delete"
-              onClick={e => handleAction('delete', e)}
-            >
-              ✕
+              ···
             </button>
           </div>
         </div>
@@ -343,10 +303,6 @@ export default function CollectionTree({ onSelectRequest }) {
   const [parentFolderId, setParentFolderId] = useState(null);
   const [newItemName, setNewItemName] = useState('');
   const [newApiMethod, setNewApiMethod] = useState('GET');
-
-  // Header editor state
-  const [isHeaderEditorOpen, setIsHeaderEditorOpen] = useState(false);
-  const [currentFolder, setCurrentFolder] = useState(null);
 
   // Import/Export state
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -562,25 +518,6 @@ export default function CollectionTree({ onSelectRequest }) {
     setIsMoveCopyPanelOpen(true);
   };
 
-  // Handle opening the header editor
-  const handleEditHeaders = node => {
-    if (node && node.type === 'folder') {
-      setCurrentFolder(node);
-      setIsHeaderEditorOpen(true);
-    } else {
-      console.error(
-        'Cannot open header editor: Invalid node or not a folder',
-        node
-      );
-    }
-  };
-
-  // Handle saving headers
-  const handleSaveHeaders = headerData => {
-    setIsHeaderEditorOpen(false);
-    setCurrentFolder(null);
-  };
-
   // Export a folder subtree as Postman v2.1 JSON download
   const handleExportFolder = node => {
     const subtree = [node];
@@ -609,19 +546,20 @@ export default function CollectionTree({ onSelectRequest }) {
           node.name.toLowerCase().includes(filterText.toLowerCase())
         );
 
-  // Method badge color based on HTTP method
-  const getMethodColor = method => {
-    const methodColors = {
-      GET: '#10b981', // Green
-      POST: '#f97316', // Orange
-      PUT: '#3b82f6', // Blue
-      DELETE: '#ef4444', // Red
-      PATCH: '#8b5cf6', // Purple
-      HEAD: '#6b7280', // Gray
-      OPTIONS: '#6b7280', // Gray
-    };
+  const METHOD_CSS_VAR = {
+    GET:     '--method-get',
+    POST:    '--method-post',
+    PUT:     '--method-put',
+    DELETE:  '--method-delete',
+    PATCH:   '--method-patch',
+    HEAD:    '--method-head',
+    OPTIONS: '--method-options',
+  };
 
-    return methodColors[method] || '#6b7280';
+  const getMethodColor = method => {
+    const varName = METHOD_CSS_VAR[method];
+    if (!varName) return 'var(--text-muted)';
+    return `var(${varName})`;
   };
 
   // Helper to force refresh and wait before closing Move/Copy panel
@@ -914,7 +852,6 @@ export default function CollectionTree({ onSelectRequest }) {
                 handleRenameAction={handleRenameAction}
                 handleMoveCopyAction={handleMoveCopyAction}
                 handleCreateNewItem={handleCreateNewItem}
-                handleEditHeaders={handleEditHeaders}
                 handleExportFolder={handleExportFolder}
                 handleImportCollection={handleImportCollection}
                 closeAllMenus={menuUpdateTrigger}
@@ -968,29 +905,6 @@ export default function CollectionTree({ onSelectRequest }) {
       {apiLoading && (
         <div style={{ position: 'fixed', zIndex: 9999, inset: 0 }}>
           <LookingLoader overlay text="Loading..." />
-        </div>
-      )}
-
-      {/* Header Editor Modal */}
-      {isHeaderEditorOpen && currentFolder && (
-        <div
-          className={styles.modalOverlay}
-          onClick={e => {
-            // Close when clicking on the overlay background, not on the modal itself
-            if (e.target === e.currentTarget) {
-              setIsHeaderEditorOpen(false);
-              setCurrentFolder(null);
-            }
-          }}
-        >
-          <HeaderEditor
-            folder={currentFolder}
-            onClose={() => {
-              setIsHeaderEditorOpen(false);
-              setCurrentFolder(null);
-            }}
-            onSave={handleSaveHeaders}
-          />
         </div>
       )}
 

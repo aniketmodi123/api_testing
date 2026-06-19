@@ -1,8 +1,11 @@
 # Spec — Workspaces
 
-STATUS: Research complete
-LAST_CHANGED: 2026-06-16
+STATUS: Complete — backend + frontend working
+LAST_CHANGED: 2026-06-18
 SOURCE: phases/stable + live research 2026-06-16
+
+STABLE_COMMIT: 3b96d46  ("workspace work is complete")
+→ Use `git checkout 3b96d46` to recover last known-good workspace state
 
 ---
 

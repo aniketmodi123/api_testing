@@ -1,32 +1,26 @@
 .environmentSelector {
   display: flex;
   flex-direction: column;
-  height: 100%;
   overflow-y: auto;
-}
-
-.envList {
-  display: flex;
-  flex-direction: column;
+  flex: 1;
 }
 
 .envRow {
+  position: relative;
   display: flex;
   align-items: center;
-  height: 32px;
-  padding: 0 var(--space-3);
-  gap: var(--space-2);
+  height: 34px;
+  padding: 0 8px 0 10px;
+  gap: 7px;
   cursor: pointer;
   color: var(--text-muted);
   font-size: var(--text-xs);
-  transition:
-    background 0.08s,
-    color 0.08s;
+  transition: background 0.08s, color 0.08s;
   border-bottom: 1px solid var(--border-subtle);
 }
 
 .envRow:hover {
-  background: var(--surface-3);
+  background: var(--surface-2);
   color: var(--text);
 }
 
@@ -35,11 +29,17 @@
   color: var(--accent);
 }
 
+.envRow:hover .menuTrigger,
+.envRow.selected .menuTrigger {
+  opacity: 1;
+}
+
+/* Active indicator dot */
 .activeDot {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  background: var(--surface-3);
+  background: var(--border);
   flex-shrink: 0;
   transition: background 0.15s;
 }
@@ -57,52 +57,108 @@
   font-weight: 500;
 }
 
-.varCount {
-  font-size: 10px;
-  color: var(--text-subtle);
+.activeBadge {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--success);
+  background: var(--success-dim);
+  padding: 1px 5px;
+  border-radius: 10px;
+  text-transform: uppercase;
   flex-shrink: 0;
 }
 
-.envActions {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  flex-shrink: 0;
+/* Rename input */
+.renameInput {
+  flex: 1;
+  background: var(--surface-2);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  padding: 2px 6px;
+  outline: none;
+  min-width: 0;
 }
 
-.envActionBtn {
-  width: 18px;
-  height: 18px;
+/* 3-dot menu trigger */
+.menuTrigger {
+  background: none;
   border: none;
-  background: transparent;
   color: var(--text-subtle);
+  cursor: pointer;
+  padding: 3px 4px;
   border-radius: 3px;
   display: flex;
   align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  font-size: 11px;
-  transition:
-    color 0.1s,
-    background 0.1s;
-  padding: 0;
+  opacity: 0;
+  transition: color 0.1s, background 0.1s, opacity 0.1s;
+  flex-shrink: 0;
 }
 
-.envActionBtn:hover {
+.menuTrigger:hover {
   color: var(--text);
   background: var(--surface-3);
 }
 
-.deleteBtn:hover {
+/* Context menu */
+.menu {
+  position: absolute;
+  right: 6px;
+  top: calc(100% + 2px);
+  z-index: 100;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+  min-width: 148px;
+  overflow: hidden;
+}
+
+.menuItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 12px;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.08s;
+}
+
+.menuItem:hover {
+  background: var(--surface-2);
+}
+
+.menuItem:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.menuItem svg {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.menuItemDelete {
   color: var(--error);
 }
 
-.activeBadge {
-  background: var(--success-dim);
-  color: var(--success);
-  font-size: 9px;
-  font-weight: 700;
-  padding: 1px 5px;
-  border-radius: 10px;
-  text-transform: uppercase;
+.menuItemDelete svg {
+  color: var(--error);
+}
+
+.menuItemDelete:hover {
+  background: rgba(220, 38, 38, 0.08);
+}
+
+.menuDivider {
+  height: 1px;
+  background: var(--border);
+  margin: 2px 0;
 }
