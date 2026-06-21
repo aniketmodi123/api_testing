@@ -1,1 +1,1 @@
-export { default, useTabBar } from './TabBar';
+export { default, useTabBar, isScratchTab } from './TabBar';

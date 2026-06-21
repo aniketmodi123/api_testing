@@ -49,6 +49,14 @@
   color: var(--text-muted);
 }
 
+.tab.dragging {
+  opacity: 0.5;
+}
+
+.tab.dragOver {
+  border-left: 2px solid var(--accent);
+}
+
 .tab.active {
   background: var(--bg);
   color: var(--text);

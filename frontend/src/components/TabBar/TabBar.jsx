@@ -126,7 +126,21 @@ export function useTabBar(nodeTree) {
     });
   };
 
-  return { tabs, activeTabId, openTab, openScratchTab, closeTab, setActiveTabId: activateTab, updateTabMethod, updateTabName };
+  const reorderTab = (fromId, toId) => {
+    if (fromId === toId) return;
+    setTabs(prev => {
+      const from = prev.findIndex(t => t.fileId === fromId);
+      const to = prev.findIndex(t => t.fileId === toId);
+      if (from === -1 || to === -1) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      saveTabs(next);
+      return next;
+    });
+  };
+
+  return { tabs, activeTabId, openTab, openScratchTab, closeTab, setActiveTabId: activateTab, updateTabMethod, updateTabName, reorderTab };
 }
 
 function gatherFileIds(node) {
@@ -135,12 +149,54 @@ function gatherFileIds(node) {
   return node.children?.flatMap(gatherFileIds) ?? [];
 }
 
-export default function TabBar({ tabs, activeTabId, onSelect, onClose, onNewTab }) {
+export default function TabBar({ tabs, activeTabId, onSelect, onClose, onNewTab, onReorder }) {
   const scrollRef = useRef(null);
+  const [draggingId, setDraggingId] = useState(null);
+  const [dragOverId, setDragOverId] = useState(null);
+
+  // Translate vertical wheel into horizontal scroll so tabs slide with a normal mouse wheel.
+  const handleWheel = e => {
+    const el = scrollRef.current;
+    if (!el || el.scrollWidth <= el.clientWidth) return;
+    if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+    el.scrollLeft += e.deltaY;
+  };
+
+  const handleDragStart = (e, fileId) => {
+    setDraggingId(fileId);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e, fileId) => {
+    if (draggingId == null) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (fileId !== dragOverId) setDragOverId(fileId);
+  };
+
+  const handleDrop = (e, fileId) => {
+    e.preventDefault();
+    if (draggingId != null && draggingId !== fileId) onReorder?.(draggingId, fileId);
+    setDraggingId(null);
+    setDragOverId(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggingId(null);
+    setDragOverId(null);
+  };
+
+  // Middle mouse button closes the tab.
+  const handleAuxClick = (e, fileId) => {
+    if (e.button === 1) {
+      e.preventDefault();
+      onClose(fileId);
+    }
+  };
 
   return (
     <div className={styles.tabBarWrapper}>
-      <div className={styles.tabBar} ref={scrollRef}>
+      <div className={styles.tabBar} ref={scrollRef} onWheel={handleWheel}>
         {tabs.map(tab => {
           const isActive = tab.fileId === activeTabId;
           const name = tab.name?.length > MAX_NAME_LEN
@@ -149,8 +205,15 @@ export default function TabBar({ tabs, activeTabId, onSelect, onClose, onNewTab 
           return (
             <div
               key={tab.fileId}
-              className={`${styles.tab} ${isActive ? styles.active : ''} ${tab.scratch ? styles.scratchTab : ''}`}
+              className={`${styles.tab} ${isActive ? styles.active : ''} ${tab.scratch ? styles.scratchTab : ''} ${draggingId === tab.fileId ? styles.dragging : ''} ${dragOverId === tab.fileId && draggingId !== tab.fileId ? styles.dragOver : ''}`}
+              draggable
+              onDragStart={e => handleDragStart(e, tab.fileId)}
+              onDragOver={e => handleDragOver(e, tab.fileId)}
+              onDrop={e => handleDrop(e, tab.fileId)}
+              onDragEnd={handleDragEnd}
               onClick={() => onSelect(tab.fileId)}
+              onMouseDown={e => { if (e.button === 1) e.preventDefault(); }}
+              onAuxClick={e => handleAuxClick(e, tab.fileId)}
               title={tab.scratch ? 'Unsaved scratch request' : tab.name}
             >
               <MethodBadge method={tab.method || 'GET'} size="sm" />

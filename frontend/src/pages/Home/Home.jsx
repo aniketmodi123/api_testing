@@ -10,7 +10,7 @@ import HistoryPanel from '../../components/HistoryPanel/HistoryPanel';
 import IconSidebar from '../../components/IconSidebar';
 import NodeDetailPanel from '../../components/NodeDetailPanel/NodeDetailPanel';
 import RequestPanel from '../../components/RequestPanel/RequestPanel';
-import TabBar, { useTabBar } from '../../components/TabBar';
+import TabBar, { useTabBar, isScratchTab } from '../../components/TabBar';
 import { useEnvironment } from '../../store/environment';
 import { useNode } from '../../store/node';
 import { useWorkspace } from '../../store/workspace';
@@ -53,15 +53,20 @@ export default function Home() {
   // Fall back to flat nodeList from useNode() which is always populated after workspace loads.
   const fileTree = workspaceTree?.file_tree ?? nodeList ?? null;
 
-  const { tabs, activeTabId, openTab, openScratchTab, closeTab, setActiveTabId, updateTabMethod } = useTabBar(fileTree);
+  const { tabs, activeTabId, openTab, openScratchTab, closeTab, setActiveTabId, updateTabMethod, reorderTab } = useTabBar(fileTree);
 
-  // On refresh: workspaceTree loads after tabs are restored from localStorage.
-  // Once tree is available, auto-select the persisted active tab so the panel shows the right request.
+  // activeTabId is the single source of truth for which request RequestPanel shows.
+  // Sync selectedNode whenever the active tab changes (open / switch / close / restore).
+  // Skip while a folder detail panel is open so it isn't clobbered when the tree reloads.
   useEffect(() => {
-    if (!fileTree?.length || !activeTabId || selectedNode) return;
+    if (nodeDetailNode) return;
+    if (!activeTabId || isScratchTab(activeTabId)) {
+      setSelectedNode(null);
+      return;
+    }
     const node = findNodeById(fileTree, activeTabId);
     if (node) setSelectedNode({ ...node });
-  }, [fileTree, activeTabId]);
+  }, [activeTabId, fileTree, nodeDetailNode]);
 
   // Derive tab from URL on mount and when URL changes
   useEffect(() => {
@@ -240,6 +245,7 @@ export default function Home() {
                     onSelect={handleTabSelect}
                     onClose={closeTab}
                     onNewTab={handleNewScratchTab}
+                    onReorder={reorderTab}
                   />
                   <RequestPanel
                     activeRequest={selectedNode}
