@@ -1,29 +1,33 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FiCheck, FiShoppingBag, FiSliders, FiX } from 'react-icons/fi';
+import {
+  FiActivity, FiAlignJustify, FiAperture, FiCheck, FiCode, FiDroplet, FiEye,
+  FiLayers, FiPlus, FiSliders, FiSquare, FiTerminal, FiType, FiX,
+} from 'react-icons/fi';
 import {
   applyPresetToElement,
   THEME_META, ACCENT_META, FONT_META, CODE_FONT_META,
   SPACING_META, RADIUS_META, SHADOW_META, MOTION_META, EDITOR_META, A11Y_META,
 } from '../../themes/index.js';
+import { MARKETPLACE_THEMES } from '../../data/marketplaceThemes.js';
+import { loadCustomThemes, saveCustomThemes } from '../../themes/customTheme.js';
 import { useTheme } from '../ThemeContext.jsx';
 import CustomThemeEditor from './CustomThemeEditor.jsx';
 import styles from './ThemePanel.module.css';
 
-// 11 appearance categories, in rail order. `prefKey` is the ThemeContext preference this
-// tab edits; `meta` is the option list rendered as cards. `custom` has no prefKey/meta —
-// Phase E renders its own editor there.
+// Left-nav axes, in rail order. `prefKey` is the ThemeContext preference each tab edits;
+// `meta` is the option list rendered as cards on that tab. `custom` is rendered separately
+// below the divider — it has no prefKey/meta (free-form token editor).
 const TABS = [
-  { id: 'colors', label: 'Color', prefKey: 'theme', meta: THEME_META },
-  { id: 'accent', label: 'Accent', prefKey: 'accent', meta: ACCENT_META },
-  { id: 'font', label: 'Typography', prefKey: 'font', meta: FONT_META },
-  { id: 'codeFont', label: 'Code font', prefKey: 'codeFont', meta: CODE_FONT_META },
-  { id: 'spacing', label: 'Density', prefKey: 'spacing', meta: SPACING_META },
-  { id: 'radius', label: 'Radius', prefKey: 'radius', meta: RADIUS_META },
-  { id: 'shadow', label: 'Shadow', prefKey: 'shadow', meta: SHADOW_META },
-  { id: 'motion', label: 'Motion', prefKey: 'motion', meta: MOTION_META },
-  { id: 'editor', label: 'Code editor', prefKey: 'editor', meta: EDITOR_META },
-  { id: 'a11y', label: 'Accessibility', prefKey: 'a11y', meta: A11Y_META },
-  { id: 'custom', label: 'Custom', prefKey: null, meta: [] },
+  { id: 'colors', label: 'Color theme', icon: <FiDroplet />, prefKey: 'theme', meta: THEME_META },
+  { id: 'accent', label: 'Accent', icon: <FiAperture />, prefKey: 'accent', meta: ACCENT_META },
+  { id: 'font', label: 'Typography', icon: <FiType />, prefKey: 'font', meta: FONT_META },
+  { id: 'codeFont', label: 'Code font', icon: <FiCode />, prefKey: 'codeFont', meta: CODE_FONT_META },
+  { id: 'spacing', label: 'Density', icon: <FiAlignJustify />, prefKey: 'spacing', meta: SPACING_META },
+  { id: 'radius', label: 'Radius', icon: <FiSquare />, prefKey: 'radius', meta: RADIUS_META },
+  { id: 'shadow', label: 'Shadow', icon: <FiLayers />, prefKey: 'shadow', meta: SHADOW_META },
+  { id: 'motion', label: 'Motion', icon: <FiActivity />, prefKey: 'motion', meta: MOTION_META },
+  { id: 'editor', label: 'Code editor', icon: <FiTerminal />, prefKey: 'editor', meta: EDITOR_META },
+  { id: 'a11y', label: 'Accessibility', icon: <FiEye />, prefKey: 'a11y', meta: A11Y_META },
 ];
 
 // Mini API-workspace mockup — renders entirely from CSS vars set on its parent element,
@@ -96,44 +100,30 @@ function PreviewMockup() {
   );
 }
 
-// Generic option card shared by all 10 visual tabs. `renderSwatch` supplies the
-// per-tab preview glyph (color window, accent dot, font sample, density bars, …).
-function OptionCard({ item, isActive, onSelect, onHover, renderSwatch }) {
+// Three-square swatch + label theme card (used for both built-in themes and community presets).
+function ThemeCardFig({ swatches, label, sub, subAccent, active, onSelect, onHover }) {
   return (
     <button
       type="button"
-      className={`${styles.card} ${isActive ? styles.cardActive : ''}`}
-      onClick={() => onSelect(item.id)}
-      onMouseEnter={() => onHover(item.id)}
-      onMouseLeave={() => onHover(null)}
+      className={`${styles.themeCard} ${active ? styles.themeCardActive : ''}`}
+      onClick={onSelect}
+      onMouseEnter={onHover}
+      onMouseLeave={() => onHover?.(null)}
     >
-      {renderSwatch ? renderSwatch(item) : null}
-      <div className={styles.cardMeta}>
-        <span className={styles.cardLabel}>{item.label}</span>
-        <span className={styles.cardDesc}>{item.description}</span>
+      <div className={styles.themeSwatches}>
+        {swatches.map((s, i) => (
+          <span key={i} className={styles.themeSw} style={{ background: s.bg, border: s.border ? `1px solid ${s.border}` : 'none' }} />
+        ))}
       </div>
-      {isActive && <FiCheck className={styles.cardCheck} />}
+      <div className={styles.themeName}>{label}</div>
+      <div className={styles.themeSub} style={subAccent ? { color: 'var(--accent)' } : undefined}>
+        {sub}{active ? ' · active' : ''}
+      </div>
     </button>
   );
 }
 
-// Per-tab swatch renderers — each returns a function(item) => JSX, or null for tabs
-// that render label-only cards (a11y).
-function renderColorsSwatch(item) {
-  return (
-    <div
-      className={styles.swatch}
-      style={{ background: item.preview.bg, border: `1px solid ${item.preview.border}` }}
-    >
-      <div className={styles.swatchSidebar} style={{ background: item.preview.surface }} />
-      <div className={styles.swatchContent}>
-        <div className={styles.swatchAccentBar} style={{ background: item.preview.accent }} />
-        <div className={styles.swatchTextLine} style={{ background: item.preview.text, opacity: 0.8 }} />
-        <div className={styles.swatchTextLine} style={{ background: item.preview.text, opacity: 0.4, width: '60%' }} />
-      </div>
-    </div>
-  );
-}
+// === Per-tab swatch renderers (generic option grid on non-color tabs) ===
 
 function renderAccentSwatch(item) {
   if (item.id === 'default') {
@@ -147,22 +137,17 @@ function renderAccentSwatch(item) {
 }
 
 function renderFontSwatch(item) {
-  return (
-    <div className={styles.fontSample} style={{ fontFamily: item.fontFamily }}>Aa</div>
-  );
+  return <div className={styles.fontSample} style={{ fontFamily: item.fontFamily }}>Aa</div>;
 }
 
 function renderCodeFontSwatch(item) {
-  return (
-    <div className={styles.fontSample} style={{ fontFamily: item.fontFamily }}>{item.sample}</div>
-  );
+  return <div className={styles.fontSample} style={{ fontFamily: item.fontFamily }}>{item.sample}</div>;
 }
 
 function renderSpacingSwatch(item) {
   const gaps = { compact: 2, default: 4, comfortable: 7 };
-  const gap = gaps[item.id] ?? 4;
   return (
-    <div className={styles.spacingSwatch} style={{ gap }}>
+    <div className={styles.spacingSwatch} style={{ gap: gaps[item.id] ?? 4 }}>
       <span className={styles.spacingBar} />
       <span className={styles.spacingBar} />
       <span className={styles.spacingBar} />
@@ -212,7 +197,6 @@ function renderA11ySwatch(item) {
 }
 
 const SWATCH_RENDERERS = {
-  colors: renderColorsSwatch,
   accent: renderAccentSwatch,
   font: renderFontSwatch,
   codeFont: renderCodeFontSwatch,
@@ -224,8 +208,27 @@ const SWATCH_RENDERERS = {
   a11y: renderA11ySwatch,
 };
 
-export default function ThemePanel({ onClose, onOpenBuilder, onOpenMarketplace }) {
-  const { preferences, setPreference } = useTheme();
+function OptionCard({ item, isActive, onSelect, onHover, renderSwatch }) {
+  return (
+    <button
+      type="button"
+      className={`${styles.card} ${isActive ? styles.cardActive : ''}`}
+      onClick={() => onSelect(item.id)}
+      onMouseEnter={() => onHover(item.id)}
+      onMouseLeave={() => onHover(null)}
+    >
+      {renderSwatch ? renderSwatch(item) : null}
+      <div className={styles.cardMeta}>
+        <span className={styles.cardLabel}>{item.label}</span>
+        <span className={styles.cardDesc}>{item.description}</span>
+      </div>
+      {isActive && <FiCheck className={styles.cardCheck} />}
+    </button>
+  );
+}
+
+export default function ThemePanel({ onClose }) {
+  const { preferences, setPreference, setActiveServerTheme } = useTheme();
   const [activeTab, setActiveTab] = useState('colors');
   const [hoveredId, setHoveredId] = useState(null);
   const previewRef = useRef(null);
@@ -233,8 +236,8 @@ export default function ThemePanel({ onClose, onOpenBuilder, onOpenMarketplace }
 
   const activeTabDef = TABS.find((t) => t.id === activeTab);
 
-  // While hovering a card, scope the preview to that option without touching the
-  // committed preference. Custom tab has no prefKey, so hover never applies there.
+  // While hovering a prefKey-backed option, scope the preview to that option without
+  // committing it. Marketplace presets / custom tab don't drive hover (token-map overlay).
   const previewPrefs = useMemo(() => {
     if (hoveredId && activeTabDef?.prefKey) {
       return { ...preferences, [activeTabDef.prefKey]: hoveredId };
@@ -243,19 +246,49 @@ export default function ThemePanel({ onClose, onOpenBuilder, onOpenMarketplace }
   }, [hoveredId, activeTabDef, preferences]);
 
   useEffect(() => {
-    if (previewRef.current) applyPresetToElement(previewRef.current, previewPrefs);
-  }, [previewPrefs]);
+    const el = previewRef.current;
+    if (!el) return;
+    applyPresetToElement(el, previewPrefs);
+    // Mirror the active community/custom override onto the preview so it matches :root.
+    if (!hoveredId && preferences.customTheme) {
+      const ct = loadCustomThemes().find((t) => t.name === preferences.customTheme);
+      if (ct) for (const [k, v] of Object.entries(ct.token_map)) el.style.setProperty(k, v);
+    }
+  }, [previewPrefs, hoveredId, preferences.customTheme]);
 
   // Close on outside click
   useEffect(() => {
     const handler = (e) => {
-      if (panelRef.current && !panelRef.current.contains(e.target)) {
-        onClose();
-      }
+      if (panelRef.current && !panelRef.current.contains(e.target)) onClose();
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [onClose]);
+
+  // Select a built-in theme — clears any active community/custom override so the base
+  // preset shows through cleanly (ThemeContext re-overlays customTheme otherwise).
+  const selectBuiltinTheme = useCallback((id) => {
+    setActiveServerTheme(null);
+    setPreference('customTheme', null);
+    setPreference('theme', id);
+  }, [setActiveServerTheme, setPreference]);
+
+  // Apply a community preset — writes its token_map to :root for instant feedback, then
+  // persists it as a named custom theme (same store the Custom tab reads), so it survives
+  // reload and the ThemeContext overlay re-applies it on later preference changes.
+  const applyCommunityPreset = useCallback((theme) => {
+    const root = document.documentElement;
+    for (const [k, v] of Object.entries(theme.token_map)) root.style.setProperty(k, v);
+
+    const themes = loadCustomThemes();
+    const idx = themes.findIndex((t) => t.name === theme.name);
+    const entry = { name: theme.name, token_map: theme.token_map, created_at: new Date().toISOString() };
+    if (idx >= 0) themes[idx] = entry; else themes.push(entry);
+    saveCustomThemes(themes);
+
+    setActiveServerTheme(null);
+    setPreference('customTheme', theme.name);
+  }, [setActiveServerTheme, setPreference]);
 
   const handleSelect = useCallback((value) => {
     if (activeTabDef?.prefKey) setPreference(activeTabDef.prefKey, value);
@@ -266,101 +299,138 @@ export default function ThemePanel({ onClose, onOpenBuilder, onOpenMarketplace }
     setHoveredId(null);
   }, []);
 
-  // Summary line — active label across all 10 visual axes (custom is skipped; it has
-  // no single "active option" since it's a free-form editor).
-  const summary = useMemo(() => [
-    THEME_META.find((t) => t.id === preferences.theme)?.label,
-    ACCENT_META.find((a) => a.id === preferences.accent)?.label,
-    FONT_META.find((f) => f.id === preferences.font)?.label,
-    CODE_FONT_META.find((c) => c.id === preferences.codeFont)?.label,
-    SPACING_META.find((s) => s.id === preferences.spacing)?.label,
-    RADIUS_META.find((r) => r.id === preferences.radius)?.label,
-    SHADOW_META.find((s) => s.id === preferences.shadow)?.label,
-    MOTION_META.find((m) => m.id === preferences.motion)?.label,
-    EDITOR_META.find((e) => e.id === preferences.editor)?.label,
-    A11Y_META.find((a) => a.id === preferences.a11y)?.label,
-  ].filter(Boolean).join(' · '), [preferences]);
-
   const renderSwatch = activeTabDef ? SWATCH_RENDERERS[activeTabDef.id] : null;
+  // A built-in theme is "active" only when no community/custom override is layered on top.
+  const builtinActive = !preferences.customTheme;
 
   return (
     <div className={styles.panel} ref={panelRef}>
       <div className={styles.panelHeader}>
         <span className={styles.panelTitle}>Appearance</span>
-        <div className={styles.headerActions}>
-          {onOpenMarketplace && (
-            <button type="button" className={styles.builderLink} onClick={onOpenMarketplace}>
-              <FiShoppingBag /> Marketplace
-            </button>
-          )}
-          {onOpenBuilder && (
-            <button type="button" className={styles.builderLink} onClick={onOpenBuilder}>
-              <FiSliders /> Theme builder
-            </button>
-          )}
-          <button className={styles.closeBtn} onClick={onClose} aria-label="Close">
-            <FiX />
-          </button>
-        </div>
+        <button className={styles.closeBtn} onClick={onClose} aria-label="Close">
+          <FiX />
+        </button>
       </div>
 
       <div className={styles.panelBody}>
-        {/* Left: vertical tab rail + option grid */}
-        <div className={styles.left}>
-          <div className={styles.tabList}>
-            {TABS.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                className={`${styles.tabItem} ${activeTab === tab.id ? styles.tabItemActive : ''}`}
-                onClick={() => handleTabChange(tab.id)}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
+        {/* Left nav */}
+        <nav className={styles.nav}>
+          <div className={styles.navLabel}>CUSTOMIZE</div>
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              className={`${styles.navItem} ${activeTab === tab.id ? styles.navItemActive : ''}`}
+              onClick={() => handleTabChange(tab.id)}
+            >
+              <span className={styles.navIcon}>{tab.icon}</span>
+              {tab.label}
+            </button>
+          ))}
+          <div className={styles.navDivider} />
+          <button
+            type="button"
+            className={`${styles.navItem} ${activeTab === 'custom' ? styles.navItemActive : ''}`}
+            onClick={() => handleTabChange('custom')}
+          >
+            <span className={styles.navIcon}><FiSliders /></span>
+            Custom editor
+          </button>
+        </nav>
 
-          <div className={styles.tabContent}>
-            {activeTab === 'custom' ? (
+        {/* Content: scrollable controls + pinned live preview */}
+        <div className={styles.content}>
+          <div className={styles.contentScroll}>
+            {activeTab === 'colors' && (
+              <>
+                <div className={styles.panelTitle2}>Color theme</div>
+                <div className={styles.panelSub}>Each preset ships its own personality. Accent isn&apos;t forced across themes.</div>
+
+                <div className={styles.themeGrid}>
+                  {THEME_META.map((t) => (
+                    <ThemeCardFig
+                      key={t.id}
+                      swatches={[
+                        { bg: t.preview.bg, border: t.preview.border },
+                        { bg: t.preview.surface },
+                        { bg: t.preview.accent },
+                      ]}
+                      label={t.label}
+                      sub={t.description}
+                      active={builtinActive && preferences.theme === t.id}
+                      subAccent={builtinActive && preferences.theme === t.id}
+                      onSelect={() => selectBuiltinTheme(t.id)}
+                    />
+                  ))}
+                  <button type="button" className={styles.themeCardAdd} onClick={() => handleTabChange('custom')}>
+                    <FiPlus /> Custom
+                  </button>
+                </div>
+
+                <div className={styles.groupLabel}>Community themes</div>
+                <div className={styles.themeGrid}>
+                  {MARKETPLACE_THEMES.map((m) => (
+                    <ThemeCardFig
+                      key={m.id}
+                      swatches={[{ bg: m.palette[0] }, { bg: m.palette[1] }, { bg: m.palette[2] }]}
+                      label={m.name}
+                      sub={m.tag}
+                      active={preferences.customTheme === m.name}
+                      subAccent={preferences.customTheme === m.name}
+                      onSelect={() => applyCommunityPreset(m)}
+                    />
+                  ))}
+                </div>
+
+              </>
+            )}
+
+            {activeTab === 'custom' && (
               <CustomThemeEditor
                 preferences={preferences}
                 onPreviewChange={(tokenMap) => {
                   const el = previewRef.current;
-                  if (el) {
-                    for (const [k, v] of Object.entries(tokenMap)) el.style.setProperty(k, v);
-                  }
+                  if (el) for (const [k, v] of Object.entries(tokenMap)) el.style.setProperty(k, v);
                 }}
                 onActivate={(name, tokenMap) => {
                   for (const [k, v] of Object.entries(tokenMap)) {
                     document.documentElement.style.setProperty(k, v);
                   }
+                  setActiveServerTheme(null);
                   setPreference('customTheme', name);
                 }}
               />
-            ) : (
-              <div className={styles.grid}>
-                {activeTabDef.meta.map((item) => (
-                  <OptionCard
-                    key={item.id}
-                    item={item}
-                    isActive={preferences[activeTabDef.prefKey] === item.id}
-                    onSelect={handleSelect}
-                    onHover={setHoveredId}
-                    renderSwatch={renderSwatch}
-                  />
-                ))}
-              </div>
+            )}
+
+            {activeTab !== 'colors' && activeTab !== 'custom' && (
+              <>
+                <div className={styles.panelTitle2}>{activeTabDef.label}</div>
+                <div className={styles.grid}>
+                  {activeTabDef.meta.map((item) => (
+                    <OptionCard
+                      key={item.id}
+                      item={item}
+                      isActive={preferences[activeTabDef.prefKey] === item.id}
+                      onSelect={handleSelect}
+                      onHover={setHoveredId}
+                      renderSwatch={renderSwatch}
+                    />
+                  ))}
+                </div>
+              </>
             )}
           </div>
-        </div>
 
-        {/* Right: live preview + summary */}
-        <div className={styles.right}>
-          <div className={styles.previewLabel}>Live preview</div>
-          <div className={styles.previewPane} ref={previewRef}>
-            <PreviewMockup />
+          {/* Pinned live preview — always visible on every tab */}
+          <div className={styles.previewRegion}>
+            <div className={styles.previewHead}>
+              <span className={styles.previewDot} />
+              <span className={styles.previewLabel}>Live preview</span>
+            </div>
+            <div className={styles.previewBox} ref={previewRef}>
+              <PreviewMockup />
+            </div>
           </div>
-          <div className={styles.previewSummary}>{summary}</div>
         </div>
       </div>
     </div>
