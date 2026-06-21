@@ -1,5 +1,4 @@
 import { useAuth } from '../../../store/session.jsx';
-import EnvironmentSwitcher from '../../EnvironmentSwitcher';
 import WorkspaceSelector from '../../WorkspaceSelector/WorkspaceSelector.jsx';
 import styles from './components/HeaderComponents.module.css';
 import Logo from './components/Logo.jsx';
@@ -20,10 +19,7 @@ export default function Header() {
       </div>
       <div className={styles.headerCenter}>
         {user && (
-          <>
-            <WorkspaceSelector />
-            <EnvironmentSwitcher />
-          </>
+          <WorkspaceSelector />
         )}
       </div>
       <div className={styles.headerRight}>

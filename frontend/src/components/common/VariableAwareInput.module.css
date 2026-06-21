@@ -42,9 +42,7 @@
 
 .token {
   color: var(--accent);
-  background: var(--accent-dim);
-  border-radius: var(--radius-sm);
-  padding: 0 1px;
+  font-weight: 600;
 }
 
 .tooltip {

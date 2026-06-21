@@ -9,7 +9,8 @@
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: transparent;
-  color: var(--text);
+  color: transparent;
+  caret-color: var(--text);
   font-size: var(--text-sm);
   font-family: var(--font-mono);
   outline: none;
@@ -22,7 +23,6 @@
 
 .textarea:focus {
   border-color: var(--accent);
-  background: var(--bg);
 }
 
 .highlightLayer {
@@ -39,7 +39,7 @@
   pointer-events: none;
   z-index: 1;
   background: var(--surface-1);
-  color: transparent;
+  color: var(--text);
   overflow: auto;
   white-space: pre-wrap;
   word-wrap: break-word;
@@ -47,24 +47,22 @@
 
 :global(.variable-found),
 :global(.variable-missing) {
-  background-color: var(--accent-dim) !important;
-  color: var(--accent) !important;
-  border-radius: var(--radius-sm);
-  padding: 1px 2px;
   font-weight: 600;
-  border: 1px solid transparent;
   cursor: help;
   position: relative;
 }
 
-:global(.variable-found):hover {
-  background-color: var(--success-bg-strong) !important;
-  border-color: var(--success-border-dim);
+:global(.variable-found) {
+  color: var(--accent) !important;
 }
 
+:global(.variable-missing) {
+  color: var(--error) !important;
+}
+
+:global(.variable-found):hover,
 :global(.variable-missing):hover {
-  background-color: var(--error-bg-strong) !important;
-  border-color: var(--error-border-dim);
+  text-decoration: underline;
 }
 
 /* Tooltip */

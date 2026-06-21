@@ -15,6 +15,7 @@ import { TestCaseForm } from '../TestCaseForm';
 import TestResultsGrid from '../TestResultsGrid';
 import { Button, JsonEditor, VariableInput, VariableAwareInput } from '../common';
 import WebSocketPanel from '../WebSocketPanel/WebSocketPanel';
+import EnvironmentSwitcher from '../EnvironmentSwitcher';
 import AuthBuilder from './AuthBuilder';
 import CollectionVarEditor from '../CollectionVarEditor/CollectionVarEditor';
 import { api as backendApi } from '../../api';
@@ -945,6 +946,184 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
     }
   };
 
+  // Save the current request config as an API (create or update)
+  const handleSaveApiConfig = async () => {
+    if (!selectedNode?.id) {
+      alert('Please select a file first');
+      return;
+    }
+
+    setIsUpdatingConfig(true);
+
+    try {
+      // Parse validation schema if available
+      let validationSchemaData;
+      try {
+        if (validationSchema && validationSchema.trim()) {
+          validationSchemaData = JSON.parse(validationSchema);
+        } else {
+          // Get schema from active API or use default
+          validationSchemaData =
+            extractValue(activeApi, 'extra_meta.expected') ||
+            extractValue(activeApi, 'expected') ||
+            extractValue(activeApi, 'validation.responseSchema') ||
+            extractValue(activeApi, 'validationSchema.response') ||
+            defaultValidationSchema;
+        }
+      } catch (e) {
+        console.warn('Invalid validation schema JSON, using default:', e);
+        validationSchemaData = defaultValidationSchema;
+      }
+
+      // Prepare data for saving API (works for both create and update)
+      const paramsObj = {};
+      params.forEach(p => {
+        if (p.key) paramsObj[p.key] = p.value;
+      });
+
+      // Convert headers array to object
+      const headersObj = {};
+      headers.forEach(h => {
+        if (h.key) headersObj[h.key] = h.value;
+      });
+
+      const apiData = activeApi
+        ? {
+            // Update existing API
+            ...activeApi,
+            method: method,
+            endpoint: url,
+            headers: headersObj,
+            params: paramsObj,
+            body: normalizeBody(bodyContent, bodyType, bodyType === 'graphql' ? { query: gqlQuery, variables: gqlVariables } : null),
+            bodyType: bodyType,
+            extra_meta: {
+              ...extractValue(activeApi, 'extra_meta', {}),
+              headers: headersObj,
+              params: paramsObj,
+              body: normalizeBody(bodyContent, bodyType, bodyType === 'graphql' ? { query: gqlQuery, variables: gqlVariables } : null),
+              expected: validationSchemaData,
+            },
+          }
+        : {
+            // Create new API
+            name: selectedNode.name || 'New API',
+            method: method,
+            endpoint: url,
+            description: '',
+            is_active: true,
+            headers: headersObj,
+            params: paramsObj,
+            body: normalizeBody(bodyContent, bodyType, bodyType === 'graphql' ? { query: gqlQuery, variables: gqlVariables } : null),
+            bodyType: bodyType,
+            extra_meta: {
+              headers: headersObj,
+              params: paramsObj,
+              body: normalizeBody(bodyContent, bodyType, bodyType === 'graphql' ? { query: gqlQuery, variables: gqlVariables } : null),
+              expected: validationSchemaData,
+            },
+          };
+
+      // Use the unified saveApi function for both create and update
+      await saveApi(selectedNode.id, apiData);
+
+      // Reload the API details if this was a new API
+      if (!activeApi) {
+        await getApi(selectedNode.id);
+      }
+      setIsDirty(false);
+    } catch (err) {
+      console.error('Error saving API configuration:', err);
+      alert(`Failed to save configuration: ${err.message}`);
+    } finally {
+      setIsUpdatingConfig(false);
+    }
+  };
+
+  // Record the current request/response as a saved test case
+  const handleRecordTestCase = async () => {
+    if (!response) {
+      alert('Send a request first to record as a test case');
+      return;
+    }
+
+    // Start with button in saving state
+    const button = document.querySelector('.saveActionsDropdown button');
+    const originalText = button.innerText;
+    button.innerText = 'Saving...';
+    button.disabled = true;
+
+    // Save the current request/response as a test case
+    try {
+      // Get the validation schema from the state
+      let validationSchemaData;
+      try {
+        if (validationSchema && validationSchema.trim()) {
+          validationSchemaData = JSON.parse(validationSchema);
+        } else {
+          // Get schema from active API or use default
+          validationSchemaData =
+            extractValue(activeApi, 'extra_meta.expected') ||
+            extractValue(activeApi, 'expected') ||
+            extractValue(activeApi, 'validation.responseSchema') ||
+            extractValue(activeApi, 'validationSchema.response') ||
+            defaultValidationSchema;
+        }
+      } catch (e) {
+        console.warn('Failed to parse validation schema, using default', e);
+        validationSchemaData = defaultValidationSchema;
+      }
+
+      // Ask user for a custom test case name
+      const defaultName = `Test case - ${new Date().toLocaleTimeString()}`;
+      const customName = prompt('Enter a name for this test case:', defaultName);
+
+      // Get the request headers from the current request
+      const requestHeaders = extractValue(activeApi, 'headers', {});
+
+      const testCaseData = {
+        name: customName || defaultName,
+        headers: requestHeaders,
+        body: bodyType === 'none' ? null : bodyContent,
+        expected: validationSchemaData,
+      };
+
+      if (!selectedNode?.id) {
+        console.error('Missing selectedNode.id when trying to save test case');
+        alert('Error: No API selected. Please select an API first.');
+        return;
+      }
+
+      try {
+        const result = await saveTestCase(selectedNode.id, testCaseData);
+
+        if (result && (result.data || result.success)) {
+          await getTestCases(selectedNode.id);
+        } else {
+          alert('Failed to save test case. Please try again.');
+        }
+
+        // Close the dropdown after action
+        document
+          .querySelector('.saveActionsDropdown')
+          .classList.remove('active');
+      } catch (saveError) {
+        console.error('Error in saveTestCase:', saveError);
+        alert(`Error saving test case: ${saveError.message || 'Unknown error'}`);
+      }
+    } catch (err) {
+      console.error('Error recording test case:', err);
+      if (err.response) {
+        console.error('Error response:', err.response.data);
+        console.error('Status:', err.response.status);
+      }
+      alert(`Error saving test case: ${err.message || 'Unknown error'}`);
+    } finally {
+      button.innerText = originalText;
+      button.disabled = false;
+    }
+  };
+
 
   // Handler functions for the detailed test result modal
   const handleOpenDetailedResult = testResult => {
@@ -1180,6 +1359,77 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
 
   return (
     <div className={styles.requestPanel}>
+      {/* Breadcrumb + actions row (folder, name, environment, save) */}
+      <div className={styles.requestHeaderBar}>
+        <div className={styles.breadcrumb}>
+          <svg
+            className={styles.folderIcon}
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true"
+          >
+            <path
+              d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6z"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinejoin="round"
+            />
+          </svg>
+          <span className={styles.breadcrumbName}>
+            {selectedNode?.name ||
+              extractValue(activeApi, 'name', 'Untitled Request')}
+          </span>
+        </div>
+
+        <div className={styles.headerActions}>
+          <EnvironmentSwitcher />
+
+          <div className="actionsContainer">
+            <Button
+              variant="primary"
+              className="actionsButton"
+              onClick={handleSaveApiConfig}
+              disabled={isUpdatingConfig}
+              title={isDirty ? 'Unsaved changes — click to save' : 'Save API'}
+            >
+              {isUpdatingConfig ? 'Saving...' : isDirty ? '● Save' : 'Save'}
+            </Button>
+            <div className="dropdownContainer">
+              <Button
+                variant="secondary"
+                size="small"
+                className="dropdownButton"
+                onClick={e => {
+                  e.stopPropagation();
+                  const dropdowns =
+                    document.querySelectorAll('.dropdownContent');
+                  dropdowns.forEach(dd => dd.classList.remove('active'));
+                  e.currentTarget.nextElementSibling.classList.toggle('active');
+                }}
+              >
+                ▼
+              </Button>
+              <div
+                className="dropdownContent saveActionsDropdown"
+                onClick={e => e.stopPropagation()}
+              >
+                <Button
+                  variant="secondary"
+                  onClick={handleRecordTestCase}
+                  disabled={!response || !selectedNode?.id}
+                  title="Record current request/response as a test case"
+                >
+                  Record as Test Case
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Request URL Bar */}
       <div className={styles.urlBar}>
         <select
@@ -1220,15 +1470,6 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
         )}
 
         <div className={styles.buttonGroup}>
-          <input
-            type="number"
-            className={styles.timeoutInput}
-            value={requestTimeout}
-            min={1}
-            max={300}
-            title="Request timeout (seconds)"
-            onChange={e => setRequestTimeout(Number(e.target.value) || 30)}
-          />
           <div className="sendButtonContainer">
             <Button
               variant="primary"
@@ -1265,265 +1506,6 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
                   Validate
                 </Button>
               </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="actionsContainer">
-          <Button
-            variant="primary"
-            className="actionsButton"
-            onClick={async () => {
-              if (!selectedNode?.id) {
-                alert('Please select a file first');
-                return;
-              }
-
-              setIsUpdatingConfig(true);
-
-              try {
-                // Parse validation schema if available
-                let validationSchemaData;
-                try {
-                  if (validationSchema && validationSchema.trim()) {
-                    validationSchemaData = JSON.parse(validationSchema);
-                  } else {
-                    // Get schema from active API or use default
-                    validationSchemaData =
-                      extractValue(activeApi, 'extra_meta.expected') ||
-                      extractValue(activeApi, 'expected') ||
-                      extractValue(activeApi, 'validation.responseSchema') ||
-                      extractValue(activeApi, 'validationSchema.response') ||
-                      defaultValidationSchema;
-                  }
-                } catch (e) {
-                  console.warn(
-                    'Invalid validation schema JSON, using default:',
-                    e
-                  );
-                  validationSchemaData = defaultValidationSchema;
-                }
-
-                // Prepare data for saving API (works for both create and update)
-                const paramsObj = {};
-                params.forEach(p => {
-                  if (p.key) paramsObj[p.key] = p.value;
-                });
-
-                // Convert headers array to object
-                const headersObj = {};
-                headers.forEach(h => {
-                  if (h.key) headersObj[h.key] = h.value;
-                });
-
-                console.log('💾 RequestPanel - Saving API with headers:', {
-                  headersArray: headers,
-                  headersObj,
-                  paramsObj,
-                });
-
-                const apiData = activeApi
-                  ? {
-                      // Update existing API
-                      ...activeApi,
-                      method: method,
-                      endpoint: url,
-                      headers: headersObj,
-                      params: paramsObj,
-                      body: normalizeBody(bodyContent, bodyType, bodyType === 'graphql' ? { query: gqlQuery, variables: gqlVariables } : null),
-                      bodyType: bodyType,
-                      extra_meta: {
-                        ...extractValue(activeApi, 'extra_meta', {}),
-                        headers: headersObj,
-                        params: paramsObj,
-                        body: normalizeBody(bodyContent, bodyType, bodyType === 'graphql' ? { query: gqlQuery, variables: gqlVariables } : null),
-                        expected: validationSchemaData, // Add validation schema to extra_meta
-                      },
-                    }
-                  : {
-                      // Create new API
-                      name: selectedNode.name || 'New API',
-                      method: method,
-                      endpoint: url,
-                      description: '',
-                      is_active: true,
-                      headers: headersObj,
-                      params: paramsObj,
-                      body: normalizeBody(bodyContent, bodyType, bodyType === 'graphql' ? { query: gqlQuery, variables: gqlVariables } : null),
-                      bodyType: bodyType,
-                      extra_meta: {
-                        headers: headersObj,
-                        params: paramsObj,
-                        body: normalizeBody(bodyContent, bodyType, bodyType === 'graphql' ? { query: gqlQuery, variables: gqlVariables } : null),
-                        expected: validationSchemaData, // Add validation schema to extra_meta
-                      },
-                    };
-
-                // Use the unified saveApi function for both create and update
-                const result = await saveApi(selectedNode.id, apiData);
-
-                // Reload the API details if this was a new API
-                if (!activeApi) {
-                  await getApi(selectedNode.id);
-                }
-                setIsDirty(false);
-              } catch (err) {
-                console.error('Error saving API configuration:', err);
-                alert(`Failed to save configuration: ${err.message}`);
-              } finally {
-                setIsUpdatingConfig(false);
-              }
-            }}
-            disabled={isUpdatingConfig}
-            title={isDirty ? 'Unsaved changes — click to save' : 'Save API'}
-          >
-            {isUpdatingConfig ? 'Saving...' : isDirty ? '● Save' : 'Save'}
-          </Button>
-          <div className="dropdownContainer">
-            <Button
-              variant="secondary"
-              size="small"
-              className="dropdownButton"
-              onClick={e => {
-                e.stopPropagation();
-                const dropdowns = document.querySelectorAll('.dropdownContent');
-                dropdowns.forEach(dd => dd.classList.remove('active'));
-                e.currentTarget.nextElementSibling.classList.toggle('active');
-              }}
-            >
-              ▼
-            </Button>
-            <div
-              className="dropdownContent saveActionsDropdown"
-              onClick={e => e.stopPropagation()}
-            >
-              <Button
-                variant="secondary"
-                onClick={async () => {
-                  if (!response) {
-                    alert('Send a request first to record as a test case');
-                    return;
-                  }
-
-                  // Start with button in saving state
-                  const button = document.querySelector(
-                    '.saveActionsDropdown button'
-                  );
-                  const originalText = button.innerText;
-                  button.innerText = 'Saving...';
-                  button.disabled = true;
-
-                  // Save the current request/response as a test case
-                  try {
-                    // Get the validation schema from the state
-                    let validationSchemaData;
-
-                    try {
-                      if (validationSchema && validationSchema.trim()) {
-                        validationSchemaData = JSON.parse(validationSchema);
-                      } else {
-                        // Get schema from active API or use default
-                        validationSchemaData =
-                          extractValue(activeApi, 'extra_meta.expected') ||
-                          extractValue(activeApi, 'expected') ||
-                          extractValue(
-                            activeApi,
-                            'validation.responseSchema'
-                          ) ||
-                          extractValue(
-                            activeApi,
-                            'validationSchema.response'
-                          ) ||
-                          defaultValidationSchema;
-                      }
-                    } catch (e) {
-                      console.warn(
-                        'Failed to parse validation schema, using default',
-                        e
-                      );
-                      validationSchemaData = defaultValidationSchema;
-                    }
-
-                    // Ask user for a custom test case name
-                    const defaultName = `Test case - ${new Date().toLocaleTimeString()}`;
-                    const customName = prompt(
-                      'Enter a name for this test case:',
-                      defaultName
-                    );
-
-                    // Format the test case data according to the FastAPI endpoint requirements
-                    // Get the request headers from the current request
-                    const requestHeaders = extractValue(
-                      activeApi,
-                      'headers',
-                      {}
-                    );
-
-                    const testCaseData = {
-                      name: customName || defaultName, // Use custom name or fall back to default
-                      // Pass headers directly as object
-                      headers: requestHeaders,
-                      // Pass body as string if it's JSON or other formats
-                      body: bodyType === 'none' ? null : bodyContent,
-                      // Use the validation schema from the validation tab
-                      expected: validationSchemaData,
-                    };
-
-                    // Check if required values are present
-                    if (!selectedNode?.id) {
-                      console.error(
-                        'Missing selectedNode.id when trying to save test case'
-                      );
-                      alert(
-                        'Error: No API selected. Please select an API first.'
-                      );
-                      return;
-                    }
-
-                    try {
-                      // Use our saveTestCase function
-                      const result = await saveTestCase(
-                        selectedNode.id,
-                        testCaseData
-                      );
-
-                      if (result && (result.data || result.success)) {
-                        // Refresh the test cases list
-                        await getTestCases(selectedNode.id);
-                      } else {
-                        alert('Failed to save test case. Please try again.');
-                      }
-
-                      // Close the dropdown after action
-                      document
-                        .querySelector('.saveActionsDropdown')
-                        .classList.remove('active');
-                    } catch (saveError) {
-                      console.error('Error in saveTestCase:', saveError);
-                      alert(
-                        `Error saving test case: ${saveError.message || 'Unknown error'}`
-                      );
-                    }
-                  } catch (err) {
-                    console.error('Error recording test case:', err);
-                    if (err.response) {
-                      console.error('Error response:', err.response.data);
-                      console.error('Status:', err.response.status);
-                    }
-                    alert(
-                      `Error saving test case: ${err.message || 'Unknown error'}`
-                    );
-                  } finally {
-                    // Reset button state
-                    button.innerText = originalText;
-                    button.disabled = false;
-                  }
-                }}
-                disabled={!response || !selectedNode?.id}
-                title="Record current request/response as a test case"
-              >
-                Record as Test Case
-              </Button>
             </div>
           </div>
         </div>
