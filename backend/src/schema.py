@@ -1803,3 +1803,352 @@ class UserThemeListResponse(BaseModel):
 
     themes: List[UserThemeResponse]
     total: int
+
+
+# ---------------------------------------------------------------------------
+# API / API-case response schemas (rebuilt routers: api/, api_cases/, auth/)
+# ---------------------------------------------------------------------------
+
+
+class ApiCaseItem(BaseModel):
+    """Carry a single test case as embedded in a list or detail response.
+
+    Attributes:
+        id: Test case primary key.
+        api_id: Owning API id; ``None`` only on payloads that omit it (file-API case list).
+        name: Case display name; ``None`` when the case was stored without a name.
+        headers: Case-level request headers; ``None`` when none were set.
+        params: Case-level query/path params; ``None`` when none were set.
+        body: Request body dict (always present).
+        expected: Assertion criteria dict (always present).
+        created_at: Creation timestamp.
+    """
+
+    id: int
+    api_id: Optional[int] = None
+    name: Optional[str] = None
+    headers: Optional[Dict[str, Any]] = None
+    params: Optional[Dict[str, Any]] = None
+    body: Dict[str, Any]
+    expected: Dict[str, Any]
+    created_at: datetime
+
+
+class ApiDetailResponse(BaseModel):
+    """Carry a file's API definition with merged headers and case count.
+
+    Attributes:
+        id: API primary key.
+        file_id: Owning file node id.
+        name: API display name.
+        method: HTTP method.
+        endpoint: URL path template.
+        headers: Merged inherited + API-level headers.
+        description: Documentation text; ``None`` when not set.
+        is_active: Whether the API is included in test runs.
+        extra_meta: Raw metadata dict; ``None`` when empty.
+        created_at: Creation timestamp.
+        file_name: Owning file node name.
+        workspace_id: Owning workspace id.
+        total_cases: Number of test cases attached to the API.
+        test_cases: Cases sorted by name; ``None`` when not requested via include_cases.
+    """
+
+    id: int
+    file_id: int
+    name: str
+    method: str
+    endpoint: str
+    headers: Dict[str, Any]
+    description: Optional[str] = None
+    is_active: bool
+    extra_meta: Optional[Dict[str, Any]] = None
+    created_at: datetime
+    file_name: str
+    workspace_id: int
+    total_cases: int
+    test_cases: Optional[List[ApiCaseItem]] = None
+
+
+class ApiSaveResponse(BaseModel):
+    """Carry the upserted API record with its headers, body, and params split out.
+
+    Attributes:
+        id: API primary key.
+        file_id: Owning file node id.
+        name: API display name.
+        method: HTTP method.
+        endpoint: URL path template.
+        description: Documentation text; ``None`` when not set.
+        is_active: Whether the API is included in test runs.
+        headers: Headers extracted from extra_meta.
+        body: Body dict extracted from extra_meta.
+        params: Params dict extracted from extra_meta.
+        extra_meta: Raw metadata dict; ``None`` when empty.
+        created_at: Creation timestamp.
+        file_name: Owning file node name.
+        workspace_id: Owning workspace id.
+        total_cases: Number of test cases attached to the API.
+    """
+
+    id: int
+    file_id: int
+    name: str
+    method: str
+    endpoint: str
+    description: Optional[str] = None
+    is_active: bool
+    headers: Dict[str, Any]
+    body: Dict[str, Any]
+    params: Dict[str, Any]
+    extra_meta: Optional[Dict[str, Any]] = None
+    created_at: datetime
+    file_name: str
+    workspace_id: int
+    total_cases: int
+
+
+class SetAuthResponse(BaseModel):
+    """Confirm the auth type stored on an API.
+
+    Attributes:
+        api_id: API the auth config was stored on.
+        auth_type: The auth type that was persisted.
+    """
+
+    api_id: int
+    auth_type: str
+
+
+class TreeCaseItem(BaseModel):
+    """Carry a test case enriched with its API's method and endpoint for the bulk-testing tree.
+
+    Attributes:
+        id: Test case primary key.
+        name: Case display name; ``None`` when stored without a name.
+        method: Inherited API HTTP method.
+        endpoint: Inherited API endpoint.
+        headers: Case-level headers; ``None`` when none were set.
+        body: Request body dict.
+        params: Case-level params; ``None`` when none were set.
+        expected: Assertion criteria dict.
+        created_at: Creation timestamp.
+    """
+
+    id: int
+    name: Optional[str] = None
+    method: str
+    endpoint: str
+    headers: Optional[Dict[str, Any]] = None
+    body: Dict[str, Any]
+    params: Optional[Dict[str, Any]] = None
+    expected: Dict[str, Any]
+    created_at: datetime
+
+
+class BulkTreeNode(BaseModel):
+    """Carry one node in the bulk-testing tree, enriched with API data for file nodes.
+
+    Attributes:
+        id: Node primary key.
+        name: Node display name.
+        type: ``"folder"`` or ``"file"``.
+        parent_id: Parent node id; ``None`` for root nodes.
+        children: Child nodes (folders and files).
+        method: API method when this file node has an API; ``None`` otherwise.
+        endpoint: API endpoint when this file node has an API; ``None`` otherwise.
+        description: API description when present; ``None`` otherwise.
+        is_active: API active flag when present; ``None`` otherwise.
+        test_cases: API test cases when present; ``None`` otherwise.
+        total_cases: Case count when this file node has an API; ``None`` otherwise.
+    """
+
+    id: int
+    name: str
+    type: str
+    parent_id: Optional[int] = None
+    children: List["BulkTreeNode"] = Field(default_factory=list)
+    method: Optional[str] = None
+    endpoint: Optional[str] = None
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+    test_cases: Optional[List[TreeCaseItem]] = None
+    total_cases: Optional[int] = None
+
+
+class BulkTreeStats(BaseModel):
+    """Carry aggregate counts for a bulk-testing tree.
+
+    Attributes:
+        total_nodes: Number of nodes in the workspace.
+        total_apis: Number of file nodes that have an API.
+        total_test_cases: Number of test cases across all APIs.
+    """
+
+    total_nodes: int
+    total_apis: int
+    total_test_cases: int
+
+
+class BulkTestingTreeResponse(BaseModel):
+    """Carry the workspace node tree and aggregate stats for bulk execution.
+
+    Attributes:
+        tree: Root-level nodes, each with nested children.
+        stats: Aggregate counts for the tree.
+    """
+
+    tree: List[BulkTreeNode]
+    stats: BulkTreeStats
+
+
+class ApiCaseDetailResponse(BaseModel):
+    """Carry a saved test case with its parent API and file context.
+
+    Attributes:
+        id: Test case primary key.
+        api_id: Owning API id.
+        name: Case display name; ``None`` when stored without a name.
+        headers: Case-level headers; ``None`` when none were set.
+        params: Case-level params; ``None`` when none were set.
+        body: Request body dict.
+        expected: Assertion criteria dict.
+        created_at: Creation timestamp.
+        api_name: Owning API name.
+        api_method: Owning API method.
+        api_endpoint: Owning API endpoint.
+        file_id: Owning file node id.
+        file_name: Owning file node name.
+        workspace_id: Owning workspace id.
+    """
+
+    id: int
+    api_id: int
+    name: Optional[str] = None
+    headers: Optional[Dict[str, Any]] = None
+    params: Optional[Dict[str, Any]] = None
+    body: Dict[str, Any]
+    expected: Dict[str, Any]
+    created_at: datetime
+    api_name: str
+    api_method: str
+    api_endpoint: str
+    file_id: int
+    file_name: str
+    workspace_id: int
+
+
+class ApiCaseFullResponse(ApiCaseDetailResponse):
+    """Carry a test case detail plus its case-specific header copy.
+
+    Attributes:
+        case_specific_headers: Case-level headers only (mirrors ``headers``); ``None`` when none were set.
+    """
+
+    case_specific_headers: Optional[Dict[str, Any]] = None
+
+
+class ApiCaseListResponse(BaseModel):
+    """Carry all test cases for a file's API with API context.
+
+    Attributes:
+        file_id: Owning file node id.
+        file_name: Owning file node name.
+        workspace_id: Owning workspace id.
+        api_id: API primary key.
+        api_name: API name.
+        api_method: API method.
+        api_endpoint: API endpoint.
+        test_cases: Matching test cases.
+        total_cases: Number of cases matching the query (includes the search filter).
+    """
+
+    file_id: int
+    file_name: str
+    workspace_id: int
+    api_id: int
+    api_name: str
+    api_method: str
+    api_endpoint: str
+    test_cases: List[ApiCaseItem]
+    total_cases: int
+
+
+class BulkCaseCreateResponse(BaseModel):
+    """Carry the test cases created in a bulk operation.
+
+    Attributes:
+        created: The newly created test cases.
+        count: Number of cases created.
+    """
+
+    created: List[ApiCaseItem]
+    count: int
+
+
+class CaseDuplicateResponse(BaseModel):
+    """Carry a duplicated test case and a reference to its source.
+
+    Attributes:
+        id: New test case primary key.
+        api_id: Owning API id.
+        name: Duplicated case name.
+        headers: Copied headers; ``None`` when the source had none.
+        params: Copied params; ``None`` when the source had none.
+        body: Copied request body dict.
+        expected: Copied assertion criteria dict.
+        created_at: Creation timestamp.
+        original_case_id: Id of the source case that was duplicated.
+    """
+
+    id: int
+    api_id: int
+    name: str
+    headers: Optional[Dict[str, Any]] = None
+    params: Optional[Dict[str, Any]] = None
+    body: Dict[str, Any]
+    expected: Dict[str, Any]
+    created_at: datetime
+    original_case_id: int
+
+
+class BulkDeleteResponse(BaseModel):
+    """Carry the outcome of a bulk test-case deletion.
+
+    Attributes:
+        deleted_count: Number of cases deleted.
+        deleted_ids: Ids of the deleted cases.
+        not_found_ids: Requested ids that were not found or not owned; ``None`` when all were deleted.
+    """
+
+    deleted_count: int
+    deleted_ids: List[int]
+    not_found_ids: Optional[List[int]] = None
+
+
+class OAuth2TokenStatusResponse(BaseModel):
+    """Carry cached OAuth2 token status without exposing the raw token.
+
+    Attributes:
+        auth_ref: Cache key derived from client_id + scope + token_url.
+        token_type: Token type string (e.g. ``"Bearer"``).
+        expires_at: Token expiry ISO timestamp; ``None`` when the grant returned no expiry.
+        cached: ``True`` when an unexpired cached token was returned without a network call; ``None`` on the status endpoint.
+        refreshed: ``True`` when the token was refreshed/re-granted; ``None`` on the status endpoint.
+        expired: ``True`` when the cached token is within the refresh skew of expiry; ``None`` on the fetch endpoint.
+        has_refresh_token: ``True`` when a refresh token is stored; ``None`` on the fetch endpoint.
+        created_at: Token record creation ISO timestamp; ``None`` on the fetch endpoint or when unset.
+    """
+
+    auth_ref: str
+    token_type: str
+    expires_at: Optional[str] = None
+    cached: Optional[bool] = None
+    refreshed: Optional[bool] = None
+    expired: Optional[bool] = None
+    has_refresh_token: Optional[bool] = None
+    created_at: Optional[str] = None
+
+
+# Resolve the self-referential children field on BulkTreeNode.
+BulkTreeNode.model_rebuild()

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useEnvironment } from '../../store/environment';
 import { VariableResolver } from '../../utils/variableResolver';
+import { useInlineVariableComplete } from '../../hooks/useInlineVariableComplete';
+import VariableSuggest from './VariableSuggest/VariableSuggest';
 import styles from './VariableInput.module.css';
 
 export default function VariableInput({
@@ -9,6 +11,7 @@ export default function VariableInput({
   placeholder,
   className = '',
   disabled = false,
+  variant = 'default',
   ...props
 }) {
   const { variables, activeEnvironment } = useEnvironment();
@@ -17,6 +20,21 @@ export default function VariableInput({
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
   const [showTooltip, setShowTooltip] = useState(false);
   const inputRef = useRef(null);
+  const overlayRef = useRef(null);
+
+  // {{variable}} autocomplete. applyValue emits a synthetic change so existing
+  // onChange handlers (which read e.target.value/name) keep working, then restores caret.
+  const applyValue = (newText, newCaret) => {
+    onChange?.({ target: { value: newText, name: props.name } });
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (el) {
+        el.focus();
+        el.setSelectionRange(newCaret, newCaret);
+      }
+    });
+  };
+  const complete = useInlineVariableComplete({ elRef: inputRef, value, applyValue });
 
   // Resolve variables locally when value or environment changes
   useEffect(() => {
@@ -38,7 +56,37 @@ export default function VariableInput({
     setResolvedVariables(variableMap);
   }, [value, variables]);
 
-  // Removed complex color highlighting to fix shadow-like appearance
+  // Build the colored overlay: {{token}} spans colored by resolved/missing, rest plain.
+  const buildHighlights = () => {
+    const text = value ?? '';
+    const parts = [];
+    const regex = /\{\{([^}]+)\}\}/g;
+    let lastIndex = 0;
+    let match;
+    while ((match = regex.exec(text)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(<span key={`t-${lastIndex}`}>{text.slice(lastIndex, match.index)}</span>);
+      }
+      const resolved = resolvedVariables.hasOwnProperty(match[1].trim());
+      parts.push(
+        <span key={`v-${match.index}`} className={resolved ? styles.token : styles.tokenMissing}>
+          {match[0]}
+        </span>
+      );
+      lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex < text.length) {
+      parts.push(<span key={`t-${lastIndex}`}>{text.slice(lastIndex)}</span>);
+    }
+    return parts;
+  };
+
+  // Keep the overlay aligned with the input when text scrolls horizontally.
+  const handleScroll = () => {
+    if (inputRef.current && overlayRef.current) {
+      overlayRef.current.scrollLeft = inputRef.current.scrollLeft;
+    }
+  };
 
   // Handle mouse move on input to detect variable hover
   const handleInputMouseMove = e => {
@@ -98,20 +146,37 @@ export default function VariableInput({
   };
 
   return (
-    <div className={`${styles.variableInputContainer} ${className}`}>
+    <div className={`${styles.variableInputContainer} ${variant === 'inline' ? styles.inline : ''} ${className}`}>
       {/* Simple input field with tooltip functionality */}
       <input
         ref={inputRef}
         type="text"
         value={value}
-        onChange={onChange}
+        onChange={e => { onChange?.(e); complete.refresh(); }}
         placeholder={placeholder}
         className={styles.input}
         disabled={disabled}
         onMouseMove={handleInputMouseMove}
         onMouseLeave={handleInputMouseLeave}
+        onScroll={handleScroll}
+        onKeyDown={complete.handleKeyDown}
+        onKeyUp={complete.refresh}
+        onClick={complete.refresh}
+        onBlur={complete.close}
+        spellCheck={false}
+        autoComplete="off"
         {...props}
       />
+      <VariableSuggest
+        open={complete.open}
+        items={complete.items}
+        activeIndex={complete.activeIndex}
+        onHover={complete.setActiveIndex}
+        onPick={complete.selectItem}
+      />
+      <div ref={overlayRef} className={styles.highlights} aria-hidden="true">
+        {buildHighlights()}
+      </div>
 
       {/* Tooltip for variable hover */}
       {showTooltip && hoveredVariable && (

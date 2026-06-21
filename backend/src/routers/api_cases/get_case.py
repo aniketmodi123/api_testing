@@ -3,17 +3,12 @@ What this file does: Exposes GET /case/{case_id} for retrieving a test case with
 """
 
 from fastapi import APIRouter, Depends, Header
-from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_db
-from common_querys import get_user_by_username, get_headers
-from models import Workspace, Node, Api, ApiCase
-from utils import (
-    ExceptionHandler,
-    create_response,
-    value_correction
-)
+from common_querys import resolve_case_access
+from schema import ApiCaseFullResponse
+from utils import ExceptionHandler, create_response
 
 router = APIRouter()
 
@@ -26,56 +21,24 @@ async def get_test_case_details(
 ):
     """GET /case/{case_id} — return test case fields along with its parent API method, endpoint, and file context."""
     try:
-        # Get user
-        user = await get_user_by_username(db, username)
-        if not user:
-            return create_response(400, error_message="User not found")
+        # Step 1: Resolve caller, case, API, and file node in one query
+        ca = await resolve_case_access(db, username, case_id)
+        if ca.user is None:
+            return create_response(401, error_message="User not found")
+        if ca.case is None or not ca.can_access:
+            return create_response(404, error_message="Test case not found or access denied")
 
-        # Verify test case ownership through API -> file -> workspace -> user
-        result = await db.execute(
-            select(ApiCase)
-            .join(Api, ApiCase.api_id == Api.id)
-            .join(Node, Api.file_id == Node.id)
-            .join(Workspace, Node.workspace_id == Workspace.id)
-            .where(
-                and_(
-                    ApiCase.id == case_id,
-                    Workspace.user_id == user.id
-                )
-            )
-        )
-        case = result.scalar_one_or_none()
-
-        if not case:
-            return create_response(206, error_message="Test case not found or access denied")
-
-        # Get API and file details
-        api_result = await db.execute(
-            select(Api).where(Api.id == case.api_id)
-        )
-        api = api_result.scalar_one()
-
-        file_result = await db.execute(
-            select(Node).where(Node.id == api.file_id)
-        )
-        file_node = file_result.scalar_one()
-
-
+        case, api, file_node = ca.case, ca.api, ca.node
         case_headers = case.headers or {}
 
-        # Params if present on the case
-        try:
-            case_params = case.params or {}
-        except AttributeError:
-            case_params = {}
-
+        # Step 2: Build the response payload
         data = {
             "id": case.id,
             "api_id": case.api_id,
             "name": case.name,
-            "headers": case_headers,  # Combined headers
-            "case_specific_headers": case_headers,  # Case-specific headers only
-            "params": case_params,
+            "headers": case_headers,
+            "case_specific_headers": case_headers,
+            "params": case.params or {},
             "body": case.body,
             "expected": case.expected,
             "created_at": case.created_at,
@@ -84,10 +47,10 @@ async def get_test_case_details(
             "api_endpoint": api.endpoint,
             "file_id": api.file_id,
             "file_name": file_node.name,
-            "workspace_id": file_node.workspace_id
+            "workspace_id": file_node.workspace_id,
         }
 
-        return create_response(200, value_correction(data))
+        return create_response(200, data, ApiCaseFullResponse)
 
     except Exception as e:
-        ExceptionHandler(e)
+        return ExceptionHandler(e)

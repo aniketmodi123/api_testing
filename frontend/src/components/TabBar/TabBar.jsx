@@ -54,9 +54,11 @@ export function useTabBar(nodeTree) {
   // Validate stored tabs against current node tree (scratch tabs always pass)
   useEffect(() => {
     if (!nodeTree || !Array.isArray(nodeTree)) return;
-    const allFileIds = new Set(nodeTree.flatMap(n => gatherFileIds(n)));
+    // Normalize ids to string — localStorage round-trips can flip number<->string,
+    // and the panel resolves the active tab with a loose compare too.
+    const allFileIds = new Set(nodeTree.flatMap(n => gatherFileIds(n)).map(String));
     setTabs(prev => {
-      const valid = prev.filter(t => isScratchTab(t.fileId) || allFileIds.has(t.fileId));
+      const valid = prev.filter(t => isScratchTab(t.fileId) || allFileIds.has(String(t.fileId)));
       if (valid.length !== prev.length) saveTabs(valid);
       return valid;
     });

@@ -4,13 +4,15 @@
 }
 
 .input {
+  position: relative;
   width: 100%;
   height: 36px;
   padding: 0 var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface-1);
-  color: var(--text);
+  color: transparent;
+  caret-color: var(--accent);
   font-size: var(--text-sm);
   font-family: var(--font-mono);
   line-height: 34px;
@@ -24,7 +26,56 @@
   background: var(--bg);
 }
 
-/* Removed complex layering styles - keeping only simple tooltip styles */
+/* Colored overlay — metrics must exactly match .input so glyphs align. */
+.highlights {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 36px;
+  padding: 0 var(--space-3);
+  border: 1px solid transparent;
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  line-height: 34px;
+  white-space: pre;
+  overflow: hidden;
+  pointer-events: none;
+  color: var(--text);
+  box-sizing: border-box;
+}
+
+.token {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.tokenMissing {
+  color: var(--error);
+  font-weight: 600;
+}
+
+/* Inline variant — borderless/transparent for use inside param/header tables.
+   Selectors carry 3 classes (0,3,0) to override the generic
+   `.paramRow input[type="text"]` rule (0,2,1) in RequestPanel.module.css. */
+.variableInputContainer.inline .input {
+  height: auto;
+  padding: var(--space-1);
+  border: 1px solid transparent;
+  background: transparent;
+  line-height: normal;
+  color: transparent;
+  caret-color: var(--accent);
+}
+.variableInputContainer.inline .input:focus {
+  border-color: var(--border);
+  background: var(--surface-2);
+}
+.variableInputContainer.inline .highlights {
+  height: 100%;
+  padding: var(--space-1);
+  line-height: normal;
+}
 
 /* Tooltip */
 .tooltip {

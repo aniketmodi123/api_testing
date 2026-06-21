@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api as backendApi } from '../../api';
+import { VariableInput } from '../common';
 import styles from './RequestPanel.module.css';
 
 const AUTH_TYPES = [
@@ -46,9 +47,7 @@ function Field({ label, name, value, onChange, secret, placeholder, type = 'text
       <label className={styles.authFieldLabel}>{label}</label>
       {secret
         ? <MaskedInput name={name} value={value} onChange={onChange} placeholder={placeholder} />
-        : <input
-            type={type}
-            className={styles.authFieldInput}
+        : <VariableInput
             name={name}
             value={value}
             onChange={onChange}

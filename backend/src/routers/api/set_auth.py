@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config import get_db
 from common_querys import get_user_by_username, verify_node_ownership, write_audit
 from models import Api
-from schema import SetAuthRequest
+from schema import SetAuthRequest, SetAuthResponse
 from utils import ExceptionHandler, create_response
 import vault
 
@@ -58,7 +58,7 @@ async def set_api_auth(
         # Step 1: Resolve user + fetch api
         user = await get_user_by_username(db, username)
         if not user:
-            return create_response(400, error_message="User not found")
+            return create_response(401, error_message="User not found")
 
         result = await db.execute(select(Api).where(Api.id == api_id))
         api = result.scalar_one_or_none()
@@ -89,7 +89,7 @@ async def set_api_auth(
         )
         await db.commit()
 
-        return create_response(200, {"api_id": api_id, "auth_type": request.type})
+        return create_response(200, {"api_id": api_id, "auth_type": request.type}, SetAuthResponse)
 
     except Exception as e:
         await db.rollback()

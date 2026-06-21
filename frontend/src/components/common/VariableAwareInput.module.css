@@ -13,7 +13,7 @@
   border-radius: var(--radius);
   background: var(--surface-1);
   color: transparent;
-  caret-color: var(--text);
+  caret-color: var(--accent);
   font-family: var(--font-mono);
   transition: border-color var(--duration-base);
 }

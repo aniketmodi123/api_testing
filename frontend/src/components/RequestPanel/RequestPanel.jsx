@@ -1,5 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { parseCurl } from '../../utils/importExport';
+import { variableHighlight } from '../../utils/cmVariableHighlight';
+import { makeVariableCompletion } from '../../utils/cmVariableComplete';
+import { useVariableSuggestions } from '../../hooks/useVariableSuggestions';
 import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from 'react-resizable-panels';
 import CodeMirror from '@uiw/react-codemirror';
 import { json as jsonLang } from '@codemirror/lang-json';
@@ -363,6 +366,11 @@ function KeyValueBodyTable({ rows, setRows, onSerialize }) {
 export default function RequestPanel({ activeRequest, onMethodChange }) {
   const { selectedNode, getNodeById } = useNode();
   const { variables, activeEnvironment } = useEnvironment();
+  const variableSuggestionItems = useVariableSuggestions();
+  const variableCompletion = useMemo(
+    () => makeVariableCompletion(variableSuggestionItems),
+    [variableSuggestionItems]
+  );
   const { isDarkMode } = useTheme();
   const { activeWorkspace } = useWorkspace();
   const {
@@ -1734,8 +1742,7 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
                     <input type="checkbox" defaultChecked />
                   </div>
                   <div className={styles.paramKey}>
-                    <input
-                      type="text"
+                    <VariableInput
                       value={param.key}
                       onChange={e => {
                         const newParams = [...params];
@@ -1743,11 +1750,11 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
                         setParamsDirty(newParams);
                       }}
                       placeholder="Key"
+                      variant="inline"
                     />
                   </div>
                   <div className={styles.paramValue}>
-                    <input
-                      type="text"
+                    <VariableInput
                       value={param.value}
                       onChange={e => {
                         const newParams = [...params];
@@ -1755,11 +1762,11 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
                         setParamsDirty(newParams);
                       }}
                       placeholder="Value"
+                      variant="inline"
                     />
                   </div>
                   <div className={styles.paramDescription}>
-                    <input
-                      type="text"
+                    <VariableInput
                       value={param.description}
                       onChange={e => {
                         const newParams = [...params];
@@ -1767,6 +1774,7 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
                         setParamsDirty(newParams);
                       }}
                       placeholder="Description"
+                      variant="inline"
                     />
                   </div>
                 </div>
@@ -1830,8 +1838,7 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
                     <input type="checkbox" defaultChecked />
                   </div>
                   <div className={styles.paramKey}>
-                    <input
-                      type="text"
+                    <VariableInput
                       value={header.key}
                       onChange={e => {
                         const newHeaders = [...headers];
@@ -1839,11 +1846,11 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
                         setHeadersDirty(newHeaders);
                       }}
                       placeholder="Key"
+                      variant="inline"
                     />
                   </div>
                   <div className={styles.paramValue}>
-                    <input
-                      type="text"
+                    <VariableInput
                       value={header.value}
                       onChange={e => {
                         const newHeaders = [...headers];
@@ -1851,11 +1858,11 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
                         setHeadersDirty(newHeaders);
                       }}
                       placeholder="Value"
+                      variant="inline"
                     />
                   </div>
                   <div className={styles.paramDescription}>
-                    <input
-                      type="text"
+                    <VariableInput
                       value={header.description}
                       onChange={e => {
                         const newHeaders = [...headers];
@@ -1863,6 +1870,7 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
                         setHeadersDirty(newHeaders);
                       }}
                       placeholder="Description"
+                      variant="inline"
                     />
                   </div>
                 </div>
@@ -1992,8 +2000,8 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
                 value={bodyContent}
                 height="100%"
                 minHeight="120px"
-                extensions={[jsonLang()]}
-                
+                extensions={[jsonLang(), variableHighlight, variableCompletion]}
+
                 onChange={val => setBodyContentDirty(val)}
                 className={styles.bodyCodeMirror}
                 basicSetup={{ lineNumbers: true, foldGutter: true }}
@@ -2079,7 +2087,7 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
                 <CodeMirror
                   value={gqlQuery}
                   height="120px"
-                  
+                  extensions={[variableHighlight, variableCompletion]}
                   onChange={val => setGqlQuery(val)}
                   className={styles.bodyCodeMirror}
                   basicSetup={{ lineNumbers: true }}
@@ -2089,8 +2097,7 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
                 <CodeMirror
                   value={gqlVariables}
                   height="80px"
-                  extensions={[jsonLang()]}
-                  
+                  extensions={[jsonLang(), variableHighlight, variableCompletion]}
                   onChange={val => setGqlVariables(val)}
                   className={styles.bodyCodeMirror}
                   basicSetup={{ lineNumbers: false }}

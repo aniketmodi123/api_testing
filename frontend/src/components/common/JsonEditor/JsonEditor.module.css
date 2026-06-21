@@ -98,10 +98,13 @@
 }
 
 .textarea {
+  position: relative;
+  z-index: 1;
   width: 100%;
   border: 1px solid var(--code-border);
   background-color: var(--code-bg);
-  color: var(--text);
+  color: transparent;
+  caret-color: var(--accent);
   font-family: "SF Mono", "Monaco", "Inconsolata", "Roboto Mono", "Source Code Pro", monospace;
   font-size: 14px;
   line-height: 1.5;
@@ -118,6 +121,30 @@
     height var(--duration-fast) var(--easing-default);
   flex: 1;
   min-height: 0;
+}
+
+/* Colored overlay on top of the textarea — metrics must match .textarea exactly. */
+.highlightOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border: 1px solid transparent;
+  padding: 16px;
+  font-family: "SF Mono", "Monaco", "Inconsolata", "Roboto Mono", "Source Code Pro", monospace;
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  color: var(--text);
+  pointer-events: none;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.varToken {
+  color: var(--accent);
+  font-weight: 600;
 }
 
 .textarea.resizing {

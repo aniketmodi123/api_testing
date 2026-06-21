@@ -2,19 +2,17 @@
 What this file does: Exposes GET /file/{file_id}/api/cases for listing and searching test cases for a file's API.
 """
 
-from fastapi import APIRouter, Depends, Header
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 
+from fastapi import APIRouter, Depends, Header
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from config import get_db
-from common_querys import get_user_by_username, verify_node_ownership
-from models import Api, ApiCase
-from utils import (
-    ExceptionHandler,
-    create_response,
-    value_correction
-)
+from common_querys import resolve_file_access
+from models import ApiCase
+from schema import ApiCaseListResponse
+from utils import ExceptionHandler, create_response
 
 router = APIRouter()
 
@@ -28,69 +26,35 @@ async def list_test_cases_for_file_api(
 ):
     """GET /file/{file_id}/api/cases — list all test cases for the file's API, optionally filtered by case name search term."""
     try:
-        # Get user
-        user = await get_user_by_username(db, username)
-        if not user:
-            return create_response(400, error_message="User not found")
-
-        # Verify file ownership
-        file_node = await verify_node_ownership(db, file_id, user.id)
-        if not file_node:
-            return create_response(206, error_message="File not found or access denied")
-
-        if file_node.type != "file":
+        # Step 1: Resolve caller, file node, and its API in one query
+        fa = await resolve_file_access(db, username, file_id)
+        if fa.user is None:
+            return create_response(401, error_message="User not found")
+        if fa.node is None or not fa.can_access:
+            return create_response(404, error_message="File not found or access denied")
+        if fa.node.type != "file":
             return create_response(400, error_message="Can only list test cases from files, not folders")
+        if fa.api is None:
+            return create_response(404, error_message="No API found in this file")
 
-        # Get API from file
-        api_result = await db.execute(
-            select(Api).where(Api.file_id == file_id)
-        )
-        api = api_result.scalar_one_or_none()
+        api, file_node = fa.api, fa.node
 
-        if not api:
-            return create_response(206, error_message="No API found in this file")
-
-        # Build query with filters
-        query = select(ApiCase).where(ApiCase.api_id == api.id)
-
+        # Step 2: Build the filtered query and a count over the SAME filter
+        conditions = [ApiCase.api_id == api.id]
         if search:
-            search_term = f"%{search}%"
-            query = query.where(ApiCase.name.ilike(search_term))
+            conditions.append(ApiCase.name.ilike(f"%{search}%"))
 
-        # Get total count
         count_result = await db.execute(
-            select(ApiCase.id).where(ApiCase.api_id == api.id)
+            select(func.count()).select_from(ApiCase).where(*conditions)
         )
-        total_cases = len(count_result.fetchall())
+        total_cases = count_result.scalar()
 
-        # Execute query
-        result = await db.execute(query)
-        cases = result.scalars().all()
+        cases_result = await db.execute(
+            select(ApiCase).where(*conditions).order_by(func.lower(ApiCase.name))
+        )
+        cases = cases_result.scalars().all()
 
-        # Format response data
-        cases_data = []
-        for case in cases:
-            try:
-                headers = case.headers  # Try to access headers
-            except AttributeError:
-                # Handle the case where headers column doesn't exist yet
-                headers = None
-            try:
-                params = case.params
-            except AttributeError:
-                params = None
-
-            cases_data.append({
-                "id": case.id,
-                "api_id": case.api_id,
-                "name": case.name,
-                "headers": headers,  # Added headers
-                "params": params,
-                "body": case.body,
-                "expected": case.expected,
-                "created_at": case.created_at
-            })
-
+        # Step 3: Build the response payload
         data = {
             "file_id": file_id,
             "file_name": file_node.name,
@@ -99,10 +63,23 @@ async def list_test_cases_for_file_api(
             "api_name": api.name,
             "api_method": api.method,
             "api_endpoint": api.endpoint,
-            "test_cases": cases_data,
-            "total_cases": total_cases
+            "test_cases": [
+                {
+                    "id": case.id,
+                    "api_id": case.api_id,
+                    "name": case.name,
+                    "headers": case.headers,
+                    "params": case.params,
+                    "body": case.body,
+                    "expected": case.expected,
+                    "created_at": case.created_at,
+                }
+                for case in cases
+            ],
+            "total_cases": total_cases,
         }
 
-        return create_response(200, value_correction(data))
+        return create_response(200, data, ApiCaseListResponse)
+
     except Exception as e:
-        ExceptionHandler(e)
+        return ExceptionHandler(e)

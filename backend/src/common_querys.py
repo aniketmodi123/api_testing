@@ -5,12 +5,12 @@ used across all routers; access-control behaviour is governed by ROLE_ORDER.
 
 from datetime import datetime
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, NamedTuple, Optional
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Depends, Header, HTTPException
 
-from models import Header, Node, User, VerifyLogin, Workspace, Environment, Api, WorkspaceMember, AuditLog, CollectionVariable
+from models import Header, Node, User, VerifyLogin, Workspace, Environment, Api, ApiCase, WorkspaceMember, AuditLog, CollectionVariable
 
 from sqlalchemy.orm import selectinload
 
@@ -128,6 +128,137 @@ async def verify_node_ownership(db: AsyncSession, node_id: int, user_id: int) ->
         return None
     has_access = await can_access_workspace(db, node.workspace_id, user_id, min_role="viewer")
     return node if has_access else None
+
+
+class FileAccess(NamedTuple):
+    """Resolved caller, file node, its API, and access decision for a file-scoped request.
+
+    Attributes:
+        user: Caller resolved from the username header; ``None`` when no user has that email.
+        node: The target file/folder node; ``None`` when the node id does not exist.
+        api: The API attached to the file node; ``None`` when the node has no API or does not exist.
+        can_access: ``True`` when the node exists and the caller owns or has a joined membership in its workspace.
+    """
+
+    user: Optional[User]
+    node: Optional[Node]
+    api: Optional[Api]
+    can_access: bool
+
+
+class CaseAccess(NamedTuple):
+    """Resolved caller, test case, its API, file node, and access decision for a case-scoped request.
+
+    Attributes:
+        user: Caller resolved from the username header; ``None`` when no user has that email.
+        case: The target test case; ``None`` when the case id does not exist.
+        api: The API owning the case; ``None`` when the case does not exist.
+        node: The file node owning the API; ``None`` when the case does not exist.
+        can_access: ``True`` when the case exists and the caller owns or has a joined membership in its workspace.
+    """
+
+    user: Optional[User]
+    case: Optional[ApiCase]
+    api: Optional[Api]
+    node: Optional[Node]
+    can_access: bool
+
+
+async def resolve_file_access(db: AsyncSession, username: str, file_id: int) -> FileAccess:
+    """What it does: Resolve the caller, a file node, its API, and the caller's access in one DB round trip.
+
+    Args:
+        username: Email from the ``username`` request header.
+        file_id: Node id to resolve and access-check.
+
+    Returns:
+        FileAccess: ``user`` is ``None`` only when the email is unknown; ``node``/``api`` are
+                    ``None`` when absent; ``can_access`` is ``True`` only when the node exists and
+                    the caller owns or is a joined member of its workspace.
+
+    Steps:
+        - Step 1: Left-join Node, its API, owning Workspace, and the caller's joined membership onto User in a single query
+        - Step 2: Return an all-empty result when the email is unknown
+        - Step 3: Compute access from workspace ownership or membership role
+
+    See Also:
+        :class:`FileAccess`: Field schema of the returned value.
+    """
+    stmt = (
+        select(User, Node, Api, Workspace.user_id, WorkspaceMember.role)
+        .select_from(User)
+        .outerjoin(Node, Node.id == file_id)
+        .outerjoin(Workspace, Workspace.id == Node.workspace_id)
+        .outerjoin(Api, Api.file_id == Node.id)
+        .outerjoin(
+            WorkspaceMember,
+            and_(
+                WorkspaceMember.workspace_id == Workspace.id,
+                WorkspaceMember.user_id == User.id,
+                WorkspaceMember.joined_at.isnot(None),
+            ),
+        )
+        .where(User.email == username)
+    )
+    row = (await db.execute(stmt)).first()
+    if row is None:
+        return FileAccess(None, None, None, False)
+
+    user, node, api, ws_owner_id, member_role = row
+    can_access = node is not None and (
+        ws_owner_id == user.id or ROLE_ORDER.get(member_role, -1) >= 0
+    )
+    return FileAccess(user, node, api if node is not None else None, can_access)
+
+
+async def resolve_case_access(db: AsyncSession, username: str, case_id: int) -> CaseAccess:
+    """What it does: Resolve the caller, a test case, its API, file node, and the caller's access in one DB round trip.
+
+    Args:
+        username: Email from the ``username`` request header.
+        case_id: Test case id to resolve and access-check.
+
+    Returns:
+        CaseAccess: ``user`` is ``None`` only when the email is unknown; ``case``/``api``/``node``
+                    are ``None`` when the case is absent; ``can_access`` is ``True`` only when the
+                    case exists and the caller owns or is a joined member of its workspace.
+
+    Steps:
+        - Step 1: Left-join the case, its API, file node, owning Workspace, and the caller's joined membership onto User in a single query
+        - Step 2: Return an all-empty result when the email is unknown
+        - Step 3: Compute access from workspace ownership or membership role
+
+    See Also:
+        :class:`CaseAccess`: Field schema of the returned value.
+    """
+    stmt = (
+        select(User, ApiCase, Api, Node, Workspace.user_id, WorkspaceMember.role)
+        .select_from(User)
+        .outerjoin(ApiCase, ApiCase.id == case_id)
+        .outerjoin(Api, Api.id == ApiCase.api_id)
+        .outerjoin(Node, Node.id == Api.file_id)
+        .outerjoin(Workspace, Workspace.id == Node.workspace_id)
+        .outerjoin(
+            WorkspaceMember,
+            and_(
+                WorkspaceMember.workspace_id == Workspace.id,
+                WorkspaceMember.user_id == User.id,
+                WorkspaceMember.joined_at.isnot(None),
+            ),
+        )
+        .where(User.email == username)
+    )
+    row = (await db.execute(stmt)).first()
+    if row is None:
+        return CaseAccess(None, None, None, None, False)
+
+    user, case, api, node, ws_owner_id, member_role = row
+    can_access = (
+        case is not None
+        and node is not None
+        and (ws_owner_id == user.id or ROLE_ORDER.get(member_role, -1) >= 0)
+    )
+    return CaseAccess(user, case, api, node, can_access)
 
 
 async def validate_parent_node(db: AsyncSession, parent_id: int, workspace_id: int) -> bool:

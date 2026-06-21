@@ -4,21 +4,18 @@ What this file does: Exposes POST /file/{file_id}/api/cases/save (single) and PO
 
 from typing import Optional, List
 from fastapi import APIRouter, Depends, Header
-from sqlalchemy import select, and_
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_db
-from common_querys import get_user_by_username, verify_node_ownership, write_audit
-from models import Api, ApiCase, Workspace, Node
-from schema import ApiCaseCreateRequest
-from utils import (
-    ExceptionHandler,
-    create_response,
-    value_correction
-)
+from common_querys import resolve_file_access, write_audit
+from models import ApiCase
+from schema import ApiCaseCreateRequest, ApiCaseDetailResponse, BulkCaseCreateResponse
+from utils import ExceptionHandler, create_response
 from routers.runner.validator import validate_expected_spec
 
 router = APIRouter()
+
 
 @router.post("/file/{file_id}/api/cases/save")
 async def save_api_case(
@@ -28,99 +25,66 @@ async def save_api_case(
     username: str = Header(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """POST /file/{file_id}/api/cases/save — create a new test case or update an existing one when case_id is provided; validates expected schema before saving."""
+    """Create a new test case or update an existing one when case_id is provided.
+    Steps:
+        - Step 1: Validate expected spec, then resolve file access and the file's API in one query
+        - Step 2: Update the case scoped to this API, or create after a duplicate-name check
+        - Step 3: Write audit, commit, and return the saved case with API/file context
+    """
     try:
-        # Validate expected response spec
+        # Step 1: Validate expected response spec before any DB work
         if request.expected is not None:
             ok, errors = validate_expected_spec(request.expected)
             if not ok:
-                # Shape errors only (not runtime); return 422 with reasons
                 return create_response(422, error_message=f"Invalid expected schema, reasons: {errors}")
 
-        # Get user
-        user = await get_user_by_username(db, username)
-        if not user:
-            return create_response(400, error_message="User not found")
-
-        # Verify file ownership
-        file_node = await verify_node_ownership(db, file_id, user.id)
-        if not file_node:
-            return create_response(206, error_message="File not found or access denied")
-
-        if file_node.type != "file":
+        # Step 1: Resolve caller, file node, and its API in one query
+        fa = await resolve_file_access(db, username, file_id)
+        if fa.user is None:
+            return create_response(401, error_message="User not found")
+        if fa.node is None or not fa.can_access:
+            return create_response(404, error_message="File not found or access denied")
+        if fa.node.type != "file":
             return create_response(400, error_message="Can only create test cases for APIs in files, not folders")
+        if fa.api is None:
+            return create_response(404, error_message="No API found in this file")
 
-        # Get API from file
-        api_result = await db.execute(
-            select(Api).where(Api.file_id == file_id)
-        )
-        api = api_result.scalar_one_or_none()
-
-        if not api:
-            return create_response(206, error_message="No API found in this file")
-
+        api = fa.api
         status_code = 200
 
-        # Check if this is an update or create operation
+        # Step 2: Update an existing case (access already proven via file ownership)
         if case_id:
-            # UPDATING EXISTING TEST CASE
-            # Verify test case ownership through API -> file -> workspace -> user
             result = await db.execute(
-                select(ApiCase)
-                .join(Api, ApiCase.api_id == Api.id)
-                .join(Node, Api.file_id == Node.id)
-                .join(Workspace, Node.workspace_id == Workspace.id)
-                .where(
-                    and_(
-                        ApiCase.id == case_id,
-                        Workspace.user_id == user.id,
-                        Api.id == api.id
-                    )
-                )
+                select(ApiCase).where(ApiCase.id == case_id, ApiCase.api_id == api.id)
             )
             case = result.scalar_one_or_none()
-
             if not case:
-                return create_response(206, error_message="Test case not found or access denied")
+                return create_response(404, error_message="Test case not found or access denied")
 
-            # Update fields
             if request.name is not None:
                 case.name = request.name
-
-            # Update headers, body and expected fields
             if request.headers is not None:
                 case.headers = request.headers
-
             if request.body is not None:
                 case.body = request.body
-
             if request.params is not None:
                 case.params = request.params
-
             if request.expected is not None:
                 case.expected = request.expected
 
-            await write_audit(db, username=user.username, action="api_case.update", entity_type="api_case", entity_id=case.id, workspace_id=file_node.workspace_id)
+            await write_audit(db, username=fa.user.username, action="api_case.update", entity_type="api_case", entity_id=case.id, workspace_id=fa.node.workspace_id)
             await db.commit()
             await db.refresh(case)
 
             message = f"Test case '{case.name}' updated successfully"
         else:
-            # CREATING NEW TEST CASE
-            # Check if test case with same name already exists for this API
-            existing_case = await db.execute(
-                select(ApiCase).where(
-                    and_(
-                        ApiCase.api_id == api.id,
-                        ApiCase.name == request.name
-                    )
-                )
+            # Step 2: Create a new case after a duplicate-name check for this API
+            existing = await db.execute(
+                select(ApiCase.id).where(ApiCase.api_id == api.id, ApiCase.name == request.name)
             )
+            if existing.scalar_one_or_none() is not None:
+                return create_response(409, error_message="Test case with this name already exists for this API")
 
-            if existing_case.scalar_one_or_none():
-                return create_response(400, error_message="Test case with this name already exists for this API")
-
-            # Create new test case
             case = ApiCase(
                 api_id=api.id,
                 name=request.name,
@@ -129,16 +93,15 @@ async def save_api_case(
                 body=request.body,
                 expected=request.expected
             )
-
             db.add(case)
-            await write_audit(db, username=user.username, action="api_case.create", entity_type="api_case", workspace_id=file_node.workspace_id)
+            await write_audit(db, username=fa.user.username, action="api_case.create", entity_type="api_case", workspace_id=fa.node.workspace_id)
             await db.commit()
             await db.refresh(case)
 
             status_code = 201
             message = f"Test case '{case.name}' created successfully"
 
-        # Prepare response data
+        # Step 3: Build the response payload
         data = {
             "id": case.id,
             "api_id": case.api_id,
@@ -152,16 +115,15 @@ async def save_api_case(
             "api_method": api.method,
             "api_endpoint": api.endpoint,
             "file_id": file_id,
-            "file_name": file_node.name,
-            "workspace_id": file_node.workspace_id,
-            "message": message
+            "file_name": fa.node.name,
+            "workspace_id": fa.node.workspace_id,
         }
 
-        return create_response(status_code, value_correction(data))
+        return create_response(status_code, data, ApiCaseDetailResponse, message=message)
 
     except Exception as e:
         await db.rollback()
-        ExceptionHandler(e)
+        return ExceptionHandler(e)
 
 
 @router.post("/file/{file_id}/api/cases/bulk")
@@ -171,56 +133,54 @@ async def bulk_create_api_cases(
     username: str = Header(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """POST /file/{file_id}/api/cases/bulk — create multiple test cases in one transaction; reject duplicates within payload or against existing cases."""
+    """Create multiple test cases in one transaction; reject duplicates within payload or against existing cases.
+    Steps:
+        - Step 1: Resolve file access and its API, then reject empty payloads
+        - Step 2: Reject in-payload duplicate names and names already stored for the API
+        - Step 3: Validate each expected spec, create all cases, commit, and return them
+    """
     try:
-        # Get user
-        user = await get_user_by_username(db, username)
-        if not user:
-            return create_response(400, error_message="User not found")
-
-        # Verify file ownership
-        file_node = await verify_node_ownership(db, file_id, user.id)
-        if not file_node:
-            return create_response(206, error_message="File not found or access denied")
-
-        if file_node.type != "file":
+        # Step 1: Resolve caller, file node, and its API in one query
+        fa = await resolve_file_access(db, username, file_id)
+        if fa.user is None:
+            return create_response(401, error_message="User not found")
+        if fa.node is None or not fa.can_access:
+            return create_response(404, error_message="File not found or access denied")
+        if fa.node.type != "file":
             return create_response(400, error_message="Can only create test cases for APIs in files, not folders")
+        if fa.api is None:
+            return create_response(404, error_message="No API found in this file")
 
-        # Get API from file
-        api_result = await db.execute(
-            select(Api).where(Api.file_id == file_id)
-        )
-        api = api_result.scalar_one_or_none()
+        api = fa.api
 
-        if not api:
-            return create_response(206, error_message="No API found in this file")
+        if not requests:
+            return create_response(400, error_message="No cases provided")
 
-        # Basic checks: duplicate names in payload
+        # Step 2: Reject duplicate names within the payload
         names = [r.name for r in requests]
         dup_names = sorted({n for n in names if names.count(n) > 1})
         if dup_names:
-            return create_response(400, error_message=f"Duplicate case names in payload: {', '.join(dup_names)}")
+            return create_response(409, error_message=f"Duplicate case names in payload: {', '.join(dup_names)}")
 
-        # Check for existing cases with same names
+        # Step 2: Reject names already stored for this API
         existing_q = await db.execute(
-            select(ApiCase.name).where(ApiCase.api_id == api.id).where(ApiCase.name.in_(names))
+            select(ApiCase.name).where(ApiCase.api_id == api.id, ApiCase.name.in_(names))
         )
         existing = [row[0] for row in existing_q.fetchall()]
         if existing:
-            return create_response(400, error_message=f"Test case(s) already exist: {', '.join(existing)}")
+            return create_response(409, error_message=f"Test case(s) already exist: {', '.join(existing)}")
 
-        # Validate expected shapes for each case
+        # Step 3: Validate expected shapes for each case
         invalids = []
         for idx, case_req in enumerate(requests):
             if case_req.expected is not None:
                 ok, errs = validate_expected_spec(case_req.expected)
                 if not ok:
                     invalids.append({"index": idx, "name": case_req.name, "errors": errs})
-
         if invalids:
             return create_response(422, error_message="One or more cases invalid", data={"errors": invalids})
 
-        # Create all cases in one transaction
+        # Step 3: Create all cases in one transaction
         created = []
         for r in requests:
             new_case = ApiCase(
@@ -235,14 +195,11 @@ async def bulk_create_api_cases(
             created.append(new_case)
 
         await db.commit()
-
-        # Refresh and prepare response
         for c in created:
             await db.refresh(c)
 
-        out = []
-        for c in created:
-            out.append({
+        out = [
+            {
                 "id": c.id,
                 "api_id": c.api_id,
                 "name": c.name,
@@ -250,11 +207,13 @@ async def bulk_create_api_cases(
                 "params": c.params,
                 "body": c.body,
                 "expected": c.expected,
-                "created_at": c.created_at.strftime("%Y-%m-%d %H:%M:%S")
-            })
+                "created_at": c.created_at,
+            }
+            for c in created
+        ]
 
-        return create_response(201, {"created": out, "count": len(out)})
+        return create_response(201, {"created": out, "count": len(out)}, BulkCaseCreateResponse)
 
     except Exception as e:
         await db.rollback()
-        ExceptionHandler(e)
+        return ExceptionHandler(e)

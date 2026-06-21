@@ -14,7 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config import get_db
 from common_querys import get_user_by_username
 from models import OAuthToken
-from utils import ExceptionHandler, create_response
+from utils import ExceptionHandler, create_response, logs
+from schema import OAuth2TokenStatusResponse
 from http_client import get_http_client
 from ssrf import assert_safe_url
 import vault
@@ -194,7 +195,7 @@ async def fetch_oauth2_token(
                     "token_type": existing.token_type,
                     "expires_at": existing.expires_at.isoformat() if existing.expires_at else None,
                     "cached": True,
-                })
+                }, OAuth2TokenStatusResponse)
 
         # Token expired or force_refresh — try refresh_token grant first
         if existing and existing.refresh_token:
@@ -213,10 +214,10 @@ async def fetch_oauth2_token(
                     "expires_at": token.expires_at.isoformat() if token.expires_at else None,
                     "cached": False,
                     "refreshed": True,
-                })
-            except (ValueError, Exception):
-                # Refresh failed — fall through to full re-grant
-                pass
+                }, OAuth2TokenStatusResponse)
+            except Exception as refresh_err:
+                # Refresh failed — log (no secrets) and fall through to full re-grant
+                logs(f"oauth2 refresh failed for auth_ref={auth_ref}: {refresh_err}", type="error")
 
         # Step 4: Full grant (client_credentials)
         if request.grant != "client_credentials":
@@ -238,7 +239,7 @@ async def fetch_oauth2_token(
             "expires_at": token.expires_at.isoformat() if token.expires_at else None,
             "cached": False,
             "refreshed": False,
-        })
+        }, OAuth2TokenStatusResponse)
 
     except ValueError as e:
         await db.rollback()
@@ -277,7 +278,7 @@ async def get_oauth2_token_status(
             "expired": _token_expired(token),
             "has_refresh_token": token.refresh_token is not None,
             "created_at": token.created_at.isoformat() if token.created_at else None,
-        })
+        }, OAuth2TokenStatusResponse)
 
     except Exception as e:
         return ExceptionHandler(e)

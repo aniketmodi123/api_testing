@@ -1,4 +1,6 @@
 import { useRef, useState } from 'react';
+import { useInlineVariableComplete } from '../../hooks/useInlineVariableComplete';
+import VariableSuggest from './VariableSuggest/VariableSuggest';
 import styles from './VariableAwareInput.module.css';
 
 /**
@@ -17,6 +19,19 @@ const VAR_RE = /\{\{([a-zA-Z_][a-zA-Z0-9_-]*)\}\}/g;
 export default function VariableAwareInput({ value = '', onChange, onPaste, variables = {}, placeholder, className }) {
   const [tooltip, setTooltip] = useState(null); // { key, resolved }
   const inputRef = useRef(null);
+
+  // {{variable}} autocomplete — onChange here takes the raw string value.
+  const applyValue = (newText, newCaret) => {
+    onChange?.(newText);
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (el) {
+        el.focus();
+        el.setSelectionRange(newCaret, newCaret);
+      }
+    });
+  };
+  const complete = useInlineVariableComplete({ elRef: inputRef, value, applyValue });
 
   // Build highlighted spans for the overlay layer
   const buildHighlights = () => {
@@ -69,17 +84,28 @@ export default function VariableAwareInput({ value = '', onChange, onPaste, vari
         ref={inputRef}
         className={styles.input}
         value={value}
-        onChange={e => onChange(e.target.value)}
+        onChange={e => { onChange(e.target.value); complete.refresh(); }}
         onPaste={onPaste}
         placeholder={placeholder}
         onMouseMove={handleMouseMove}
         onMouseLeave={() => setTooltip(null)}
+        onKeyDown={complete.handleKeyDown}
+        onKeyUp={complete.refresh}
+        onClick={complete.refresh}
+        onBlur={complete.close}
         spellCheck={false}
         autoComplete="off"
       />
       <div className={styles.highlights} aria-hidden="true">
         {buildHighlights()}
       </div>
+      <VariableSuggest
+        open={complete.open}
+        items={complete.items}
+        activeIndex={complete.activeIndex}
+        onHover={complete.setActiveIndex}
+        onPick={complete.selectItem}
+      />
       {tooltip && (
         <div className={styles.tooltip}>
           <strong>{`{{${tooltip.key}}}`}</strong> = {tooltip.resolved}
