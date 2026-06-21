@@ -40,6 +40,7 @@ from routers.monitor import crud as monitor_crud
 from routers.collab import comments as collab_comments, versions as collab_versions
 from routers.governance import rules as governance_rules
 from routers.meta import comparison as meta_comparison
+from routers.themes import list_themes, get_active, create_theme, update_theme, delete_theme, activate_theme
 from security import AuthMiddleware
 from http_client import close_http_client
 
@@ -263,3 +264,11 @@ app.include_router(governance_rules.router, tags=["Governance"])
 
 # meta — comparison sheet (Phase 15)
 app.include_router(meta_comparison.router, tags=["Meta"])
+
+# themes — custom theme persistence (Theme System v2 Phase H)
+app.include_router(list_themes.router,    prefix="/themes", tags=["themes"])
+app.include_router(get_active.router,      prefix="/themes", tags=["themes"])
+app.include_router(create_theme.router,    prefix="/themes", tags=["themes"])
+app.include_router(update_theme.router,    prefix="/themes", tags=["themes"])
+app.include_router(delete_theme.router,    prefix="/themes", tags=["themes"])
+app.include_router(activate_theme.router,  prefix="/themes", tags=["themes"])

@@ -99,7 +99,7 @@
   justify-content: center;
   width: 28px;
   height: 28px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 
 .removeButton:hover {
@@ -193,7 +193,7 @@
 }
 
 .cancelButton:hover {
-  background-color: var(--hover-background);
+  background-color: var(--surface-3);
 }
 
 .loading,
@@ -227,7 +227,7 @@
   margin-left: 5px;
   background-color: var(--accent-dim);
   color: var(--accent);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   padding: 2px 8px;
   font-size: var(--text-xs);
 }
@@ -274,10 +274,10 @@
 .overrideBadge {
   margin-left: 8px;
   font-size: 10px;
-  background-color: var(--warning, #f59e0b);
+  background-color: var(--warning, var(--warning));
   color: white;
   padding: 2px 6px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
 }
 
 .sourceBadge {
@@ -286,7 +286,7 @@
   background-color: var(--accent);
   color: white;
   padding: 2px 6px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   margin-top: 4px;
   display: inline-block;
 }

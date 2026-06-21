@@ -17,7 +17,7 @@ export function ThemeProvider({ children }) {
 
   return (
     <ThemeCtx.Provider
-      value={{ theme, setTheme, isDarkMode: theme === 'dark' }}
+      value={{ theme, setTheme, isDarkMode: theme !== 'light' }}
     >
       {children}
     </ThemeCtx.Provider>

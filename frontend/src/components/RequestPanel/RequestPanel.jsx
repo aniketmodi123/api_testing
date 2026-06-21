@@ -10,7 +10,7 @@ import { useApi } from '../../store/api';
 import { useEnvironment } from '../../store/environment';
 import { useNode } from '../../store/node';
 import { useWorkspace } from '../../store/workspace';
-import { useTheme } from '../ThemeProvider';
+import { useTheme } from '../ThemeContext.jsx';
 import { TestCaseForm } from '../TestCaseForm';
 import TestResultsGrid from '../TestResultsGrid';
 import { Button, JsonEditor, VariableInput, VariableAwareInput } from '../common';
@@ -157,6 +157,8 @@ async function copyTableToClipboard(excelData) {
     'Result',
   ];
 
+  // Colors below are intentionally hardcoded — this HTML is copied to the OS
+  // clipboard for pasting into Confluence/Docs, which has no access to our CSS vars.
   const htmlTable = `
   <table border="1" cellspacing="0" cellpadding="6" style="border-collapse: collapse; width: 100%; border: 1px solid #ccc;">
     <thead style="background-color: #f3f3f3; font-weight: bold;">
@@ -2009,7 +2011,7 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
                 height="100%"
                 minHeight="120px"
                 extensions={[jsonLang()]}
-                theme={isDarkMode ? oneDark : undefined}
+                
                 onChange={val => setBodyContentDirty(val)}
                 className={styles.bodyCodeMirror}
                 basicSetup={{ lineNumbers: true, foldGutter: true }}
@@ -2095,7 +2097,7 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
                 <CodeMirror
                   value={gqlQuery}
                   height="120px"
-                  theme={isDarkMode ? oneDark : undefined}
+                  
                   onChange={val => setGqlQuery(val)}
                   className={styles.bodyCodeMirror}
                   basicSetup={{ lineNumbers: true }}
@@ -2106,7 +2108,7 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
                   value={gqlVariables}
                   height="80px"
                   extensions={[jsonLang()]}
-                  theme={isDarkMode ? oneDark : undefined}
+                  
                   onChange={val => setGqlVariables(val)}
                   className={styles.bodyCodeMirror}
                   basicSetup={{ lineNumbers: false }}
@@ -2469,7 +2471,7 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
                         value={responseBodyValue}
                         height="100%"
                         extensions={[jsonLang()]}
-                        theme={isDarkMode ? oneDark : undefined}
+                        
                         readOnly
                         className={styles.responseCodeMirror}
                         basicSetup={{ lineNumbers: true, foldGutter: true }}

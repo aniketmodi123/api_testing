@@ -461,7 +461,7 @@ export default function WorkspaceSelector() {
                 />
                 <div
                   style={{
-                    color: '#fff',
+                    color: '#fff', // intentional — fixed dark scrim overlay, not a themed surface
                     fontSize: 20,
                     marginTop: 16,
                     fontWeight: 500,

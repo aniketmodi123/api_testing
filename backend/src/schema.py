@@ -1723,3 +1723,83 @@ class SetAuthRequest(BaseModel):
 
     type: Literal["none", "apikey", "bearer", "basic", "aws_sigv4", "jwt", "oauth2"]
     config: Dict[str, Any] = Field(default_factory=dict, description="Type-specific auth config")
+
+
+# ---------------------------
+# Theme System v2 — Phase H (custom theme persistence)
+# ---------------------------
+class UserThemeCreate(BaseModel):
+    """Carry a new custom theme to persist for the authenticated user.
+
+    Attributes:
+        name: Display name for the theme; unique per user.
+        token_map: Flat dict of CSS variable name to value; every key must start with ``--``.
+    """
+
+    name: str = Field(..., min_length=1, max_length=80)
+    token_map: Dict[str, str]
+
+    @validator('token_map')
+    def validate_token_map(cls, v):
+        for k in v:
+            if not k.startswith('--'):
+                raise ValueError(f"token_map key must start with '--': {k}")
+        return v
+
+
+class UserThemeUpdate(BaseModel):
+    """Carry partial updates to an existing custom theme.
+
+    Attributes:
+        name: New display name; ``None`` leaves the existing name unchanged.
+        token_map: New flat token map; ``None`` leaves the existing token map unchanged.
+    """
+
+    name: Optional[str] = Field(None, min_length=1, max_length=80)
+    token_map: Optional[Dict[str, str]] = None
+
+    @validator('token_map')
+    def validate_token_map(cls, v):
+        if v is None:
+            return v
+        for k in v:
+            if not k.startswith('--'):
+                raise ValueError(f"token_map key must start with '--': {k}")
+        return v
+
+
+class UserThemeResponse(BaseModel):
+    """Carry a single persisted custom theme back to the caller.
+
+    Attributes:
+        id: Primary key.
+        user_id: Owning user's id.
+        name: Theme display name.
+        token_map: Flat dict of CSS variable name to value.
+        is_active: ``True`` when this is the user's currently applied theme.
+        created_at: Creation timestamp.
+        updated_at: Timestamp of the last name/token_map change.
+    """
+
+    id: int
+    user_id: int
+    name: str
+    token_map: Dict[str, str]
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class UserThemeListResponse(BaseModel):
+    """Carry the authenticated user's full list of saved custom themes.
+
+    Attributes:
+        themes: All saved themes for the user, ordered by creation time.
+        total: Total number of themes in the list.
+    """
+
+    themes: List[UserThemeResponse]
+    total: int

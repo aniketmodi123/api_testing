@@ -18,7 +18,7 @@ button.overrideSendButton {
   height: 100% !important;
   font-weight: 600 !important;
   min-width: 70px;
-  transition: background 0.12s !important;
+  transition: background var(--duration-base) !important;
 }
 
 button.overrideSendButton:hover:not(:disabled) {
@@ -42,7 +42,7 @@ button.overrideSendButton:disabled {
   height: 32px;
   font-weight: 500;
   font-size: var(--text-sm);
-  transition: background 0.12s;
+  transition: background var(--duration-base);
 }
 
 .recordCaseButton:hover {

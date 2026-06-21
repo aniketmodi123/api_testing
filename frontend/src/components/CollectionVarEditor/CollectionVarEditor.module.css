@@ -72,7 +72,7 @@
 }
 
 .row:hover td {
-  background: var(--hover-background);
+  background: var(--surface-3);
 }
 
 .input {

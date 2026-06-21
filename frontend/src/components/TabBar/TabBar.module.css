@@ -38,9 +38,9 @@
   border-left: none;
   border-bottom: 2px solid transparent;
   transition:
-    background 0.1s,
-    color 0.1s,
-    border-color 0.1s;
+    background var(--duration-fast),
+    color var(--duration-fast),
+    border-color var(--duration-fast);
   position: relative;
 }
 
@@ -81,7 +81,7 @@
   color: var(--text-subtle);
   font-size: 12px;
   cursor: pointer;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   padding: 0;
   line-height: 1;
   flex-shrink: 0;
@@ -101,7 +101,7 @@
   font-style: italic;
 }
 .scratchTab .tabName::after {
-  content: ' ✦';
+  content: " ✦";
   font-size: 8px;
   opacity: 0.6;
 }
@@ -118,7 +118,7 @@
   font-size: 16px;
   cursor: pointer;
   flex-shrink: 0;
-  transition: color 0.1s;
+  transition: color var(--duration-fast);
 }
 .newTabBtn:hover {
   color: var(--text);

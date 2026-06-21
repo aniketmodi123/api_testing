@@ -1,26 +1,69 @@
-import { FiMoon, FiSun } from 'react-icons/fi';
-import { useTheme } from '../../../ThemeProvider.jsx';
+import { useState } from 'react';
+import { FiMonitor, FiMoon, FiSun } from 'react-icons/fi';
+import ThemeBuilder from '../../../ThemeBuilder/ThemeBuilder.jsx';
+import ThemePanel from '../../../ThemePanel/ThemePanel.jsx';
+import Marketplace from '../../../Marketplace/Marketplace.jsx';
+import { useTheme } from '../../../ThemeContext.jsx';
 import styles from './HeaderComponents.module.css';
 
-const ThemeToggle = () => {
-  const { theme, setTheme } = useTheme();
+const THEME_ICONS = {
+  light: FiSun,
+  dark: FiMoon,
+  'deep-dark': FiMonitor,
+};
 
-  const toggleTheme = () => {
-    setTheme(theme === 'light' ? 'dark' : 'light');
+const ThemeToggle = () => {
+  const { preferences, setPreference } = useTheme();
+  const [isOpen, setIsOpen] = useState(false);
+  const [isBuilderOpen, setIsBuilderOpen] = useState(false);
+  const [isMarketplaceOpen, setIsMarketplaceOpen] = useState(false);
+
+  const CurrentIcon = THEME_ICONS[preferences.theme] ?? FiMoon;
+
+  // Theme builder and Marketplace are both full-screen overlays (Phase F / G) — opening
+  // either closes the Appearance dropdown so none of the three ever stack.
+  const openBuilder = () => {
+    setIsOpen(false);
+    setIsBuilderOpen(true);
+  };
+
+  const openMarketplace = () => {
+    setIsOpen(false);
+    setIsMarketplaceOpen(true);
   };
 
   return (
-    <button
-      className={styles.button}
-      onClick={toggleTheme}
-      title={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
-    >
-      {theme === 'light' ? (
-        <FiMoon className={styles.icon} />
-      ) : (
-        <FiSun className={styles.icon} />
+    <div className={styles.buttonContainer}>
+      <button
+        className={styles.button}
+        onClick={() => setIsOpen((o) => !o)}
+        title="Appearance"
+      >
+        <CurrentIcon className={styles.icon} />
+      </button>
+
+      {isOpen && (
+        <ThemePanel
+          onClose={() => setIsOpen(false)}
+          onOpenBuilder={openBuilder}
+          onOpenMarketplace={openMarketplace}
+        />
       )}
-    </button>
+      {isBuilderOpen && (
+        <ThemeBuilder
+          preferences={preferences}
+          setPreference={setPreference}
+          onClose={() => setIsBuilderOpen(false)}
+        />
+      )}
+      {isMarketplaceOpen && (
+        <Marketplace
+          preferences={preferences}
+          setPreference={setPreference}
+          onClose={() => setIsMarketplaceOpen(false)}
+        />
+      )}
+    </div>
   );
 };
 

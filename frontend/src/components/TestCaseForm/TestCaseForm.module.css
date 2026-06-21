@@ -1,5 +1,5 @@
 .formContainer {
-  background-color: var(--background-lighter);
+  background-color: var(--surface-2);
   padding: var(--space-4);
   border-radius: var(--radius-lg);
   width: 100%;
@@ -39,7 +39,7 @@
   padding: var(--space-2);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background-color: var(--input-background);
+  background-color: var(--input-bg);
   color: var(--text);
   font-size: 0.9rem;
 }
@@ -57,16 +57,16 @@
   margin-top: 8px;
   font-size: var(--text-xs);
   color: var(--text-muted);
-  background-color: var(--background);
+  background-color: var(--bg);
   padding: var(--space-2);
   border-radius: var(--radius);
   border: 1px solid var(--border);
 }
 
 .bulkImportHelp code {
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: var(--surface-3);
   padding: 2px 4px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   margin: 0 2px;
   font-size: 0.85em;
 }
@@ -81,7 +81,7 @@
 /* Button styles moved to Button component */
 
 .error {
-  background-color: rgba(244, 67, 54, 0.1);
+  background-color: var(--error-bg-dim);
   color: var(--error);
   padding: var(--space-2);
   border-radius: var(--radius);
@@ -90,7 +90,7 @@
 
 /* Detailed test case information styles */
 .detailedInfoSection {
-  background-color: var(--background);
+  background-color: var(--bg);
   border-radius: var(--radius);
   padding: var(--space-3);
   margin-bottom: var(--space-4);

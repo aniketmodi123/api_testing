@@ -37,8 +37,8 @@
   cursor: pointer;
   font-size: 14px;
   transition:
-    color 0.1s,
-    background 0.1s;
+    color var(--duration-fast),
+    background var(--duration-fast);
 }
 
 .refreshBtn:hover {
@@ -65,7 +65,7 @@
   padding: 0 var(--space-3);
   border-bottom: 1px solid var(--border);
   cursor: pointer;
-  transition: background 0.08s;
+  transition: background var(--duration-fast);
 }
 
 .item:hover {
@@ -130,7 +130,7 @@
   cursor: pointer;
   font-size: 14px;
   padding: 0 4px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   line-height: 1;
 }
 

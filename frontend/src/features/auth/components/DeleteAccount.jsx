@@ -47,7 +47,7 @@ const DeleteAccount = () => {
       fontSize: '1.5rem',
       fontWeight: 'bold',
       marginBottom: '1rem',
-      color: 'var(--text-color)',
+      color: 'var(--text)',
     },
     warning: {
       color: '#e53e3e',
@@ -55,7 +55,7 @@ const DeleteAccount = () => {
       marginBottom: '1rem',
     },
     formSection: {
-      backgroundColor: 'var(--card-bg)',
+      backgroundColor: 'var(--surface-2)',
       borderRadius: '0.5rem',
       padding: '1.5rem',
       marginBottom: '1.5rem',
@@ -70,15 +70,15 @@ const DeleteAccount = () => {
       display: 'block',
       marginBottom: '0.5rem',
       fontWeight: '500',
-      color: 'var(--muted)',
+      color: 'var(--text-muted)',
     },
     input: {
       width: '100%',
       padding: '0.5rem',
-      border: '1px solid var(--border-color)',
+      border: '1px solid var(--border)',
       borderRadius: '0.25rem',
-      backgroundColor: 'var(--input)',
-      color: 'var(--text-color)',
+      backgroundColor: 'var(--input-bg)',
+      color: 'var(--text)',
     },
     deleteButton: {
       backgroundColor: '#e53e3e',
@@ -92,8 +92,8 @@ const DeleteAccount = () => {
     },
     cancelButton: {
       backgroundColor: 'transparent',
-      color: 'var(--text-color)',
-      border: '1px solid var(--border-color)',
+      color: 'var(--text)',
+      border: '1px solid var(--border)',
       borderRadius: '0.25rem',
       padding: '0.75rem 1.5rem',
       cursor: 'pointer',

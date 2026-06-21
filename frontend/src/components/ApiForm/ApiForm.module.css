@@ -1,7 +1,7 @@
 .formContainer {
-  background-color: var(--background-lighter);
+  background-color: var(--surface-2);
   padding: 20px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   width: 100%;
   max-width: 800px;
 }
@@ -30,8 +30,8 @@
   width: 100%;
   padding: 10px;
   border: 1px solid var(--border);
-  border-radius: 4px;
-  background-color: var(--input-background);
+  border-radius: var(--radius-sm);
+  background-color: var(--input-bg);
   color: var(--text);
   font-size: 0.9rem;
 }
@@ -53,8 +53,8 @@
   right: 8px;
   opacity: 0.7;
   transition:
-    opacity 0.2s ease,
-    transform 0.2s ease;
+    opacity var(--duration-base) var(--easing-default),
+    transform var(--duration-base) var(--easing-default);
   z-index: 10;
   width: 28px;
   height: 28px;
@@ -69,15 +69,15 @@
   display: block;
   margin-bottom: 8px;
   font-size: 14px;
-  color: #aaa;
+  color: var(--text-muted);
 }
 
 .jsonEditor textarea {
   width: 100%;
-  background-color: #1e1e1e;
-  color: #d4d4d4;
-  border: 1px solid #555;
-  border-radius: 4px;
+  background-color: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   padding: 12px;
   font-family: monospace;
   font-size: 13px;
@@ -91,10 +91,10 @@
 }
 
 .keyValueRow input {
-  background-color: #1e1e1e;
-  color: #d4d4d4;
-  border: 1px solid #555;
-  border-radius: 4px;
+  background-color: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   padding: 8px;
   font-family: monospace;
 }
@@ -131,8 +131,8 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  background-color: #2b2b2b;
-  color: #f0f0f0;
+  background-color: var(--surface-2);
+  color: var(--text);
   font-family:
     -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue",
     sans-serif;
@@ -143,58 +143,58 @@
   align-items: center;
   padding: 10px;
   gap: 8px;
-  background-color: #3c3c3c;
-  border-bottom: 1px solid #555;
+  background-color: var(--surface-3);
+  border-bottom: 1px solid var(--border);
 }
 
 .methodSelector {
   width: 110px;
   padding: 8px;
-  border: 1px solid #555;
-  background-color: #3c3c3c;
-  color: #f0f0f0;
-  border-radius: 4px;
+  border: 1px solid var(--border);
+  background-color: var(--surface-3);
+  color: var(--text);
+  border-radius: var(--radius-sm);
   font-size: 14px;
 }
 
 .endpointInput {
   flex: 1;
   padding: 8px 10px;
-  border: 1px solid #555;
-  background-color: #2b2b2b;
-  color: #f0f0f0;
-  border-radius: 4px;
+  border: 1px solid var(--border);
+  background-color: var(--surface-2);
+  color: var(--text);
+  border-radius: var(--radius-sm);
   font-size: 14px;
 }
 
 .sendButton,
 .saveButton {
   padding: 8px 20px;
-  background-color: #4c8bf5;
+  background-color: var(--accent);
   color: white;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: 14px;
 }
 
 .sendButton:hover,
 .saveButton:hover {
-  background-color: #3b7ae0;
+  background-color: var(--accent-hover);
 }
 
 /* Button styles moved to Button component */
 
 .error {
-  background-color: rgba(244, 67, 54, 0.1);
-  color: #f44336;
+  background-color: var(--error-bg-dim);
+  color: var(--error);
   padding: 10px;
 }
 
 .tabContainer {
   display: flex;
-  background-color: #3c3c3c;
-  border-bottom: 1px solid #555;
+  background-color: var(--surface-3);
+  border-bottom: 1px solid var(--border);
   overflow-x: auto;
 }
 
@@ -207,23 +207,23 @@
 }
 
 .tab:hover {
-  background-color: #4c4c4c;
+  background-color: var(--surface-3);
 }
 
 .activeTab {
-  border-bottom: 2px solid #4c8bf5;
-  color: #4c8bf5;
+  border-bottom: 2px solid var(--accent);
+  color: var(--accent);
 }
 
 .tabContent {
   padding: 16px;
-  background-color: #2b2b2b;
+  background-color: var(--surface-2);
   height: 100%;
 }
 
 .responseSection {
   margin-top: 20px;
-  border-top: 1px solid #555;
+  border-top: 1px solid var(--border);
   padding-top: 16px;
 }
 
@@ -235,7 +235,7 @@
 }
 
 .emptyResponseHeader {
-  color: #888;
+  color: var(--text-muted);
   font-style: italic;
   margin-bottom: 12px;
 }
@@ -243,29 +243,29 @@
 .statusBadge {
   display: inline-block;
   padding: 4px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 13px;
   font-weight: 500;
 }
 
 .statusSuccess {
-  background-color: rgba(76, 175, 80, 0.2);
-  color: #4caf50;
+  background-color: var(--success-bg-strong);
+  color: var(--success);
 }
 
 .statusError {
-  background-color: rgba(244, 67, 54, 0.2);
-  color: #f44336;
+  background-color: var(--error-bg-strong);
+  color: var(--error);
 }
 
 .statusWarning {
-  background-color: rgba(255, 152, 0, 0.2);
-  color: #ff9800;
+  background-color: var(--warning-bg-dim);
+  color: var(--warning);
 }
 
 .responseMeta {
   font-size: 13px;
-  color: #aaa;
+  color: var(--text-muted);
 }
 
 .responseActions {
@@ -278,7 +278,7 @@
 
 .responseTabs {
   display: flex;
-  border-bottom: 1px solid #555;
+  border-bottom: 1px solid var(--border);
   margin-bottom: 16px;
 }
 
@@ -290,17 +290,17 @@
 }
 
 .responseTab:hover {
-  background-color: #3c3c3c;
+  background-color: var(--surface-3);
 }
 
 .activeResponseTab {
-  border-bottom: 2px solid #4c8bf5;
-  color: #4c8bf5;
+  border-bottom: 2px solid var(--accent);
+  color: var(--accent);
 }
 
 .responseBody {
-  background-color: #1e1e1e;
-  border-radius: 4px;
+  background-color: var(--surface-2);
+  border-radius: var(--radius-sm);
   padding: 16px;
   max-height: 400px;
   overflow: auto;
@@ -311,18 +311,18 @@
   font-family: monospace;
   font-size: 13px;
   white-space: pre-wrap;
-  color: #d4d4d4;
+  color: var(--text);
 }
 
 .emptyResponse {
-  color: #888;
+  color: var(--text-muted);
   font-style: italic;
   text-align: center;
   padding: 20px;
 }
 
 .loading {
-  color: #888;
+  color: var(--text-muted);
   text-align: center;
   padding: 20px;
   font-style: italic;
@@ -334,7 +334,7 @@
   flex-direction: column;
   width: 100%;
   height: 100%;
-  background-color: var(--background);
+  background-color: var(--bg);
   color: var(--text);
 }
 
@@ -343,7 +343,7 @@
   display: flex;
   align-items: center;
   padding: 10px;
-  background-color: var(--background-darker);
+  background-color: var(--bg);
   border-bottom: 1px solid var(--border);
 }
 
@@ -351,9 +351,9 @@
   width: auto;
   min-width: 90px;
   padding: 8px 12px;
-  border-radius: 4px 0 0 4px;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
   border: 1px solid var(--border);
-  background-color: var(--input-background);
+  background-color: var(--input-bg);
   color: var(--text);
   font-weight: 500;
   font-size: 0.9rem;
@@ -365,7 +365,7 @@
   flex: 1;
   padding: 8px 12px;
   border: 1px solid var(--border);
-  background-color: var(--input-background);
+  background-color: var(--input-bg);
   color: var(--text);
   font-family: monospace;
   font-size: 0.9rem;
@@ -381,13 +381,13 @@
   display: flex;
   border-bottom: 1px solid var(--border);
   overflow-x: auto;
-  background-color: var(--background-lighter);
+  background-color: var(--surface-2);
 }
 
 .tab {
   padding: 12px 20px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all var(--duration-base) var(--easing-default);
   font-weight: 500;
   color: var(--text-secondary);
   white-space: nowrap;
@@ -396,13 +396,13 @@
 
 .tab:hover {
   color: var(--text);
-  background-color: var(--hover-background);
+  background-color: var(--surface-3);
 }
 
 .activeTab {
-  color: var(--primary);
-  border-bottom: 2px solid var(--primary);
-  background-color: var(--background);
+  color: var(--accent);
+  border-bottom: 2px solid var(--accent);
+  background-color: var(--bg);
 }
 
 .tabContent {
@@ -435,9 +435,9 @@
   flex: 1;
   padding: 8px;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 0.9rem;
-  background-color: var(--input-background);
+  background-color: var(--input-bg);
   color: var(--text);
 }
 
@@ -471,11 +471,11 @@
   width: 100%;
   padding: 10px;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 0.9rem;
   font-family: monospace;
   resize: vertical;
-  background-color: var(--input-background);
+  background-color: var(--input-bg);
   color: var(--text);
 }
 
@@ -500,24 +500,24 @@
 
 .statusBadge {
   padding: 5px 10px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-weight: 500;
   margin-right: 15px;
 }
 
 .statusSuccess {
-  background-color: rgba(76, 175, 80, 0.1);
-  color: #4caf50;
+  background-color: var(--success-bg-dim);
+  color: var(--success);
 }
 
 .statusError {
-  background-color: rgba(244, 67, 54, 0.1);
-  color: #f44336;
+  background-color: var(--error-bg-dim);
+  color: var(--error);
 }
 
 .statusWarning {
-  background-color: rgba(255, 193, 7, 0.1);
-  color: #ffc107;
+  background-color: var(--warning-bg-dim);
+  color: var(--warning);
 }
 
 .responseMeta {
@@ -534,16 +534,16 @@
 .secondaryButton {
   padding: 6px 12px;
   background-color: transparent;
-  color: var(--primary);
-  border: 1px solid var(--primary);
-  border-radius: 4px;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
   font-size: 0.85rem;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all var(--duration-base);
 }
 
 .secondaryButton:hover {
-  background-color: var(--primary);
+  background-color: var(--accent);
   color: white;
 }
 
@@ -566,13 +566,13 @@
 }
 
 .responseTab.active {
-  color: var(--primary);
-  border-bottom: 2px solid var(--primary);
+  color: var(--accent);
+  border-bottom: 2px solid var(--accent);
 }
 
 .responseBody {
-  background-color: var(--background-darker);
-  border-radius: 4px;
+  background-color: var(--bg);
+  border-radius: var(--radius-sm);
   padding: 15px;
   max-height: 300px;
   overflow: auto;
@@ -590,7 +590,7 @@
 .detailsSection {
   margin: 20px 0;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 15px;
 }
 
@@ -644,13 +644,13 @@
 
   .methodSelector {
     width: 100%;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     border-right: 1px solid var(--border);
   }
 
   .endpointInput {
     width: 100%;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
   }
 
   .sendButton {
@@ -701,17 +701,17 @@
 /* New button styles for API form */
 .actionButton {
   padding: 8px 12px;
-  background-color: #555;
+  background-color: var(--border);
   color: white;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: 13px;
   margin-left: 5px;
 }
 
 .actionButton:hover:not(:disabled) {
-  background-color: #666;
+  background-color: var(--text-muted);
 }
 
 .actionButton:disabled {
@@ -726,7 +726,7 @@
 
 .validationSection h4 {
   margin-bottom: 8px;
-  color: #aaa;
+  color: var(--text-muted);
 }
 
 .validationActions {
@@ -737,21 +737,21 @@
 
 .validationResult {
   padding: 12px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   margin-top: 16px;
   font-family: monospace;
 }
 
 .validSuccess {
-  background-color: rgba(76, 175, 80, 0.2);
-  color: #4caf50;
-  border: 1px solid rgba(76, 175, 80, 0.4);
+  background-color: var(--success-bg-strong);
+  color: var(--success);
+  border: 1px solid var(--success-border-dim);
 }
 
 .validError {
-  background-color: rgba(244, 67, 54, 0.2);
-  color: #f44336;
-  border: 1px solid rgba(244, 67, 54, 0.4);
+  background-color: var(--error-bg-strong);
+  color: var(--error);
+  border: 1px solid var(--error-border-dim);
 }
 
 /* Additional spacing for API Edit UI */

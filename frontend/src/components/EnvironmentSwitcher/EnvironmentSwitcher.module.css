@@ -10,11 +10,11 @@
   padding: var(--space-1) var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--background);
+  background: var(--bg);
   color: var(--text);
   font-size: var(--text-sm);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all var(--duration-base) var(--easing-default);
   min-width: 180px;
   justify-content: space-between;
 }
@@ -67,7 +67,7 @@
   padding: var(--space-1) var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--background-lighter);
+  background: var(--surface-2);
 }
 
 .label {
@@ -78,7 +78,7 @@
 
 .chevron {
   color: var(--text-muted);
-  transition: transform 0.2s ease;
+  transition: transform var(--duration-base) var(--easing-default);
   flex-shrink: 0;
 }
 
@@ -142,12 +142,12 @@
   background: none;
   text-align: left;
   cursor: pointer;
-  transition: background-color 0.2s ease;
+  transition: background-color var(--duration-base) var(--easing-default);
   border-bottom: 1px solid var(--border);
 }
 
 .environmentOption:hover {
-  background: var(--hover-background);
+  background: var(--surface-3);
 }
 
 .environmentOption:disabled {
@@ -160,7 +160,7 @@
 }
 
 .environmentOption.active:hover {
-  background: var(--hover-background);
+  background: var(--surface-3);
 }
 
 .environmentOption:last-child {
@@ -198,7 +198,7 @@
   font-size: 10px;
   font-weight: 500;
   padding: 1px 5px;
-  border-radius: var(--radius-full);
+  border-radius: 9999px;
   text-transform: uppercase;
   letter-spacing: 0.025em;
 }
@@ -262,7 +262,7 @@
 
 .environmentList::-webkit-scrollbar-thumb {
   background: var(--scrollbar-thumb-color);
-  border-radius: var(--radius-full);
+  border-radius: 9999px;
 }
 
 .environmentList::-webkit-scrollbar-thumb:hover {

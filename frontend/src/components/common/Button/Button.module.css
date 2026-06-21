@@ -9,9 +9,9 @@
   font-weight: 500;
   cursor: pointer;
   transition:
-    background 0.12s ease,
-    opacity 0.12s ease,
-    box-shadow 0.12s ease;
+    background var(--duration-base) var(--easing-default),
+    opacity var(--duration-base) var(--easing-default),
+    box-shadow var(--duration-base) var(--easing-default);
   white-space: nowrap;
   flex-shrink: 0;
 }

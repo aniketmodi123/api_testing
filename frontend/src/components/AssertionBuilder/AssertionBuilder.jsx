@@ -255,7 +255,7 @@ function AssertionRow({ row, onChange, onRemove, isDarkMode }) {
               value={row.schemaValue}
               height="80px"
               extensions={[jsonLang()]}
-              theme={isDarkMode ? oneDark : undefined}
+              
               onChange={val => update('schemaValue', val)}
               basicSetup={{ lineNumbers: false, foldGutter: false }}
             />
@@ -370,7 +370,7 @@ export default function AssertionBuilder({ value, onChange, isDarkMode }) {
             value={jsonText}
             height="240px"
             extensions={[jsonLang()]}
-            theme={isDarkMode ? oneDark : undefined}
+            
             onChange={handleJsonChange}
             basicSetup={{ lineNumbers: true, foldGutter: true }}
           />

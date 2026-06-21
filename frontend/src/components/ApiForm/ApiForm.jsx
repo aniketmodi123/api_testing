@@ -637,11 +637,11 @@ const ApiForm = ({
             <div
               style={{
                 padding: '4px 8px',
-                backgroundColor: '#e3f2fd',
-                border: '1px solid #2196f3',
+                backgroundColor: 'var(--info-dim)',
+                border: '1px solid var(--info)',
                 borderRadius: '4px',
                 fontSize: '12px',
-                color: '#1976d2',
+                color: 'var(--info)',
                 marginLeft: '8px',
                 whiteSpace: 'nowrap',
               }}

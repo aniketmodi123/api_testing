@@ -4,7 +4,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--overlay-bg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -50,7 +50,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 .closeButton:hover {
   background: var(--surface-1);
@@ -133,7 +133,7 @@
   color: var(--text);
 }
 .rootFolder:hover {
-  background: var(--hover-background);
+  background: var(--surface-3);
 }
 .rootFolder.selected {
   background: var(--accent-dim);
@@ -156,7 +156,7 @@
   color: var(--text);
 }
 .folderHeader:hover {
-  background: var(--hover-background);
+  background: var(--surface-3);
 }
 .folderHeader.selected {
   background: var(--accent-dim);
@@ -209,5 +209,5 @@
 .confirmButton:disabled {
   opacity: 0.6;
   cursor: not-allowed;
-  background: var(--disabled-background);
+  background: var(--surface-3);
 }

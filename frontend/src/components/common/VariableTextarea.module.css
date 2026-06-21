@@ -13,7 +13,7 @@
   font-size: var(--text-sm);
   font-family: var(--font-mono);
   outline: none;
-  transition: border-color 0.2s;
+  transition: border-color var(--duration-base);
   position: relative;
   z-index: 2;
   resize: vertical;
@@ -49,7 +49,7 @@
 :global(.variable-missing) {
   background-color: var(--accent-dim) !important;
   color: var(--accent) !important;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   padding: 1px 2px;
   font-weight: 600;
   border: 1px solid transparent;
@@ -58,13 +58,13 @@
 }
 
 :global(.variable-found):hover {
-  background-color: rgba(34, 197, 94, 0.25) !important;
-  border-color: rgba(34, 197, 94, 0.5);
+  background-color: var(--success-bg-strong) !important;
+  border-color: var(--success-border-dim);
 }
 
 :global(.variable-missing):hover {
-  background-color: rgba(239, 68, 68, 0.25) !important;
-  border-color: rgba(239, 68, 68, 0.5);
+  background-color: var(--error-bg-strong) !important;
+  border-color: var(--error-border-dim);
 }
 
 /* Tooltip */

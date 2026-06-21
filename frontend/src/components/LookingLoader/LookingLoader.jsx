@@ -3,7 +3,7 @@ import lookingGif from '../../assets/looking.gif';
 export default function LookingLoader({
   size = 120,
   text = 'Processing...',
-  textColor = '#fff',
+  textColor = '#fff', // intentional default — sits on the dark scrim overlay, not a themed surface
   textSize = 20,
   overlay = false,
   style = {},

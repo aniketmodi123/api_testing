@@ -1,3 +1,14 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(npm ls *)",
+      "Read(//Users/aniketmodi/Library/Caches/ms-playwright/**)",
+      "Read(//Users/aniketmodi/.npm/_npx/**)",
+      "Bash(xargs -I{} find ~/.npm/_npx/{} -maxdepth 2 -iname \"*playwright*\")",
+      "Bash(curl -s http://localhost:9222/json/version)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(node -e ' *)"
+    ]
+  },
   "hooks": {}
 }

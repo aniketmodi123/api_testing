@@ -3,14 +3,14 @@
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--background);
+  background: var(--bg);
 }
 
 /* Header */
 .header {
   padding: var(--space-5);
   border-bottom: 1px solid var(--border);
-  background: var(--background-lighter);
+  background: var(--surface-2);
 }
 
 .titleSection {
@@ -90,8 +90,8 @@
   background: var(--surface-2);
   color: var(--text);
   transition:
-    border-color 0.2s ease,
-    box-shadow 0.2s ease;
+    border-color var(--duration-base) var(--easing-default),
+    box-shadow var(--duration-base) var(--easing-default);
 }
 
 .input:focus,

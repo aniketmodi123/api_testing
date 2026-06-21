@@ -547,13 +547,13 @@ export default function CollectionTree({ onSelectRequest }) {
         );
 
   const METHOD_CSS_VAR = {
-    GET:     '--method-get',
-    POST:    '--method-post',
-    PUT:     '--method-put',
-    DELETE:  '--method-delete',
-    PATCH:   '--method-patch',
-    HEAD:    '--method-head',
-    OPTIONS: '--method-options',
+    GET:     '--viz-method-get',
+    POST:    '--viz-method-post',
+    PUT:     '--viz-method-put',
+    DELETE:  '--viz-method-delete',
+    PATCH:   '--viz-method-patch',
+    HEAD:    '--viz-method-head',
+    OPTIONS: '--viz-method-options',
   };
 
   const getMethodColor = method => {

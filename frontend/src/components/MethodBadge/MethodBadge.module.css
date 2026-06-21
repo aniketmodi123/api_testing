@@ -30,32 +30,32 @@
 }
 
 .GET {
-  color: var(--method-get);
-  background: color-mix(in srgb, var(--method-get) 12%, transparent);
+  color: var(--viz-method-get);
+  background: color-mix(in srgb, var(--viz-method-get) 12%, transparent);
 }
 .POST {
-  color: var(--method-post);
-  background: color-mix(in srgb, var(--method-post) 12%, transparent);
+  color: var(--viz-method-post);
+  background: color-mix(in srgb, var(--viz-method-post) 12%, transparent);
 }
 .PUT {
-  color: var(--method-put);
-  background: color-mix(in srgb, var(--method-put) 12%, transparent);
+  color: var(--viz-method-put);
+  background: color-mix(in srgb, var(--viz-method-put) 12%, transparent);
 }
 .PATCH {
-  color: var(--method-patch);
-  background: color-mix(in srgb, var(--method-patch) 12%, transparent);
+  color: var(--viz-method-patch);
+  background: color-mix(in srgb, var(--viz-method-patch) 12%, transparent);
 }
 .DELETE {
-  color: var(--method-delete);
-  background: color-mix(in srgb, var(--method-delete) 12%, transparent);
+  color: var(--viz-method-delete);
+  background: color-mix(in srgb, var(--viz-method-delete) 12%, transparent);
 }
 .HEAD {
-  color: var(--method-head);
-  background: color-mix(in srgb, var(--method-head) 12%, transparent);
+  color: var(--viz-method-head);
+  background: color-mix(in srgb, var(--viz-method-head) 12%, transparent);
 }
 .OPTIONS {
-  color: var(--method-options);
-  background: color-mix(in srgb, var(--method-options) 12%, transparent);
+  color: var(--viz-method-options);
+  background: color-mix(in srgb, var(--viz-method-options) 12%, transparent);
 }
 .DEFAULT {
   color: var(--text-muted);

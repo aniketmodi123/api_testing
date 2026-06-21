@@ -77,8 +77,8 @@
   color: var(--text-muted);
   border-radius: var(--radius);
   transition:
-    color 0.12s,
-    background 0.12s;
+    color var(--duration-base),
+    background var(--duration-base);
 }
 
 .button:hover {
@@ -137,8 +137,8 @@
   border: none;
   width: 100%;
   transition:
-    color 0.1s,
-    background 0.1s;
+    color var(--duration-fast),
+    background var(--duration-fast);
 }
 
 .dropdownItem:hover {

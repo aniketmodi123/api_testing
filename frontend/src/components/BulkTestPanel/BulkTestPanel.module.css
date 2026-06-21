@@ -2,14 +2,14 @@
 .bulkTestContainer {
   display: flex;
   height: 100%;
-  background-color: var(--background);
+  background-color: var(--bg);
   color: var(--text);
 }
 
 .leftPanel {
   min-width: 200px;
   max-width: 500px;
-  background-color: var(--background-lighter);
+  background-color: var(--surface-2);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -23,16 +23,16 @@
   background-color: var(--border);
   cursor: col-resize;
   flex-shrink: 0;
-  transition: background-color 0.2s;
+  transition: background-color var(--duration-base);
   position: relative;
 }
 
 .resizer:hover {
-  background-color: var(--primary);
+  background-color: var(--accent);
 }
 
 .resizer:active {
-  background-color: var(--primary);
+  background-color: var(--accent);
 }
 
 /* Add a visual indicator */
@@ -96,7 +96,7 @@
   border-bottom: 3px solid transparent;
   background-color: transparent;
   color: var(--text-secondary);
-  transition: all 0.2s;
+  transition: all var(--duration-base);
   border: none;
   outline: none;
   flex: 1;
@@ -109,9 +109,9 @@
 }
 
 .tab.active {
-  border-bottom-color: var(--primary);
-  color: var(--primary);
-  background-color: var(--background);
+  border-bottom-color: var(--accent);
+  color: var(--accent);
+  background-color: var(--bg);
   font-weight: 600;
 }
 
@@ -120,7 +120,7 @@
   flex: 1;
   border: 1px solid var(--border); /* This creates a double border with .rightPanel, consider removing */
   border-radius: 0 0 var(--radius) var(--radius);
-  background-color: var(--background);
+  background-color: var(--bg);
   overflow: auto;
   display: flex;
   flex-direction: column;
@@ -168,19 +168,19 @@
 }
 
 .runButton {
-  background-color: var(--primary);
+  background-color: var(--accent);
   color: var(--text-inverse);
   border: none;
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-sm);
   font-weight: 500;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: background-color var(--duration-base);
   font-size: var(--text-sm);
 }
 
 .runButton:hover:not(:disabled) {
-  background-color: var(--primary-dark);
+  background-color: var(--accent-hover);
 }
 
 .runButton:disabled {
@@ -189,20 +189,20 @@
 }
 
 .scheduleButton {
-  background-color: var(--background);
+  background-color: var(--bg);
   color: var(--text);
   border: 1px solid var(--border);
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-sm);
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all var(--duration-base);
   font-size: var(--text-sm);
 }
 
 .scheduleButton:hover {
-  background-color: var(--hover-background);
-  border-color: var(--primary);
+  background-color: var(--surface-3);
+  border-color: var(--accent);
 }
 
 .selectedInfo {
@@ -257,7 +257,7 @@
   align-items: center;
   justify-content: space-between;
   padding: var(--space-1) var(--space-2);
-  background-color: var(--background);
+  background-color: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
 }
@@ -296,7 +296,7 @@
 .itemType {
   color: var(--text-secondary);
   font-size: var(--text-xs);
-  background-color: var(--background-lighter);
+  background-color: var(--surface-2);
   padding: 1px 3px;
   border-radius: var(--radius-sm);
   flex-shrink: 0;
@@ -305,7 +305,7 @@
 .methodTag {
   color: var(--text-inverse);
   font-size: var(--text-xs);
-  background-color: var(--primary);
+  background-color: var(--accent);
   padding: 1px 3px;
   border-radius: var(--radius-sm);
   flex-shrink: 0;
@@ -361,7 +361,7 @@
   width: 16px;
   height: 16px;
   border: 2px solid var(--border);
-  border-top: 2px solid var(--primary);
+  border-top: 2px solid var(--accent);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -376,7 +376,7 @@
 }
 
 .summary {
-  background-color: var(--background);
+  background-color: var(--bg);
   padding: var(--space-2);
   border-radius: var(--radius-sm);
   margin-bottom: 8px;
@@ -416,7 +416,7 @@
 }
 
 .passRate .summaryValue {
-  color: var(--primary);
+  color: var(--accent);
 }
 
 /* Test Results Grid - using same layout as TestResultsGrid component */
@@ -453,7 +453,7 @@
   justify-content: space-between;
   padding: var(--space-1) var(--space-2);
   margin-bottom: 2px;
-  background-color: var(--background);
+  background-color: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
 }
@@ -521,7 +521,7 @@
 
 .jobItem {
   padding: var(--space-3);
-  background-color: var(--background);
+  background-color: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
 }
@@ -534,10 +534,10 @@
 }
 
 .jobStatus {
-  background-color: var(--primary);
+  background-color: var(--accent);
   color: var(--text-inverse);
   padding: 2px 8px;
-  border-radius: var(--radius-full);
+  border-radius: 9999px;
   font-size: var(--text-sm);
   font-weight: 500;
 }
@@ -552,7 +552,7 @@
   margin-bottom: var(--space-2);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background-color: var(--background);
+  background-color: var(--bg);
 }
 
 .apiHeader {
@@ -560,14 +560,14 @@
   align-items: center;
   justify-content: space-between;
   padding: var(--space-2);
-  background-color: var(--background-lighter);
-  border-radius: 4px 4px 0 0;
+  background-color: var(--surface-2);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: background-color var(--duration-base);
 }
 
 .apiHeader:hover {
-  background-color: var(--hover-background);
+  background-color: var(--surface-3);
 }
 
 .apiInfo {
@@ -600,7 +600,7 @@
 }
 
 .methodTag {
-  background-color: var(--primary);
+  background-color: var(--accent);
   color: var(--text-inverse);
   padding: 2px 6px;
   border-radius: var(--radius-sm);
@@ -609,7 +609,7 @@
 }
 
 .caseMethodTag {
-  background-color: var(--background-lighter);
+  background-color: var(--surface-2);
   color: var(--text-secondary);
   padding: var(--space-0) var(--space-1);
   border-radius: var(--radius-sm);
@@ -623,7 +623,7 @@
   cursor: pointer;
   padding: var(--space-1);
   border-radius: var(--radius-sm);
-  transition: background-color 0.2s;
+  transition: background-color var(--duration-base);
   font-size: var(--text-sm);
 }
 
@@ -633,7 +633,7 @@
 
 .casesList {
   padding: var(--space-2);
-  background-color: var(--background);
+  background-color: var(--bg);
   border-top: 1px solid var(--border);
 }
 
@@ -642,7 +642,7 @@
   align-items: center;
   padding: var(--space-1) var(--space-2);
   margin-bottom: var(--space-1);
-  background-color: var(--background-lighter);
+  background-color: var(--surface-2);
   border-radius: var(--radius-sm);
   gap: 6px;
 }
@@ -667,7 +667,7 @@
   padding: 2px;
   border-radius: 2px;
   font-size: var(--text-xs);
-  transition: background-color 0.2s;
+  transition: background-color var(--duration-base);
 }
 
 .removeCaseButton:hover {
@@ -676,7 +676,7 @@
 
 .wholeApiMessage {
   padding: var(--space-2);
-  background-color: var(--background);
+  background-color: var(--bg);
   border-top: 1px solid var(--border);
   color: var(--text-secondary);
   font-size: var(--text-sm);
@@ -696,7 +696,7 @@
   padding: var(--space-1) var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background-color: var(--background);
+  background-color: var(--bg);
   color: var(--text);
   font-size: var(--text-sm);
   font-weight: 500;
@@ -705,14 +705,14 @@
   align-items: center;
   justify-content: space-between;
   transition:
-    border-color 0.2s,
-    box-shadow 0.2s;
+    border-color var(--duration-base),
+    box-shadow var(--duration-base);
 }
 
 .customSelectButton:focus {
-  border-color: var(--primary);
+  border-color: var(--accent);
   outline: none;
-  box-shadow: 0 0 0 2px var(--primaryShadow);
+  box-shadow: 0 0 0 2px var(--accent-dim);
 }
 
 .customSelectArrow {
@@ -725,10 +725,10 @@
   top: 110%;
   left: 0;
   right: 0;
-  background: var(--background);
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: none;
   z-index: 100;
   padding: 4px 0;
 }
@@ -739,7 +739,7 @@
   font-size: var(--text-sm);
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background var(--duration-base);
 }
 
 .customSelectOption:hover {
@@ -800,11 +800,11 @@
 .refreshButton {
   padding: var(--space-1) var(--space-2);
   font-size: var(--text-xs);
-  background: var(--background);
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all var(--duration-base);
 }
 
 .refreshButton:hover {
@@ -829,7 +829,7 @@
   background: var(--surface-1);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  transition: border-color 0.2s;
+  transition: border-color var(--duration-base);
 }
 
 .historyItem:hover {
@@ -843,7 +843,7 @@
 
 .historyItem:has(.statusBadge.disabled) {
   border-left: 3px solid var(--border);
-  border-color: var(--primary);
+  border-color: var(--accent);
 }
 
 .historyInfo {
@@ -865,9 +865,9 @@
 .historyType {
   padding: 2px 6px;
   font-size: var(--text-xs);
-  background: var(--background);
+  background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: var(--radius-full);
+  border-radius: 9999px;
   text-transform: uppercase;
   font-weight: 500;
 }
@@ -891,7 +891,7 @@
   border: none;
   border-radius: var(--radius);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all var(--duration-base);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -923,7 +923,7 @@
   border: none;
   border-radius: var(--radius);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all var(--duration-base);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -960,7 +960,7 @@
   border: none;
   border-radius: var(--radius);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all var(--duration-base);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -998,7 +998,7 @@
 
 .progressItem {
   padding: var(--space-3);
-  background: var(--background);
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
 }
@@ -1048,7 +1048,7 @@
   padding: 2px 6px;
   font-size: var(--text-xs);
   font-weight: 500;
-  border-radius: var(--radius-full);
+  border-radius: 9999px;
   text-transform: uppercase;
 }
 
@@ -1065,9 +1065,9 @@
 }
 
 .statusBadge.running {
-  background: #e7f0ff;
-  color: #1a4f8a;
-  border: 1px solid #b3d1ff;
+  background: var(--badge-info-bg);
+  color: var(--badge-info-text);
+  border: 1px solid var(--badge-info-border);
 }
 
 .statusBadge.queued {
@@ -1122,7 +1122,7 @@
 }
 
 .failures strong {
-  color: #c00;
+  color: var(--error);
   display: block;
   margin-bottom: 4px;
 }
@@ -1130,7 +1130,7 @@
 .failures ul {
   margin: 0;
   padding-left: 16px;
-  color: #900;
+  color: var(--error);
 }
 
 .failures li {
@@ -1139,7 +1139,7 @@
 
 /* Execution Status Styles */
 .executionStatus {
-  background: var(--background-lighter);
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 16px;
@@ -1232,7 +1232,7 @@
 .executionItem {
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--background);
+  background: var(--bg);
   overflow: hidden;
 }
 .executionItem:has(.statusBadge.completed) {
@@ -1250,12 +1250,12 @@
   align-items: center;
   padding: 16px;
   cursor: pointer;
-  transition: background-color 0.2s ease;
+  transition: background-color var(--duration-base) var(--easing-default);
   border-bottom: 1px solid transparent;
 }
 
 .executionHeader:hover {
-  background-color: var(--hover-background);
+  background-color: var(--surface-3);
 }
 
 .executionHeaderLeft {
@@ -1335,7 +1335,7 @@
 .expandIcon {
   font-size: var(--text-sm);
   color: var(--text-muted);
-  transition: transform 0.2s ease;
+  transition: transform var(--duration-base) var(--easing-default);
 }
 
 .executionError {
@@ -1349,7 +1349,7 @@
 .executionContent {
   border-top: 1px solid var(--border);
   padding: 16px;
-  background-color: var(--background-lighter);
+  background-color: var(--surface-2);
 }
 
 .noTestResults {
@@ -1385,16 +1385,16 @@
   padding: 6px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--background);
+  background: var(--bg);
   color: var(--text);
   font-size: var(--text-sm);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all var(--duration-base) var(--easing-default);
 }
 
 .paginationButton:hover:not(:disabled) {
-  background: var(--hover-background);
-  border-color: var(--primary);
+  background: var(--surface-3);
+  border-color: var(--accent);
 }
 
 .paginationButton:disabled {

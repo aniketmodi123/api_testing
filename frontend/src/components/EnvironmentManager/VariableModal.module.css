@@ -5,7 +5,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--overlay-bg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -15,7 +15,7 @@
 
 /* Modal Content */
 .modalContent {
-  background: var(--background);
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-xl);
@@ -41,7 +41,7 @@
 .modalHeader {
   padding: var(--space-6) var(--space-6) var(--space-5);
   border-bottom: 1px solid var(--border);
-  background: var(--background-lighter);
+  background: var(--surface-2);
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
 }
 
@@ -123,7 +123,7 @@
   font-size: var(--text-sm);
   color: var(--text);
   background: var(--surface-2);
-  transition: all 0.2s ease;
+  transition: all var(--duration-base) var(--easing-default);
   font-family: inherit;
 }
 
@@ -186,8 +186,8 @@
   padding: var(--space-4);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  background: var(--background-lighter);
-  transition: all 0.2s ease;
+  background: var(--surface-2);
+  transition: all var(--duration-base) var(--easing-default);
 }
 
 .checkboxLabel:hover {
@@ -229,7 +229,7 @@
   justify-content: flex-end;
   padding: var(--space-5) var(--space-6) var(--space-6);
   border-top: 1px solid var(--border);
-  background: var(--background-lighter);
+  background: var(--surface-2);
   border-radius: 0 0 var(--radius-lg) var(--radius-lg);
 }
 
@@ -310,7 +310,7 @@
 
 .modalContent::-webkit-scrollbar-thumb {
   background: var(--scrollbar-thumb-color);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .modalContent::-webkit-scrollbar-thumb:hover {

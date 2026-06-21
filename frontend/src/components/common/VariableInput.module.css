@@ -15,7 +15,7 @@
   font-family: var(--font-mono);
   line-height: 34px;
   outline: none;
-  transition: border-color 0.2s;
+  transition: border-color var(--duration-base);
   box-sizing: border-box;
 }
 

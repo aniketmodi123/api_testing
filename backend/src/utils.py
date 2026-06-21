@@ -395,13 +395,16 @@ def create_response(
             response["data"] = data
         else:
             try:
+                # mode="json" keeps datetime/Decimal/etc. as JSON-safe primitives (ISO
+                # strings) instead of re-emitting Python objects that JSONResponse's
+                # default encoder cannot serialize.
                 if isinstance(data, list):
                     response["data"] = [
-                        TypeAdapter(schema).validate_python(item).model_dump() for item in data
+                        TypeAdapter(schema).validate_python(item).model_dump(mode="json") for item in data
                     ]
                 elif isinstance(data, dict):
                     validated_data = TypeAdapter(schema).validate_python(data)
-                    response["data"] = validated_data.model_dump()
+                    response["data"] = validated_data.model_dump(mode="json")
                 else:
                     raise ValueError("Expected data to be a list or dict")
             except ValidationError as e:

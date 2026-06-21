@@ -48,7 +48,7 @@
 
 .treePanel {
   background: var(--surface-1);
-  border-right: 1px solid var(--p0-border);
+  border-right: 1px solid var(--border);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -82,7 +82,7 @@
   min-width: var(--panel-min-width);
   max-width: 500px;
   background: var(--surface-1);
-  border-right: 1px solid var(--p0-border);
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   overflow: hidden;

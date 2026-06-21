@@ -9,7 +9,7 @@ import {
 } from 'react-router-dom';
 import App from './App.jsx';
 import AuthGuard from './components/AuthGuard.jsx';
-import { ThemeProvider } from './components/ThemeProvider.jsx';
+import { ThemeProvider } from './components/ThemeContext.jsx';
 import ChangePassword from './features/auth/components/ChangePassword.jsx';
 import DeleteAccount from './features/auth/components/DeleteAccount.jsx';
 import ForgotPassword from './features/auth/components/ForgotPassword.jsx';

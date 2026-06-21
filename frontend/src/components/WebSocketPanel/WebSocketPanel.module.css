@@ -22,7 +22,7 @@
   font-weight: 500;
   cursor: pointer;
   border-bottom: 2px solid transparent;
-  transition: all 0.2s ease;
+  transition: all var(--duration-base) var(--easing-default);
 }
 
 .tab:hover {
@@ -217,7 +217,7 @@
   font-size: var(--text-sm);
   font-family: var(--font-mono);
   color: var(--text);
-  transition: border-color 0.2s;
+  transition: border-color var(--duration-base);
 }
 .msgInput:focus {
   outline: none;
@@ -230,7 +230,7 @@
 
 .sendBtn {
   background: var(--accent);
-  color: #fff;
+  color: var(--text);
   border: none;
   border-radius: var(--radius);
   padding: 0 var(--space-4);

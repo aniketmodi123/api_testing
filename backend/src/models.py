@@ -14,6 +14,7 @@ from sqlalchemy import (
     Text,
     ForeignKey,
     CheckConstraint,
+    UniqueConstraint,
     JSON,
     TIMESTAMP,
     func,
@@ -1306,4 +1307,40 @@ class GovernanceRule(Base):
         CheckConstraint("rule_type IN ('naming','required_field','status_code')", name="ck_gov_rule_type"),
         CheckConstraint("target IN ('path','name','header','param')", name="ck_gov_target"),
         Index("ix_governance_rule_workspace", "workspace_id"),
+    )
+
+
+# ---------------------------
+# Theme System v2 — Phase H (custom theme persistence)
+# ---------------------------
+class UserTheme(Base):
+    """Store a user's saved custom theme as a flat CSS token map for cross-device sync.
+
+    Attributes:
+        id: Primary key.
+        user_id: FK to the owning user; cascade-deleted when user is removed.
+        name: Display name for the theme; unique per user via uq_user_themes_user_name.
+        token_map: Flat dict of CSS variable name to value (e.g. {"--bg": "#0d1117"}).
+        is_active: ``True`` when this is the user's currently applied theme; ``False`` otherwise.
+        created_at: Creation timestamp.
+        updated_at: Timestamp of the last name/token_map change; refreshed on update.
+    """
+
+    __tablename__ = "user_themes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True, index=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(80), nullable=False)
+    token_map: Mapped[dict] = mapped_column(JSON, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "name", name="uq_user_themes_user_name"),
+        Index("ix_user_themes_user_active", "user_id", "is_active"),
     )

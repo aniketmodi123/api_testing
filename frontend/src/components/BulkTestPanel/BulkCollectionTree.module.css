@@ -28,11 +28,11 @@
   /* padding: 6px 8px; */
   cursor: pointer;
   border-radius: var(--radius-sm);
-  transition: background-color 0.2s;
+  transition: background-color var(--duration-base);
 }
 
 .folderHeader:hover {
-  background-color: var(--hover-background);
+  background-color: var(--surface-3);
 }
 
 .folderSelector {
@@ -40,14 +40,14 @@
   align-items: center;
   cursor: pointer;
   border-radius: var(--radius);
-  transition: all 0.2s;
+  transition: all var(--duration-base);
   border: 1px solid transparent;
   min-width: 15px;
   justify-content: center;
 }
 
 .folderSelector:hover {
-  background-color: var(--hover-background);
+  background-color: var(--surface-3);
 }
 
 .folderSelector.selected {
@@ -61,12 +61,12 @@
   flex: 1;
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-sm);
-  transition: background-color 0.2s;
+  transition: background-color var(--duration-base);
   gap: 2px;
 }
 
 .folderToggle:hover {
-  background-color: var(--hover-background);
+  background-color: var(--surface-3);
 }
 
 .folderIcon {
@@ -104,14 +104,14 @@
   cursor: pointer;
   padding: 3px 0;
   border-radius: var(--radius);
-  transition: all 0.2s;
+  transition: all var(--duration-base);
   border: 1px solid transparent;
   min-width: 28px;
   justify-content: center;
 }
 
 .apiSelector:hover {
-  background-color: var(--hover-background);
+  background-color: var(--surface-3);
 }
 
 .apiSelector.selected {
@@ -130,12 +130,12 @@
   flex: 1;
   padding: 4px 0;
   border-radius: var(--radius-sm);
-  transition: background-color 0.2s;
+  transition: background-color var(--duration-base);
   /* gap: 6px; */
 }
 
 .fileToggle:hover {
-  background-color: var(--hover-background);
+  background-color: var(--surface-3);
 }
 
 .expandIcon {
@@ -176,8 +176,8 @@
   align-items: center;
   padding: var(--space-1) var(--space-2);
   cursor: pointer;
-  border-radius: 3px;
-  transition: all 0.2s;
+  border-radius: var(--radius-sm);
+  transition: all var(--duration-base);
   margin-bottom: 2px;
   border: 1px solid transparent;
   min-height: 24px;
@@ -185,7 +185,7 @@
 }
 
 .fileItems .testCaseItem:hover {
-  background-color: var(--hover-background);
+  background-color: var(--surface-3);
 }
 
 .fileItems .testCaseItem.selected {
@@ -216,12 +216,12 @@
   padding: var(--space-1) var(--space-2);
   cursor: pointer;
   border-radius: var(--radius-sm);
-  transition: all 0.2s;
+  transition: all var(--duration-base);
   border: 1px solid transparent;
 }
 
 .requestItem:hover {
-  background-color: var(--hover-background);
+  background-color: var(--surface-3);
 }
 
 .requestItem.selected {
@@ -253,10 +253,10 @@
 
 .contextMenu {
   position: fixed;
-  background: var(--background);
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: none;
   z-index: 1000;
   min-width: 140px;
 }
@@ -266,11 +266,11 @@
   cursor: pointer;
   color: var(--text);
   font-size: var(--text-sm);
-  transition: background-color 0.2s;
+  transition: background-color var(--duration-base);
 }
 
 .menuItem:hover {
-  background-color: var(--hover-background);
+  background-color: var(--surface-3);
 }
 
 .menuItem:first-child {
@@ -297,15 +297,15 @@
   padding: 2px 4px;
   cursor: pointer;
   border-radius: 2px;
-  transition: background-color 0.2s;
-  background-color: var(--background-lighter);
+  transition: background-color var(--duration-base);
+  background-color: var(--surface-2);
   border: 1px solid var(--border);
   margin-bottom: var(--space-0);
   font-size: var(--text-xs);
 }
 
 .testCasesHeader:hover {
-  background-color: var(--hover-background);
+  background-color: var(--surface-3);
 }
 
 .expandIcon {
@@ -335,7 +335,7 @@
   padding: var(--space-1) var(--space-2);
   cursor: pointer;
   border-radius: var(--radius-sm);
-  transition: all 0.2s;
+  transition: all var(--duration-base);
   margin-bottom: 2px;
   border: 1px solid transparent;
   min-height: 24px;
@@ -343,7 +343,7 @@
 }
 
 .testCaseItem:hover {
-  background-color: var(--hover-background);
+  background-color: var(--surface-3);
 }
 
 .testCaseItem.selected {

@@ -408,13 +408,13 @@ export default function BulkCollectionTree({
 
   const getMethodColor = method => {
     const colors = {
-      GET: '#28a745',
-      POST: '#007bff',
-      PUT: '#ffc107',
-      DELETE: '#dc3545',
-      PATCH: '#17a2b8',
-      OPTIONS: '#6c757d',
-      HEAD: '#6f42c1',
+      GET: 'var(--viz-method-get)',
+      POST: 'var(--viz-method-post)',
+      PUT: 'var(--viz-method-put)',
+      DELETE: 'var(--viz-method-delete)',
+      PATCH: 'var(--viz-method-patch)',
+      OPTIONS: 'var(--viz-method-options)',
+      HEAD: 'var(--viz-method-head)',
     };
     return colors[method?.toUpperCase()] || colors.GET;
   };

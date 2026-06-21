@@ -40,7 +40,9 @@
   font-size: var(--text-sm);
   font-family: var(--font-ui);
   text-align: left;
-  transition: background 0.1s, color 0.1s;
+  transition:
+    background var(--duration-fast),
+    color var(--duration-fast);
   flex-shrink: 0;
 }
 
@@ -85,13 +87,16 @@
   height: 22px;
   background: none;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--text-muted);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: color 0.1s, background 0.1s, border-color 0.1s;
+  transition:
+    color var(--duration-fast),
+    background var(--duration-fast),
+    border-color var(--duration-fast);
 }
 
 .addEnvBtn:hover {
@@ -150,9 +155,9 @@
   background: var(--accent);
   border: none;
   border-radius: var(--radius);
-  color: #fff;
+  color: var(--text);
   cursor: pointer;
-  transition: opacity 0.1s;
+  transition: opacity var(--duration-fast);
 }
 
 .createBtn:hover {
@@ -185,5 +190,7 @@
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }

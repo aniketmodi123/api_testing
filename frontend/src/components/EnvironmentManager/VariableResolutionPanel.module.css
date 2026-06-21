@@ -2,13 +2,13 @@
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--background);
+  background: var(--bg);
 }
 
 .header {
   padding: var(--space-5);
   border-bottom: 1px solid var(--border);
-  background: var(--background-lighter);
+  background: var(--surface-2);
 }
 
 .header h3 {
@@ -95,7 +95,7 @@
   color: var(--text);
   resize: vertical;
   min-height: 120px;
-  transition: all 0.2s ease;
+  transition: all var(--duration-base) var(--easing-default);
 }
 
 .inputTextarea:focus {
@@ -331,7 +331,7 @@
 
 .content::-webkit-scrollbar-thumb {
   background: var(--scrollbar-thumb-color);
-  border-radius: var(--radius-full);
+  border-radius: 9999px;
 }
 
 .content::-webkit-scrollbar-thumb:hover {
@@ -348,7 +348,7 @@
 
 .outputText::-webkit-scrollbar-thumb {
   background: var(--scrollbar-thumb-color);
-  border-radius: var(--radius-full);
+  border-radius: 9999px;
 }
 
 .outputText::-webkit-scrollbar-thumb:hover {

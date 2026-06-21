@@ -86,7 +86,7 @@
   color: var(--text);
   font-size: var(--text-sm);
   width: 100%;
-  transition: border-color 0.12s;
+  transition: border-color var(--duration-base);
 }
 
 .inputSm {
@@ -123,7 +123,7 @@
 }
 
 .removeBtn:hover {
-  background: rgba(239, 68, 68, 0.1);
+  background: var(--error-bg-dim);
 }
 
 .addBtn {

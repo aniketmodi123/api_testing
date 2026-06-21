@@ -39,7 +39,7 @@ export default function LatencySparkline({ executions = [], width = 80, height =
         <polyline
           points={points}
           fill="none"
-          stroke="var(--p0-primary, #6366f1)"
+          stroke="var(--accent, var(--text-muted))"
           strokeWidth="1.5"
           strokeLinejoin="round"
           strokeLinecap="round"
@@ -48,7 +48,7 @@ export default function LatencySparkline({ executions = [], width = 80, height =
         {data.length > 0 && (() => {
           const last = points.split(' ').pop();
           const [cx, cy] = last.split(',').map(Number);
-          return <circle cx={cx} cy={cy} r={2.5} fill="var(--p0-primary, #6366f1)" />;
+          return <circle cx={cx} cy={cy} r={2.5} fill="var(--accent, var(--text-muted))" />;
         })()}
       </svg>
       <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{lastDuration}ms</span>
