@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { applyPreset, DEFAULT_PREFERENCES, loadPreferences } from '../themes/index.js';
+import { applyPreset, DEFAULT_PREFERENCES, loadPreferences, LIGHT_THEME_IDS } from '../themes/index.js';
 import { loadCustomThemes } from '../themes/customTheme.js';
 import { api } from '../api.js';
 
@@ -7,7 +7,7 @@ const ThemeCtx = createContext({
   preferences: DEFAULT_PREFERENCES,
   setPreference: () => {},
   // Legacy compat — components using useTheme().theme still work
-  theme: 'dark',
+  theme: 'carbon',
   setTheme: () => {},
   isDarkMode: true,
   activeServerTheme: null,
@@ -87,7 +87,7 @@ export function ThemeProvider({ children }) {
         setPreference,
         theme: preferences.theme,
         setTheme,
-        isDarkMode: preferences.theme !== 'light',
+        isDarkMode: !LIGHT_THEME_IDS.includes(preferences.theme),
         activeServerTheme,
         setActiveServerTheme,
       }}

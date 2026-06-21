@@ -1,568 +1,283 @@
-// Color presets — 5 themes.
-// Structure: each theme defines ALL tokens: semantic surfaces, status, component, data-viz.
-// --method-* / --json-* are no longer static — they live here as --viz-method-* / --viz-json-*
-// (and the active editor/syntax theme overrides --viz-json-* + --code-* on top).
+// Color presets — 12 curated themes (3 light, 9 dark).
+// Each theme is a full Tier-1/2/3 token set. To keep 12 themes maintainable and avoid
+// ~1100 lines of repetitive hand-tuned objects, themes are declared as compact specs
+// (core palette only) and expanded by buildTheme(): the repetitive rgba status variants,
+// badge colors, and component tokens are derived from the core palette. The exported
+// THEME_PRESETS / THEME_META shapes are identical to the old hand-written ones — the
+// engine (themes/index.js) and ThemePanel consume them unchanged.
 
-export const THEME_PRESETS = {
+// --- color helpers -------------------------------------------------------
 
-  // ─────────────────────────────────────────
-  // LIGHT — Professional daytime
-  // Accent: calm blue #3b5bdb. Badge-special: teal. Syntax: dark, readable on white.
-  // ─────────────────────────────────────────
-  light: {
-    '--bg': '#f6f8fa',
-    '--surface-1': '#ffffff',
-    '--surface-2': '#f3f4f6',
-    '--surface-3': '#e9eaec',
-    '--border': '#d0d7de',
-    '--border-subtle': '#e5e7eb',
-    '--border-strong': '#b0b7c0',
-    '--border-focus': '#3b5bdb',
+function hexToRgb(hex) {
+  const h = hex.replace('#', '');
+  const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
+  const int = parseInt(full, 16);
+  return { r: (int >> 16) & 255, g: (int >> 8) & 255, b: int & 255 };
+}
 
-    '--text': '#1f2328',
-    '--text-subtle': '#57606a',
-    '--text-muted': '#7a828b',
-    '--text-disabled': '#b0b5bc',
+// rgba() string from a hex + alpha — used for status tints and accent overlays.
+function rgba(hex, a) {
+  const { r, g, b } = hexToRgb(hex);
+  return `rgba(${r}, ${g}, ${b}, ${a})`;
+}
 
-    '--accent': '#3b5bdb',
-    '--accent-hover': '#2f4ac2',
-    '--accent-dim': 'rgba(59, 91, 219, 0.1)',
-    '--accent-text': '#ffffff',
+// color-mix() string — blend `pct`% of `hex` into `other` (a color or transparent).
+function mix(hex, pct, other) {
+  return `color-mix(in srgb, ${hex} ${pct}%, ${other})`;
+}
 
-    '--success': '#1a7f37',
-    '--success-dim': 'rgba(26, 127, 55, 0.1)',
-    '--success-bg-subtle': 'rgba(26, 127, 55, 0.05)',
-    '--success-bg-dim': 'rgba(26, 127, 55, 0.1)',
-    '--success-bg-strong': 'rgba(26, 127, 55, 0.15)',
-    '--success-border': 'rgba(26, 127, 55, 0.3)',
-    '--success-border-dim': 'rgba(26, 127, 55, 0.3)',
+// Status color → its 5 tint variants (dim / bg-subtle / bg-dim / bg-strong / border).
+// Light themes use slightly stronger fills + lighter borders than dark themes.
+function statusVariants(prefix, hex, isLight) {
+  const strong = isLight ? 0.15 : 0.18;
+  const border = isLight ? 0.3 : 0.35;
+  return {
+    [`${prefix}`]: hex,
+    [`${prefix}-dim`]: rgba(hex, 0.1),
+    [`${prefix}-bg-subtle`]: rgba(hex, 0.05),
+    [`${prefix}-bg-dim`]: rgba(hex, 0.1),
+    [`${prefix}-bg-strong`]: rgba(hex, strong),
+    [`${prefix}-border`]: rgba(hex, border),
+  };
+}
 
-    '--warning': '#9a6700',
-    '--warning-dim': 'rgba(154, 103, 0, 0.1)',
-    '--warning-bg-subtle': 'rgba(154, 103, 0, 0.05)',
-    '--warning-bg-dim': 'rgba(154, 103, 0, 0.1)',
-    '--warning-bg-strong': 'rgba(154, 103, 0, 0.15)',
-    '--warning-border': 'rgba(154, 103, 0, 0.3)',
+// A badge's bg / text / border derived from one hue. Dark themes brighten the text;
+// light themes darken it. bg is the hue blended into the surface; border is translucent.
+function badge(hue, isLight, surface) {
+  return {
+    bg: isLight ? mix(hue, 9, '#ffffff') : mix(hue, 16, surface),
+    text: isLight ? mix(hue, 78, '#000000') : mix(hue, 80, '#ffffff'),
+    border: mix(hue, isLight ? 30 : 40, 'transparent'),
+  };
+}
 
-    '--error': '#cf222e',
-    '--error-dim': 'rgba(207, 34, 46, 0.1)',
-    '--error-bg-subtle': 'rgba(207, 34, 46, 0.05)',
-    '--error-bg-dim': 'rgba(207, 34, 46, 0.1)',
-    '--error-bg-strong': 'rgba(207, 34, 46, 0.15)',
-    '--error-border': 'rgba(207, 34, 46, 0.3)',
-    '--error-border-dim': 'rgba(207, 34, 46, 0.3)',
+// Expand a compact theme spec into the full flat token map.
+function buildTheme(s) {
+  const L = s.isLight;
+  const b = {
+    error: badge(s.error, L, s.s1),
+    success: badge(s.success, L, s.s1),
+    warning: badge(s.warning, L, s.s1),
+    info: badge(s.info, L, s.s1),
+    neutral: badge(s.textSubtle, L, s.s1),
+    special: badge(s.special, L, s.s1),
+  };
 
-    '--info': '#3b5bdb',
-    '--info-dim': 'rgba(59, 91, 219, 0.1)',
-    '--info-bg-subtle': 'rgba(59, 91, 219, 0.05)',
-    '--info-bg-dim': 'rgba(59, 91, 219, 0.1)',
-    '--info-bg-strong': 'rgba(59, 91, 219, 0.15)',
-    '--info-border': 'rgba(59, 91, 219, 0.3)',
+  return {
+    // Surfaces & borders
+    '--bg': s.bg,
+    '--surface-1': s.s1,
+    '--surface-2': s.s2,
+    '--surface-3': s.s3,
+    '--border': s.border,
+    '--border-subtle': s.borderSubtle,
+    '--border-strong': s.borderStrong,
+    '--border-focus': s.accent,
 
-    '--overlay-bg': 'rgba(0, 0, 0, 0.4)',
-    '--scrollbar-thumb': '#b8bec7',
-    '--scrollbar-thumb-hover': '#9aa0aa',
+    // Text
+    '--text': s.text,
+    '--text-subtle': s.textSubtle,
+    '--text-muted': s.textMuted,
+    '--text-disabled': s.textDisabled,
+
+    // Accent
+    '--accent': s.accent,
+    '--accent-hover': s.accentHover,
+    '--accent-dim': rgba(s.accent, L ? 0.1 : 0.12),
+    '--accent-text': s.accentText,
+
+    // Status + variants
+    ...statusVariants('--success', s.success, L),
+    '--success-border-dim': rgba(s.success, L ? 0.3 : 0.35),
+    ...statusVariants('--warning', s.warning, L),
+    ...statusVariants('--error', s.error, L),
+    '--error-border-dim': rgba(s.error, L ? 0.3 : 0.35),
+    ...statusVariants('--info', s.info, L),
+
+    // Utility
+    '--overlay-bg': s.overlay,
+    '--scrollbar-thumb': s.scrollbar,
+    '--scrollbar-thumb-hover': s.scrollbarHover,
 
     // Component — Badge
-    '--badge-error-bg': '#fff0f0', '--badge-error-text': '#a12020', '--badge-error-border': '#fecdd3',
-    '--badge-success-bg': '#f0fff4', '--badge-success-text': '#145a26', '--badge-success-border': '#bbf7d0',
-    '--badge-warning-bg': '#fffbeb', '--badge-warning-text': '#7a4f00', '--badge-warning-border': '#fde68a',
-    '--badge-info-bg': '#eff6ff', '--badge-info-text': '#1e40af', '--badge-info-border': '#bfdbfe',
-    '--badge-neutral-bg': '#f3f4f6', '--badge-neutral-text': '#374151', '--badge-neutral-border': '#d1d5db',
-    '--badge-special-bg': '#f0fdfa', '--badge-special-text': '#0d5c4a', '--badge-special-border': '#99f6e4',
+    '--badge-error-bg': b.error.bg, '--badge-error-text': b.error.text, '--badge-error-border': b.error.border,
+    '--badge-success-bg': b.success.bg, '--badge-success-text': b.success.text, '--badge-success-border': b.success.border,
+    '--badge-warning-bg': b.warning.bg, '--badge-warning-text': b.warning.text, '--badge-warning-border': b.warning.border,
+    '--badge-info-bg': b.info.bg, '--badge-info-text': b.info.text, '--badge-info-border': b.info.border,
+    '--badge-neutral-bg': b.neutral.bg, '--badge-neutral-text': b.neutral.text, '--badge-neutral-border': b.neutral.border,
+    '--badge-special-bg': b.special.bg, '--badge-special-text': b.special.text, '--badge-special-border': b.special.border,
 
     // Component — Button
-    '--btn-primary-bg': '#3b5bdb', '--btn-primary-text': '#ffffff', '--btn-primary-hover': '#2f4ac2',
-    '--btn-secondary-bg': '#ffffff', '--btn-secondary-border': '#d0d7de',
-    '--btn-danger-bg': '#cf222e', '--btn-danger-hover': '#a71f25',
-    '--btn-ghost-hover': '#e9eaec',
+    '--btn-primary-bg': s.accent, '--btn-primary-text': s.accentText, '--btn-primary-hover': s.accentHover,
+    '--btn-secondary-bg': s.s2, '--btn-secondary-border': s.border,
+    '--btn-danger-bg': s.error, '--btn-danger-hover': mix(s.error, 82, '#000000'),
+    '--btn-ghost-hover': s.s3,
 
     // Component — Input
-    '--input-bg': '#ffffff', '--input-border': '#d0d7de', '--input-focus-border': '#3b5bdb',
-    '--input-text': '#1f2328', '--input-placeholder': '#9aa0aa',
+    '--input-bg': L ? s.s1 : s.s2, '--input-border': s.border, '--input-focus-border': s.accent,
+    '--input-text': s.text, '--input-placeholder': s.textMuted,
 
     // Component — Sidebar
-    '--sidebar-bg': '#ffffff', '--sidebar-border': '#d0d7de',
-    '--sidebar-icon': '#57606a', '--sidebar-icon-active': '#3b5bdb',
-    '--sidebar-active-bg': 'rgba(59, 91, 219, 0.08)',
+    '--sidebar-bg': s.s1, '--sidebar-border': s.border,
+    '--sidebar-icon': s.textSubtle, '--sidebar-icon-active': s.accent,
+    '--sidebar-active-bg': rgba(s.accent, L ? 0.08 : 0.1),
 
     // Component — Panel
-    '--panel-bg': '#f6f8fa', '--panel-border': '#d0d7de', '--panel-header-bg': '#ffffff',
+    '--panel-bg': s.bg, '--panel-border': s.border, '--panel-header-bg': s.s1,
 
     // Component — Code editor
-    '--code-bg': '#f8f9fa', '--code-bg-deeper': '#ffffff',
-    '--code-border': '#d0d7de', '--code-gutter-bg': '#f3f4f6',
-    '--code-active-line': 'rgba(59, 91, 219, 0.04)',
-    '--code-selection': 'rgba(59, 91, 219, 0.12)',
-
-    // Data viz — HTTP methods (light-optimized)
-    '--viz-method-get': '#1a7f37',
-    '--viz-method-post': '#1e40af',
-    '--viz-method-put': '#9a6700',
-    '--viz-method-patch': '#6b21a8',
-    '--viz-method-delete': '#b91c1c',
-    '--viz-method-head': '#1e40af',
-    '--viz-method-options': '#0d5c4a',
-
-    // Data viz — JSON syntax (light-optimized)
-    '--viz-json-key': '#1e40af',
-    '--viz-json-string': '#1a7f37',
-    '--viz-json-number': '#9a6700',
-    '--viz-json-boolean': '#6b21a8',
-    '--viz-json-null': '#b91c1c',
-
-    '--json-editor-bg': '#f8f9fa', '--json-editor-bg-deeper': '#ffffff', '--json-editor-border': '#d0d7de',
-  },
-
-  // ─────────────────────────────────────────
-  // DARK — Mid dark, default. Accent #748ffc. Badge-special: cyan.
-  // ─────────────────────────────────────────
-  dark: {
-    '--bg': '#16181d',
-    '--surface-1': '#1a1d24',
-    '--surface-2': '#20242d',
-    '--surface-3': '#2a303a',
-    '--border': '#353c49',
-    '--border-subtle': '#2a303a',
-    '--border-strong': '#4b5260',
-    '--border-focus': '#748ffc',
-
-    '--text': '#e6edf3',
-    '--text-subtle': '#9ba3af',
-    '--text-muted': '#6b7280',
-    '--text-disabled': '#4b5260',
-
-    '--accent': '#748ffc',
-    '--accent-hover': '#5c71f7',
-    '--accent-dim': 'rgba(116, 143, 252, 0.12)',
-    '--accent-text': '#ffffff',
-
-    '--success': '#4ac26b',
-    '--success-dim': 'rgba(74, 194, 107, 0.1)',
-    '--success-bg-subtle': 'rgba(74, 194, 107, 0.05)',
-    '--success-bg-dim': 'rgba(74, 194, 107, 0.1)',
-    '--success-bg-strong': 'rgba(74, 194, 107, 0.18)',
-    '--success-border': 'rgba(74, 194, 107, 0.35)',
-    '--success-border-dim': 'rgba(74, 194, 107, 0.35)',
-
-    '--warning': '#d8a441',
-    '--warning-dim': 'rgba(216, 164, 65, 0.1)',
-    '--warning-bg-subtle': 'rgba(216, 164, 65, 0.05)',
-    '--warning-bg-dim': 'rgba(216, 164, 65, 0.1)',
-    '--warning-bg-strong': 'rgba(216, 164, 65, 0.18)',
-    '--warning-border': 'rgba(216, 164, 65, 0.35)',
-
-    '--error': '#f05d56',
-    '--error-dim': 'rgba(240, 93, 86, 0.1)',
-    '--error-bg-subtle': 'rgba(240, 93, 86, 0.05)',
-    '--error-bg-dim': 'rgba(240, 93, 86, 0.1)',
-    '--error-bg-strong': 'rgba(240, 93, 86, 0.18)',
-    '--error-border': 'rgba(240, 93, 86, 0.35)',
-    '--error-border-dim': 'rgba(240, 93, 86, 0.35)',
-
-    '--info': '#748ffc',
-    '--info-dim': 'rgba(116, 143, 252, 0.1)',
-    '--info-bg-subtle': 'rgba(116, 143, 252, 0.05)',
-    '--info-bg-dim': 'rgba(116, 143, 252, 0.1)',
-    '--info-bg-strong': 'rgba(116, 143, 252, 0.18)',
-    '--info-border': 'rgba(116, 143, 252, 0.35)',
-
-    '--overlay-bg': 'rgba(0, 0, 0, 0.55)',
-    '--scrollbar-thumb': '#3a4050',
-    '--scrollbar-thumb-hover': '#4f5668',
-
-    // Component — Badge (special = cyan)
-    '--badge-error-bg': '#2d0f0e', '--badge-error-text': '#f87171', '--badge-error-border': '#5c1f1d',
-    '--badge-success-bg': '#0f2e1a', '--badge-success-text': '#6ee7a0', '--badge-success-border': '#1e5c34',
-    '--badge-warning-bg': '#2b1f08', '--badge-warning-text': '#fbbf24', '--badge-warning-border': '#5a3f10',
-    '--badge-info-bg': '#111e42', '--badge-info-text': '#a5b4fc', '--badge-info-border': '#2335a0',
-    '--badge-neutral-bg': '#1e2330', '--badge-neutral-text': '#9ba3af', '--badge-neutral-border': '#353c49',
-    '--badge-special-bg': '#062028', '--badge-special-text': '#67e8f9', '--badge-special-border': '#0e4d60',
-
-    // Component — Button
-    '--btn-primary-bg': '#748ffc', '--btn-primary-text': '#ffffff', '--btn-primary-hover': '#5c71f7',
-    '--btn-secondary-bg': '#20242d', '--btn-secondary-border': '#353c49',
-    '--btn-danger-bg': '#f05d56', '--btn-danger-hover': '#d44840',
-    '--btn-ghost-hover': '#2a303a',
-
-    // Component — Input
-    '--input-bg': '#20242d', '--input-border': '#353c49', '--input-focus-border': '#748ffc',
-    '--input-text': '#e6edf3', '--input-placeholder': '#6b7280',
-
-    // Component — Sidebar
-    '--sidebar-bg': '#1a1d24', '--sidebar-border': '#353c49',
-    '--sidebar-icon': '#9ba3af', '--sidebar-icon-active': '#748ffc',
-    '--sidebar-active-bg': 'rgba(116, 143, 252, 0.1)',
-
-    // Component — Panel
-    '--panel-bg': '#16181d', '--panel-border': '#353c49', '--panel-header-bg': '#1a1d24',
-
-    // Component — Code editor
-    '--code-bg': '#1a1d24', '--code-bg-deeper': '#131619',
-    '--code-border': '#353c49', '--code-gutter-bg': '#16181d',
-    '--code-active-line': 'rgba(116, 143, 252, 0.06)',
-    '--code-selection': 'rgba(116, 143, 252, 0.15)',
-
-    // Data viz — HTTP methods
-    '--viz-method-get': '#4ac26b',
-    '--viz-method-post': '#79b8ff',
-    '--viz-method-put': '#d8a441',
-    '--viz-method-patch': '#cc5de8',
-    '--viz-method-delete': '#f05d56',
-    '--viz-method-head': '#79b8ff',
-    '--viz-method-options': '#67e8f9',
-
-    // Data viz — JSON syntax
-    '--viz-json-key': '#79b8ff',
-    '--viz-json-string': '#6ee7a0',
-    '--viz-json-number': '#d8a441',
-    '--viz-json-boolean': '#cc5de8',
-    '--viz-json-null': '#f05d56',
-
-    '--json-editor-bg': '#1a1a22', '--json-editor-bg-deeper': '#111118', '--json-editor-border': '#353c49',
-  },
-
-  // ─────────────────────────────────────────
-  // DEEP DARK — OLED / power user. Accent #8fa4ff. Badge-special: rose.
-  // ─────────────────────────────────────────
-  'deep-dark': {
-    '--bg': '#0d1117',
-    '--surface-1': '#161b22',
-    '--surface-2': '#21262d',
-    '--surface-3': '#2d333b',
-    '--border': '#30363d',
-    '--border-subtle': '#21262d',
-    '--border-strong': '#484f58',
-    '--border-focus': '#8fa4ff',
-
-    '--text': '#e6edf3',
-    '--text-subtle': '#8b949e',
-    '--text-muted': '#6e7681',
-    '--text-disabled': '#484f58',
-
-    '--accent': '#8fa4ff',
-    '--accent-hover': '#748ffc',
-    '--accent-dim': 'rgba(143, 164, 255, 0.12)',
-    '--accent-text': '#ffffff',
-
-    '--success': '#3fb950',
-    '--success-dim': 'rgba(63, 185, 80, 0.1)',
-    '--success-bg-subtle': 'rgba(63, 185, 80, 0.05)',
-    '--success-bg-dim': 'rgba(63, 185, 80, 0.1)',
-    '--success-bg-strong': 'rgba(63, 185, 80, 0.18)',
-    '--success-border': 'rgba(63, 185, 80, 0.35)',
-    '--success-border-dim': 'rgba(63, 185, 80, 0.35)',
-
-    '--warning': '#d29922',
-    '--warning-dim': 'rgba(210, 153, 34, 0.1)',
-    '--warning-bg-subtle': 'rgba(210, 153, 34, 0.05)',
-    '--warning-bg-dim': 'rgba(210, 153, 34, 0.1)',
-    '--warning-bg-strong': 'rgba(210, 153, 34, 0.18)',
-    '--warning-border': 'rgba(210, 153, 34, 0.35)',
-
-    '--error': '#f85149',
-    '--error-dim': 'rgba(248, 81, 73, 0.1)',
-    '--error-bg-subtle': 'rgba(248, 81, 73, 0.05)',
-    '--error-bg-dim': 'rgba(248, 81, 73, 0.1)',
-    '--error-bg-strong': 'rgba(248, 81, 73, 0.18)',
-    '--error-border': 'rgba(248, 81, 73, 0.35)',
-    '--error-border-dim': 'rgba(248, 81, 73, 0.35)',
-
-    '--info': '#8fa4ff',
-    '--info-dim': 'rgba(143, 164, 255, 0.1)',
-    '--info-bg-subtle': 'rgba(143, 164, 255, 0.05)',
-    '--info-bg-dim': 'rgba(143, 164, 255, 0.1)',
-    '--info-bg-strong': 'rgba(143, 164, 255, 0.18)',
-    '--info-border': 'rgba(143, 164, 255, 0.35)',
-
-    '--overlay-bg': 'rgba(0, 0, 0, 0.65)',
-    '--scrollbar-thumb': '#30363d',
-    '--scrollbar-thumb-hover': '#484f58',
-
-    // Badge — special = rose
-    '--badge-error-bg': '#270a0a', '--badge-error-text': '#fca5a5', '--badge-error-border': '#5c1616',
-    '--badge-success-bg': '#0a200f', '--badge-success-text': '#86efac', '--badge-success-border': '#166534',
-    '--badge-warning-bg': '#241600', '--badge-warning-text': '#fcd34d', '--badge-warning-border': '#4d2d00',
-    '--badge-info-bg': '#0e1633', '--badge-info-text': '#a5b4fc', '--badge-info-border': '#1e2f8a',
-    '--badge-neutral-bg': '#21262d', '--badge-neutral-text': '#8b949e', '--badge-neutral-border': '#30363d',
-    '--badge-special-bg': '#2a0a16', '--badge-special-text': '#fda4af', '--badge-special-border': '#6e1a30',
-
-    // Button
-    '--btn-primary-bg': '#8fa4ff', '--btn-primary-text': '#0d1117', '--btn-primary-hover': '#748ffc',
-    '--btn-secondary-bg': '#21262d', '--btn-secondary-border': '#30363d',
-    '--btn-danger-bg': '#f85149', '--btn-danger-hover': '#e03c35',
-    '--btn-ghost-hover': '#2d333b',
-
-    // Input
-    '--input-bg': '#0d1117', '--input-border': '#30363d', '--input-focus-border': '#8fa4ff',
-    '--input-text': '#e6edf3', '--input-placeholder': '#6e7681',
-
-    // Sidebar
-    '--sidebar-bg': '#161b22', '--sidebar-border': '#30363d',
-    '--sidebar-icon': '#8b949e', '--sidebar-icon-active': '#8fa4ff',
-    '--sidebar-active-bg': 'rgba(143, 164, 255, 0.1)',
-
-    // Panel
-    '--panel-bg': '#0d1117', '--panel-border': '#30363d', '--panel-header-bg': '#161b22',
-
-    // Code
-    '--code-bg': '#161b22', '--code-bg-deeper': '#0d1117',
-    '--code-border': '#30363d', '--code-gutter-bg': '#0d1117',
-    '--code-active-line': 'rgba(143, 164, 255, 0.05)',
-    '--code-selection': 'rgba(143, 164, 255, 0.14)',
-
-    // Methods
-    '--viz-method-get': '#3fb950',
-    '--viz-method-post': '#79c0ff',
-    '--viz-method-put': '#d29922',
-    '--viz-method-patch': '#e599f7',
-    '--viz-method-delete': '#f85149',
-    '--viz-method-head': '#79c0ff',
-    '--viz-method-options': '#fda4af',
-
-    // JSON
-    '--viz-json-key': '#79c0ff',
-    '--viz-json-string': '#56d364',
-    '--viz-json-number': '#d29922',
-    '--viz-json-boolean': '#e599f7',
-    '--viz-json-null': '#f85149',
-
-    '--json-editor-bg': '#0d1117', '--json-editor-bg-deeper': '#080b0f', '--json-editor-border': '#30363d',
-  },
-
-  // ─────────────────────────────────────────
-  // MIDNIGHT — Electric cyan accent on deep ocean bg. Badge-special: violet.
-  // ─────────────────────────────────────────
-  midnight: {
-    '--bg': '#030c15',
-    '--surface-1': '#071422',
-    '--surface-2': '#0d1f35',
-    '--surface-3': '#142844',
-    '--border': '#1c3553',
-    '--border-subtle': '#0d1f35',
-    '--border-strong': '#254466',
-    '--border-focus': '#00cbe8',
-
-    '--text': '#d4e8f7',
-    '--text-subtle': '#7aa8cc',
-    '--text-muted': '#4d7a9e',
-    '--text-disabled': '#254466',
-
-    '--accent': '#00cbe8',
-    '--accent-hover': '#00afc9',
-    '--accent-dim': 'rgba(0, 203, 232, 0.1)',
-    '--accent-text': '#030c15',
-
-    '--success': '#34d399',
-    '--success-dim': 'rgba(52, 211, 153, 0.1)',
-    '--success-bg-subtle': 'rgba(52, 211, 153, 0.05)',
-    '--success-bg-dim': 'rgba(52, 211, 153, 0.1)',
-    '--success-bg-strong': 'rgba(52, 211, 153, 0.18)',
-    '--success-border': 'rgba(52, 211, 153, 0.35)',
-    '--success-border-dim': 'rgba(52, 211, 153, 0.35)',
-
-    '--warning': '#fbbf24',
-    '--warning-dim': 'rgba(251, 191, 36, 0.1)',
-    '--warning-bg-subtle': 'rgba(251, 191, 36, 0.05)',
-    '--warning-bg-dim': 'rgba(251, 191, 36, 0.1)',
-    '--warning-bg-strong': 'rgba(251, 191, 36, 0.18)',
-    '--warning-border': 'rgba(251, 191, 36, 0.35)',
-
-    '--error': '#f87171',
-    '--error-dim': 'rgba(248, 113, 113, 0.1)',
-    '--error-bg-subtle': 'rgba(248, 113, 113, 0.05)',
-    '--error-bg-dim': 'rgba(248, 113, 113, 0.1)',
-    '--error-bg-strong': 'rgba(248, 113, 113, 0.18)',
-    '--error-border': 'rgba(248, 113, 113, 0.35)',
-    '--error-border-dim': 'rgba(248, 113, 113, 0.35)',
-
-    '--info': '#00cbe8',
-    '--info-dim': 'rgba(0, 203, 232, 0.1)',
-    '--info-bg-subtle': 'rgba(0, 203, 232, 0.05)',
-    '--info-bg-dim': 'rgba(0, 203, 232, 0.1)',
-    '--info-bg-strong': 'rgba(0, 203, 232, 0.18)',
-    '--info-border': 'rgba(0, 203, 232, 0.35)',
-
-    '--overlay-bg': 'rgba(0, 0, 0, 0.7)',
-    '--scrollbar-thumb': '#1c3553',
-    '--scrollbar-thumb-hover': '#254466',
-
-    // Badge — special = violet
-    '--badge-error-bg': '#230a0a', '--badge-error-text': '#fca5a5', '--badge-error-border': '#5c1414',
-    '--badge-success-bg': '#061e14', '--badge-success-text': '#6ee7b7', '--badge-success-border': '#0d5c3c',
-    '--badge-warning-bg': '#1e1400', '--badge-warning-text': '#fcd34d', '--badge-warning-border': '#4d3000',
-    '--badge-info-bg': '#011420', '--badge-info-text': '#67e8f9', '--badge-info-border': '#0e4050',
-    '--badge-neutral-bg': '#0d1f35', '--badge-neutral-text': '#7aa8cc', '--badge-neutral-border': '#1c3553',
-    '--badge-special-bg': '#180a3d', '--badge-special-text': '#c084fc', '--badge-special-border': '#4c1d95',
-
-    '--btn-primary-bg': '#00cbe8', '--btn-primary-text': '#030c15', '--btn-primary-hover': '#00afc9',
-    '--btn-secondary-bg': '#0d1f35', '--btn-secondary-border': '#1c3553',
-    '--btn-danger-bg': '#f87171', '--btn-danger-hover': '#ef4444',
-    '--btn-ghost-hover': '#142844',
-
-    '--input-bg': '#071422', '--input-border': '#1c3553', '--input-focus-border': '#00cbe8',
-    '--input-text': '#d4e8f7', '--input-placeholder': '#4d7a9e',
-
-    '--sidebar-bg': '#071422', '--sidebar-border': '#1c3553',
-    '--sidebar-icon': '#7aa8cc', '--sidebar-icon-active': '#00cbe8',
-    '--sidebar-active-bg': 'rgba(0, 203, 232, 0.08)',
-
-    '--panel-bg': '#030c15', '--panel-border': '#1c3553', '--panel-header-bg': '#071422',
-
-    '--code-bg': '#071422', '--code-bg-deeper': '#030c15',
-    '--code-border': '#1c3553', '--code-gutter-bg': '#030c15',
-    '--code-active-line': 'rgba(0, 203, 232, 0.06)',
-    '--code-selection': 'rgba(0, 203, 232, 0.15)',
-
-    '--viz-method-get': '#34d399',
-    '--viz-method-post': '#67e8f9',
-    '--viz-method-put': '#fbbf24',
-    '--viz-method-patch': '#c084fc',
-    '--viz-method-delete': '#f87171',
-    '--viz-method-head': '#67e8f9',
-    '--viz-method-options': '#a78bfa',
-
-    '--viz-json-key': '#67e8f9',
-    '--viz-json-string': '#6ee7b7',
-    '--viz-json-number': '#fbbf24',
-    '--viz-json-boolean': '#c084fc',
-    '--viz-json-null': '#f87171',
-
-    '--json-editor-bg': '#071422', '--json-editor-bg-deeper': '#030c15', '--json-editor-border': '#1c3553',
-  },
-
-  // ─────────────────────────────────────────
-  // EMBER — Warm dark. Amber accent. Badge-special: gold.
-  // ─────────────────────────────────────────
-  ember: {
-    '--bg': '#110a07',
-    '--surface-1': '#1c130e',
-    '--surface-2': '#271a13',
-    '--surface-3': '#33221a',
-    '--border': '#4a3228',
-    '--border-subtle': '#33221a',
-    '--border-strong': '#5e4038',
-    '--border-focus': '#f97316',
-
-    '--text': '#f5e9d8',
-    '--text-subtle': '#c4a882',
-    '--text-muted': '#8a7060',
-    '--text-disabled': '#4a3228',
-
-    '--accent': '#f97316',
-    '--accent-hover': '#ea6c10',
-    '--accent-dim': 'rgba(249, 115, 22, 0.12)',
-    '--accent-text': '#ffffff',
-
-    '--success': '#4ade80',
-    '--success-dim': 'rgba(74, 222, 128, 0.1)',
-    '--success-bg-subtle': 'rgba(74, 222, 128, 0.05)',
-    '--success-bg-dim': 'rgba(74, 222, 128, 0.1)',
-    '--success-bg-strong': 'rgba(74, 222, 128, 0.18)',
-    '--success-border': 'rgba(74, 222, 128, 0.3)',
-    '--success-border-dim': 'rgba(74, 222, 128, 0.3)',
-
-    '--warning': '#fbbf24',
-    '--warning-dim': 'rgba(251, 191, 36, 0.1)',
-    '--warning-bg-subtle': 'rgba(251, 191, 36, 0.05)',
-    '--warning-bg-dim': 'rgba(251, 191, 36, 0.1)',
-    '--warning-bg-strong': 'rgba(251, 191, 36, 0.18)',
-    '--warning-border': 'rgba(251, 191, 36, 0.3)',
-
-    '--error': '#f87171',
-    '--error-dim': 'rgba(248, 113, 113, 0.1)',
-    '--error-bg-subtle': 'rgba(248, 113, 113, 0.05)',
-    '--error-bg-dim': 'rgba(248, 113, 113, 0.1)',
-    '--error-bg-strong': 'rgba(248, 113, 113, 0.18)',
-    '--error-border': 'rgba(248, 113, 113, 0.3)',
-    '--error-border-dim': 'rgba(248, 113, 113, 0.3)',
-
-    '--info': '#f97316',
-    '--info-dim': 'rgba(249, 115, 22, 0.1)',
-    '--info-bg-subtle': 'rgba(249, 115, 22, 0.05)',
-    '--info-bg-dim': 'rgba(249, 115, 22, 0.1)',
-    '--info-bg-strong': 'rgba(249, 115, 22, 0.18)',
-    '--info-border': 'rgba(249, 115, 22, 0.3)',
-
-    '--overlay-bg': 'rgba(0, 0, 0, 0.7)',
-    '--scrollbar-thumb': '#4a3228',
-    '--scrollbar-thumb-hover': '#5e4038',
-
-    // Badge — special = gold
-    '--badge-error-bg': '#2a0f0a', '--badge-error-text': '#fca5a5', '--badge-error-border': '#5c1e16',
-    '--badge-success-bg': '#0a200f', '--badge-success-text': '#86efac', '--badge-success-border': '#14532d',
-    '--badge-warning-bg': '#241600', '--badge-warning-text': '#fde68a', '--badge-warning-border': '#4d2d00',
-    '--badge-info-bg': '#2a1500', '--badge-info-text': '#fdba74', '--badge-info-border': '#7c2d12',
-    '--badge-neutral-bg': '#271a13', '--badge-neutral-text': '#c4a882', '--badge-neutral-border': '#4a3228',
-    '--badge-special-bg': '#281800', '--badge-special-text': '#fcd34d', '--badge-special-border': '#713f12',
-
-    '--btn-primary-bg': '#f97316', '--btn-primary-text': '#ffffff', '--btn-primary-hover': '#ea6c10',
-    '--btn-secondary-bg': '#271a13', '--btn-secondary-border': '#4a3228',
-    '--btn-danger-bg': '#f87171', '--btn-danger-hover': '#ef4444',
-    '--btn-ghost-hover': '#33221a',
-
-    '--input-bg': '#1c130e', '--input-border': '#4a3228', '--input-focus-border': '#f97316',
-    '--input-text': '#f5e9d8', '--input-placeholder': '#8a7060',
-
-    '--sidebar-bg': '#1c130e', '--sidebar-border': '#4a3228',
-    '--sidebar-icon': '#c4a882', '--sidebar-icon-active': '#f97316',
-    '--sidebar-active-bg': 'rgba(249, 115, 22, 0.1)',
-
-    '--panel-bg': '#110a07', '--panel-border': '#4a3228', '--panel-header-bg': '#1c130e',
-
-    '--code-bg': '#1c130e', '--code-bg-deeper': '#110a07',
-    '--code-border': '#4a3228', '--code-gutter-bg': '#110a07',
-    '--code-active-line': 'rgba(249, 115, 22, 0.06)',
-    '--code-selection': 'rgba(249, 115, 22, 0.14)',
-
-    '--viz-method-get': '#4ade80',
-    '--viz-method-post': '#93c5fd',
-    '--viz-method-put': '#fbbf24',
-    '--viz-method-patch': '#c084fc',
-    '--viz-method-delete': '#f87171',
-    '--viz-method-head': '#93c5fd',
-    '--viz-method-options': '#fcd34d',
-
-    '--viz-json-key': '#93c5fd',
-    '--viz-json-string': '#86efac',
-    '--viz-json-number': '#fbbf24',
-    '--viz-json-boolean': '#c084fc',
-    '--viz-json-null': '#f87171',
-
-    '--json-editor-bg': '#1c130e', '--json-editor-bg-deeper': '#110a07', '--json-editor-border': '#4a3228',
-  },
-};
-
-// Metadata for ThemePanel cards
-export const THEME_META = [
+    '--code-bg': s.s1, '--code-bg-deeper': s.bg,
+    '--code-border': s.border, '--code-gutter-bg': s.bg,
+    '--code-active-line': rgba(s.accent, 0.06),
+    '--code-selection': rgba(s.accent, 0.15),
+
+    // Data viz — HTTP methods (derived: distinct hue per method)
+    '--viz-method-get': s.success,
+    '--viz-method-post': s.info,
+    '--viz-method-put': s.warning,
+    '--viz-method-patch': s.special,
+    '--viz-method-delete': s.error,
+    '--viz-method-head': s.info,
+    '--viz-method-options': s.special,
+
+    // Data viz — JSON syntax (derived)
+    '--viz-json-key': s.info,
+    '--viz-json-string': s.success,
+    '--viz-json-number': s.warning,
+    '--viz-json-boolean': s.special,
+    '--viz-json-null': s.error,
+
+    '--json-editor-bg': s.s1, '--json-editor-bg-deeper': s.bg, '--json-editor-border': s.border,
+  };
+}
+
+// --- theme specs ---------------------------------------------------------
+// Order: 3 light, then 9 dark.
+
+const SPECS = [
+  // ── LIGHT ──────────────────────────────────────────────
   {
-    id: 'light',
-    label: 'Light',
-    description: 'Professional · Daytime',
-    preview: { bg: '#f6f8fa', surface: '#ffffff', border: '#d0d7de', text: '#1f2328', accent: '#3b5bdb' },
+    id: 'snow', label: 'Snow White', description: 'GitHub · Pure productivity', isLight: true,
+    bg: '#ffffff', s1: '#ffffff', s2: '#f6f8fa', s3: '#eaeef2',
+    border: '#d0d7de', borderSubtle: '#eaeef2', borderStrong: '#afb8c1',
+    text: '#1f2328', textSubtle: '#59636e', textMuted: '#818b98', textDisabled: '#afb8c1',
+    accent: '#0969da', accentHover: '#0860ca', accentText: '#ffffff',
+    success: '#1a7f37', warning: '#9a6700', error: '#cf222e', info: '#0969da', special: '#1f883d',
+    scrollbar: '#c8d1da', scrollbarHover: '#a8b3bf', overlay: 'rgba(0, 0, 0, 0.4)',
   },
   {
-    id: 'dark',
-    label: 'Mid Dark',
-    description: 'Default · Modern SaaS',
-    preview: { bg: '#16181d', surface: '#1a1d24', border: '#353c49', text: '#e6edf3', accent: '#748ffc' },
+    id: 'paper', label: 'Warm Paper', description: 'Notion · Reading focused', isLight: true,
+    bg: '#faf8f5', s1: '#fffefb', s2: '#f3efe9', s3: '#e9e3d9',
+    border: '#e0d8cc', borderSubtle: '#ece6dc', borderStrong: '#c4b8a6',
+    text: '#37352f', textSubtle: '#6b6760', textMuted: '#918c82', textDisabled: '#bdb6a8',
+    accent: '#b45309', accentHover: '#92400e', accentText: '#ffffff',
+    success: '#4d7c0f', warning: '#b45309', error: '#b91c1c', info: '#1d4ed8', special: '#0f766e',
+    scrollbar: '#d8cfc0', scrollbarHover: '#bdb09a', overlay: 'rgba(40, 30, 15, 0.4)',
   },
   {
-    id: 'deep-dark',
-    label: 'Deep Dark',
-    description: 'OLED · Power User',
-    preview: { bg: '#0d1117', surface: '#161b22', border: '#30363d', text: '#e6edf3', accent: '#8fa4ff' },
+    id: 'enterprise', label: 'Modern Enterprise', description: 'SaaS · Blue-gray surfaces', isLight: true,
+    bg: '#eef1f5', s1: '#ffffff', s2: '#f4f6f9', s3: '#e6eaf0',
+    border: '#d3dae3', borderSubtle: '#e6eaf0', borderStrong: '#adb8c6',
+    text: '#1a2233', textSubtle: '#4a5568', textMuted: '#718096', textDisabled: '#a0aec0',
+    accent: '#2563eb', accentHover: '#1d4ed8', accentText: '#ffffff',
+    success: '#059669', warning: '#d97706', error: '#dc2626', info: '#2563eb', special: '#0891b2',
+    scrollbar: '#c3ccd9', scrollbarHover: '#a3afc2', overlay: 'rgba(15, 23, 42, 0.45)',
+  },
+
+  // ── DARK ───────────────────────────────────────────────
+  {
+    id: 'midnight-black', label: 'Midnight Black', description: 'OLED · True black', isLight: false,
+    bg: '#000000', s1: '#0a0a0a', s2: '#141414', s3: '#1f1f1f',
+    border: '#262626', borderSubtle: '#1a1a1a', borderStrong: '#383838',
+    text: '#f5f5f5', textSubtle: '#a3a3a3', textMuted: '#6b6b6b', textDisabled: '#404040',
+    accent: '#5b9dff', accentHover: '#3b82f6', accentText: '#03070f',
+    success: '#22c55e', warning: '#eab308', error: '#ef4444', info: '#5b9dff', special: '#a855f7',
+    scrollbar: '#2a2a2a', scrollbarHover: '#3d3d3d', overlay: 'rgba(0, 0, 0, 0.8)',
   },
   {
-    id: 'midnight',
-    label: 'Midnight',
-    description: 'Ocean · Cyan accent',
-    preview: { bg: '#030c15', surface: '#071422', border: '#1c3553', text: '#d4e8f7', accent: '#00cbe8' },
+    id: 'carbon', label: 'Carbon', description: 'Default · Deep charcoal', isLight: false,
+    bg: '#0d1117', s1: '#161b22', s2: '#21262d', s3: '#2d333b',
+    border: '#30363d', borderSubtle: '#21262d', borderStrong: '#484f58',
+    text: '#e6edf3', textSubtle: '#8b949e', textMuted: '#6e7681', textDisabled: '#484f58',
+    accent: '#58a6ff', accentHover: '#4493f8', accentText: '#0d1117',
+    success: '#3fb950', warning: '#d29922', error: '#f85149', info: '#58a6ff', special: '#db61a2',
+    scrollbar: '#30363d', scrollbarHover: '#484f58', overlay: 'rgba(0, 0, 0, 0.65)',
   },
   {
-    id: 'ember',
-    label: 'Ember',
-    description: 'Warm · Amber accent',
-    preview: { bg: '#110a07', surface: '#1c130e', border: '#4a3228', text: '#f5e9d8', accent: '#f97316' },
+    id: 'graphite', label: 'Graphite', description: 'Soft dark gray', isLight: false,
+    bg: '#1c1c1e', s1: '#242426', s2: '#2c2c2e', s3: '#38383a',
+    border: '#3a3a3c', borderSubtle: '#2c2c2e', borderStrong: '#48484a',
+    text: '#ebebf0', textSubtle: '#aeaeb2', textMuted: '#7c7c80', textDisabled: '#48484a',
+    accent: '#818cf8', accentHover: '#6366f1', accentText: '#ffffff',
+    success: '#30d158', warning: '#ffd60a', error: '#ff453a', info: '#818cf8', special: '#bf5af2',
+    scrollbar: '#3a3a3c', scrollbarHover: '#48484a', overlay: 'rgba(0, 0, 0, 0.6)',
+  },
+  {
+    id: 'ocean', label: 'Ocean Night', description: 'Linear · Navy dark', isLight: false,
+    bg: '#0b1221', s1: '#111a2e', s2: '#18243d', s3: '#22304d',
+    border: '#25344f', borderSubtle: '#18243d', borderStrong: '#34466a',
+    text: '#dbe5f5', textSubtle: '#93a4c2', textMuted: '#5f7299', textDisabled: '#34466a',
+    accent: '#6e8bff', accentHover: '#5872f0', accentText: '#ffffff',
+    success: '#4ade80', warning: '#fbbf24', error: '#f87171', info: '#7aa2ff', special: '#818cf8',
+    scrollbar: '#25344f', scrollbarHover: '#34466a', overlay: 'rgba(2, 6, 18, 0.7)',
+  },
+  {
+    id: 'forest', label: 'Forest Dark', description: 'Green dark', isLight: false,
+    bg: '#0c1410', s1: '#121d17', s2: '#1a2a20', s3: '#24382b',
+    border: '#28402f', borderSubtle: '#1a2a20', borderStrong: '#36543f',
+    text: '#e3f0e8', textSubtle: '#9cbfa8', textMuted: '#6a8a76', textDisabled: '#36543f',
+    accent: '#4ade80', accentHover: '#22c55e', accentText: '#0c1410',
+    success: '#4ade80', warning: '#fbbf24', error: '#f87171', info: '#38bdf8', special: '#2dd4bf',
+    scrollbar: '#28402f', scrollbarHover: '#36543f', overlay: 'rgba(0, 0, 0, 0.65)',
+  },
+  {
+    id: 'crimson', label: 'Crimson Dark', description: 'Red dark', isLight: false,
+    bg: '#160c0e', s1: '#1f1216', s2: '#2b1a1f', s3: '#392329',
+    border: '#44292f', borderSubtle: '#2b1a1f', borderStrong: '#5a363d',
+    text: '#f5e3e6', textSubtle: '#c89ba3', textMuted: '#936a72', textDisabled: '#44292f',
+    accent: '#f43f5e', accentHover: '#e11d48', accentText: '#ffffff',
+    success: '#4ade80', warning: '#fbbf24', error: '#fb7185', info: '#60a5fa', special: '#f472b6',
+    scrollbar: '#44292f', scrollbarHover: '#5a363d', overlay: 'rgba(0, 0, 0, 0.7)',
+  },
+  {
+    id: 'royal', label: 'Royal Purple', description: 'Premium · Purple', isLight: false,
+    bg: '#0f0a1f', s1: '#18112e', s2: '#211836', s3: '#2e2148',
+    border: '#332552', borderSubtle: '#211836', borderStrong: '#463670',
+    text: '#ece7f7', textSubtle: '#b3a3d4', textMuted: '#7e6ba3', textDisabled: '#463670',
+    accent: '#a855f7', accentHover: '#9333ea', accentText: '#ffffff',
+    success: '#4ade80', warning: '#fbbf24', error: '#f87171', info: '#c084fc', special: '#d946ef',
+    scrollbar: '#332552', scrollbarHover: '#463670', overlay: 'rgba(0, 0, 0, 0.7)',
+  },
+  {
+    id: 'cyber', label: 'Cyber Neon', description: 'Futuristic · Neon', isLight: false,
+    bg: '#0a0e16', s1: '#0f1622', s2: '#141f30', s3: '#1c2b42',
+    border: '#1f3a4d', borderSubtle: '#141f30', borderStrong: '#2a5066',
+    text: '#d6f7ff', textSubtle: '#79c7d9', textMuted: '#4d8499', textDisabled: '#2a5066',
+    accent: '#00f0ff', accentHover: '#00d4e0', accentText: '#04141a',
+    success: '#00ff9d', warning: '#ffd400', error: '#ff3b6b', info: '#36d6ff', special: '#b14bff',
+    scrollbar: '#1f3a4d', scrollbarHover: '#2a5066', overlay: 'rgba(0, 0, 0, 0.75)',
+  },
+  {
+    id: 'nord', label: 'Nord Arctic', description: 'Nord · Blue-gray', isLight: false,
+    bg: '#2e3440', s1: '#343b48', s2: '#3b4252', s3: '#434c5e',
+    border: '#4c566a', borderSubtle: '#3b4252', borderStrong: '#5a657a',
+    text: '#eceff4', textSubtle: '#d8dee9', textMuted: '#9aa5b8', textDisabled: '#5a657a',
+    accent: '#88c0d0', accentHover: '#8fbcbb', accentText: '#2e3440',
+    success: '#a3be8c', warning: '#ebcb8b', error: '#bf616a', info: '#81a1c1', special: '#b48ead',
+    scrollbar: '#4c566a', scrollbarHover: '#5a657a', overlay: 'rgba(0, 0, 0, 0.5)',
   },
 ];
+
+export const THEME_PRESETS = Object.fromEntries(SPECS.map((s) => [s.id, buildTheme(s)]));
+
+// Metadata for ThemePanel cards (preview swatches + labels).
+export const THEME_META = SPECS.map((s) => ({
+  id: s.id,
+  label: s.label,
+  description: s.description,
+  isLight: s.isLight,
+  preview: { bg: s.bg, surface: s.s1, border: s.border, text: s.text, accent: s.accent },
+}));
+
+// Ids of the light themes — used to resolve light/dark UI affordances (toggle icon, isDarkMode).
+export const LIGHT_THEME_IDS = SPECS.filter((s) => s.isLight).map((s) => s.id);

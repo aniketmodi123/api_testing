@@ -68,17 +68,17 @@ const EDITABLE_TOKENS = [
 
 export default function CustomThemeEditor({ preferences, onPreviewChange, onActivate }) {
   const [baseTheme, setBaseTheme] = useState(preferences.theme);
-  // Same fallback as the engine's resolveTokens(): THEME_META can list a theme id with
-  // no matching THEME_PRESETS entry (e.g. 'deep-dark' today) — fall back to 'dark'
-  // rather than silently spreading undefined into an empty overrides object.
+  // Same fallback as the engine's resolveTokens(): if a stored theme id has no matching
+  // THEME_PRESETS entry, fall back to 'carbon' (the default) rather than silently
+  // spreading undefined into an empty overrides object.
   const [overrides, setOverrides] = useState(
-    () => ({ ...(THEME_PRESETS[preferences.theme] ?? THEME_PRESETS.dark) }),
+    () => ({ ...(THEME_PRESETS[preferences.theme] ?? THEME_PRESETS.carbon) }),
   );
   const [themeName, setThemeName] = useState('My Theme');
 
   // Switching the base theme resets all edits back to that preset's values.
   useEffect(() => {
-    setOverrides({ ...(THEME_PRESETS[baseTheme] ?? THEME_PRESETS.dark) });
+    setOverrides({ ...(THEME_PRESETS[baseTheme] ?? THEME_PRESETS.carbon) });
   }, [baseTheme]);
 
   // Every override change drives the live preview pane (scoped element, no persist).

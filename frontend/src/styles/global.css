@@ -1,4 +1,11 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto+Mono:wght@400;500&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Source+Sans+3:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap");
+@import url("https://fonts.cdnfonts.com/css/cascadia-code");
+
+/* Commercial code fonts — cannot be bundled. To enable, drop the licensed .woff2 files
+   under frontend/public/fonts/ and uncomment the matching @font-face block:
+   @font-face { font-family: "Berkeley Mono"; src: url("/fonts/BerkeleyMono.woff2") format("woff2"); font-display: swap; }
+   @font-face { font-family: "MonoLisa";      src: url("/fonts/MonoLisa.woff2")      format("woff2"); font-display: swap; }
+   Until then the Berkeley Mono / MonoLisa code-font presets fall back to JetBrains Mono. */
 
 * {
   box-sizing: border-box;

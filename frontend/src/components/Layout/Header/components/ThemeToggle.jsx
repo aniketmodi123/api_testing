@@ -1,20 +1,15 @@
 import { useState } from 'react';
-import { FiMonitor, FiMoon, FiSun } from 'react-icons/fi';
+import { FiMoon, FiSun } from 'react-icons/fi';
 import ThemePanel from '../../../ThemePanel/ThemePanel.jsx';
 import { useTheme } from '../../../ThemeContext.jsx';
+import { LIGHT_THEME_IDS } from '../../../../themes/index.js';
 import styles from './HeaderComponents.module.css';
-
-const THEME_ICONS = {
-  light: FiSun,
-  dark: FiMoon,
-  'deep-dark': FiMonitor,
-};
 
 const ThemeToggle = () => {
   const { preferences } = useTheme();
   const [isOpen, setIsOpen] = useState(false);
 
-  const CurrentIcon = THEME_ICONS[preferences.theme] ?? FiMoon;
+  const CurrentIcon = LIGHT_THEME_IDS.includes(preferences.theme) ? FiSun : FiMoon;
 
   return (
     <div className={styles.buttonContainer}>

@@ -1,3 +1,4 @@
+import { isHex, accentComponentTokens, buildAccentOverride } from './customTheme.js';
 import { STATIC_COLOR_TOKENS } from './tokens/colors.js';
 import { STATIC_TYPOGRAPHY_TOKENS } from './tokens/typography.js';
 import { THEME_PRESETS } from './presets/themes.js';
@@ -12,16 +13,17 @@ import { EDITOR_PRESETS } from './presets/editorThemes.js';
 import { A11Y_PRESETS } from './presets/a11y.js';
 
 export const DEFAULT_PREFERENCES = {
-  theme: 'dark',
+  theme: 'carbon',
   accent: 'default',
   font: 'inter',
   codeFont: 'jetbrains',
   spacing: 'default',
-  radius: 'default',
+  radius: 'modern',
   shadow: 'flat',
-  motion: 'subtle',
+  motion: 'balanced',
   editor: 'tokyonight',
   a11y: 'standard',
+  customAccent: null, // a custom accent hex (#rrggbb); wins over the accent preset when set
   customTheme: null, // name of an active custom theme, if any
 };
 
@@ -49,20 +51,30 @@ function savePreferences(prefs) {
 // font → codeFont → spacing → radius → shadow → motion → editor → a11y.
 // `customOverrides` (an active custom theme's token_map) wins over everything.
 function resolveTokens(prefs, customOverrides) {
+  // Accent layer: a preset's tuned tokens (extended so the accent also cascades to the
+  // primary button / focus ring / sidebar), or a full override built from a custom hex.
+  // A custom accent always wins over the preset.
   const accentPreset = ACCENT_PRESETS[prefs.accent];
-  const accentOverride = accentPreset && accentPreset.value ? accentPreset.value : {};
+  let accentOverride = {};
+  if (accentPreset && accentPreset.value) {
+    const v = accentPreset.value;
+    accentOverride = { ...v, ...accentComponentTokens(v['--accent'], v['--accent-hover'], v['--accent-dim']) };
+  }
+  if (prefs.customAccent && isHex(prefs.customAccent)) {
+    accentOverride = buildAccentOverride(prefs.customAccent);
+  }
 
   return {
     ...STATIC_COLOR_TOKENS,
     ...STATIC_TYPOGRAPHY_TOKENS,
-    ...(THEME_PRESETS[prefs.theme] ?? THEME_PRESETS.dark),
+    ...(THEME_PRESETS[prefs.theme] ?? THEME_PRESETS.carbon),
     ...accentOverride,
     ...(FONT_PRESETS[prefs.font] ?? FONT_PRESETS.inter),
     ...(CODE_FONT_PRESETS[prefs.codeFont] ?? CODE_FONT_PRESETS.jetbrains),
     ...(SPACING_PRESETS[prefs.spacing] ?? SPACING_PRESETS.default),
-    ...(RADIUS_PRESETS[prefs.radius] ?? RADIUS_PRESETS.default),
+    ...(RADIUS_PRESETS[prefs.radius] ?? RADIUS_PRESETS.modern),
     ...(SHADOW_PRESETS[prefs.shadow] ?? SHADOW_PRESETS.flat),
-    ...(MOTION_PRESETS[prefs.motion] ?? MOTION_PRESETS.subtle),
+    ...(MOTION_PRESETS[prefs.motion] ?? MOTION_PRESETS.balanced),
     ...(EDITOR_PRESETS[prefs.editor] ?? EDITOR_PRESETS.tokyonight),
     ...(A11Y_PRESETS[prefs.a11y] ?? A11Y_PRESETS.standard),
     ...(customOverrides ?? {}),
@@ -105,7 +117,7 @@ export function applyPresetToElement(element, preferences, customOverrides = nul
 }
 
 export { loadPreferences, resolveTokens, THEME_PRESETS, FONT_PRESETS };
-export { THEME_META } from './presets/themes.js';
+export { THEME_META, LIGHT_THEME_IDS } from './presets/themes.js';
 export { FONT_META } from './presets/fonts.js';
 export { ACCENT_META } from './presets/accents.js';
 export { CODE_FONT_META } from './presets/codeFonts.js';

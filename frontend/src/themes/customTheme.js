@@ -47,6 +47,43 @@ export function deriveAccent(hex) {
   };
 }
 
+// Darken a hex by scaling each channel — used to derive a hover shade from an accent.
+function darken(hex, f = 0.82) {
+  const c = hex.replace('#', '');
+  const ch = (i) => Math.round(parseInt(c.slice(i, i + 2), 16) * f);
+  const h = (n) => Math.min(255, n).toString(16).padStart(2, '0');
+  return `#${h(ch(0))}${h(ch(2))}${h(ch(4))}`;
+}
+
+// Component tokens that must track the accent so it cascades to primary buttons, focus
+// rings, and the active sidebar state (theme presets hardcode these to a hex, so an
+// accent change has to re-set them explicitly rather than relying on var(--accent)).
+export function accentComponentTokens(hex, hover, dim) {
+  return {
+    '--btn-primary-bg': hex,
+    '--btn-primary-hover': hover ?? darken(hex),
+    '--border-focus': hex,
+    '--input-focus-border': hex,
+    '--sidebar-icon-active': hex,
+    '--sidebar-active-bg': dim ?? hexToDim(hex, 0.1),
+  };
+}
+
+// Full accent override from a single custom hex: the accent tokens plus a derived hover
+// shade, a contrast-safe on-accent text color, a dim tint, and the component tokens.
+export function buildAccentOverride(hex) {
+  const hover = darken(hex);
+  const text = relativeLuminance(hex) > 0.5 ? '#1a1a1a' : '#ffffff';
+  const dim = hexToDim(hex, 0.14);
+  return {
+    '--accent': hex,
+    '--accent-hover': hover,
+    '--accent-text': text,
+    '--accent-dim': dim,
+    ...accentComponentTokens(hex, hover, dim),
+  };
+}
+
 const CUSTOM_THEMES_KEY = 'polaris-custom-themes';
 
 // Read the saved custom-theme list (fallback store; Phase H moves this to the backend).
