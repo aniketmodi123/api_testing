@@ -31,7 +31,7 @@ async def get_current_user_profile(
         user = result.scalar_one_or_none()
 
         if user is None:
-            return create_response(400, error_message="User not found")
+            return create_response(404, error_message="User not found")
         data= {
             "id": user.id  ,
             "username": user.username ,
@@ -39,6 +39,6 @@ async def get_current_user_profile(
             "god": user.god ,
             "created_at": user.created_at
         }
-        return create_response(200, value_correction(data))
+        return create_response(200, value_correction(data), UserResponse)
     except Exception as e:
-        ExceptionHandler(e)
+        return ExceptionHandler(e)

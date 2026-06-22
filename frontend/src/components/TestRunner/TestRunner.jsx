@@ -1,5 +1,9 @@
-import { useEffect, useState } from 'react';
-import { useApi } from '../../store/api';
+import { useState } from 'react';
+import {
+  useGetApiQuery,
+  useGetTestCaseDetailsQuery,
+  useRunTestMutation,
+} from '../../store/apiSlice';
 import styles from './TestRunner.module.css';
 
 // Copy to clipboard utility function
@@ -70,36 +74,36 @@ const TestRunner = ({ fileId }) => {
   const [expandedResults, setExpandedResults] = useState({});
   const [selectedTestCaseId, setSelectedTestCaseId] = useState(null);
 
+  // Server reads come from the single RTK Query cache (file api + its test cases).
   const {
-    testCases,
-    getTestCases,
-    runTest,
-    testResults,
-    isLoading,
-    error,
-    getTestCaseDetails,
-    testCaseDetails,
-    clearTestCaseDetails,
-  } = useApi();
+    data: apiData,
+    isLoading: isApiLoading,
+    error: apiError,
+  } = useGetApiQuery({ fileId, includeCases: true }, { skip: !fileId });
+  const testCases = apiData?.test_cases ?? [];
 
-  // Load test cases when component mounts
-  useEffect(() => {
-    if (fileId) {
-      getTestCases(fileId);
-    }
+  const [runTest, { data: testResults, isLoading: isRunning, error: runError }] =
+    useRunTestMutation();
 
-    // Clear test case details when component unmounts
-    return () => {
-      clearTestCaseDetails();
-    };
-  }, [fileId, getTestCases, clearTestCaseDetails]);
+  // Details load reactively from the expanded row's id.
+  const { data: testCaseDetails } = useGetTestCaseDetailsQuery(
+    selectedTestCaseId,
+    { skip: !selectedTestCaseId }
+  );
+
+  const isLoading = isApiLoading || isRunning;
+  const error =
+    apiError || runError
+      ? (apiError || runError)?.data?.error_message ||
+        'Something went wrong'
+      : null;
 
   // Run test cases
   const handleRunTests = async () => {
     try {
       // Run selected test cases or all if none selected
       const casesToRun = selectedCases.length > 0 ? selectedCases : null;
-      await runTest(fileId, casesToRun);
+      await runTest({ fileId, caseId: casesToRun }).unwrap();
     } catch (err) {
       // Error handling without console logging
     }
@@ -121,13 +125,11 @@ const TestRunner = ({ fileId }) => {
       [caseId]: !prev[caseId],
     }));
 
-    // Fetch detailed test case information when expanding
+    // Expanding sets the id; the details query reacts to it (collapse clears it).
     if (!expandedResults[caseId]) {
       setSelectedTestCaseId(caseId);
-      getTestCaseDetails(caseId);
     } else {
       setSelectedTestCaseId(null);
-      clearTestCaseDetails();
     }
   };
 

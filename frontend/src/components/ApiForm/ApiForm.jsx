@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { headerService } from '../../services/headerService';
-import { useApi } from '../../store/api';
+import {
+  useCreateApiMutation,
+  useGetApiQuery,
+  useUpdateApiMutation,
+} from '../../store/apiSlice';
 import { Button, JsonEditor } from '../common';
 import styles from './ApiForm.module.css';
 
@@ -137,16 +141,23 @@ const ApiForm = ({
   const [responseData, setResponseData] = useState(null);
   const [isTestRunning, setIsTestRunning] = useState(false);
 
-  const {
-    createApi,
-    getApi,
-    updateApi,
-    isLoading,
-    error,
-    activeApi,
-    setActiveApi,
-  } =
-    useApi();
+  // Editing reads the file's api record from the single RTK Query cache
+  // (apiId is the file id in this context — see loader note below).
+  const { data: activeApi } = useGetApiQuery(
+    { fileId: apiId, includeCases: true },
+    { skip: !apiId }
+  );
+  const [createApi, { isLoading: isCreating, error: createError }] =
+    useCreateApiMutation();
+  const [updateApi, { isLoading: isUpdating, error: updateError }] =
+    useUpdateApiMutation();
+
+  const isLoading = isCreating || isUpdating;
+  const error =
+    createError || updateError
+      ? (createError || updateError)?.data?.error_message ||
+        'Failed to save API'
+      : null;
 
   const resetFormState = useCallback(() => {
     setFormData(getInitialFormData());
@@ -156,29 +167,9 @@ const ApiForm = ({
     setIsTestRunning(false);
   }, []);
 
-  // Load API data if editing an existing API
-  useEffect(() => {
-    const loadApi = async () => {
-      if (apiId) {
-        try {
-          // For existing APIs, we need to use fileId which is actually the same as apiId in this context
-          // The getApi function expects a fileId, not an apiId
-          await getApi(apiId, true); // Include cases for comprehensive data
-        } catch (err) {
-          console.error('Failed to load API:', err);
-        }
-      }
-    };
-
-    loadApi();
-  }, [apiId, getApi]);
-
   useEffect(() => {
     resetFormState();
-    if (!apiId) {
-      setActiveApi(null);
-    }
-  }, [apiId, fileId, resetFormState, setActiveApi]);
+  }, [apiId, fileId, resetFormState]);
 
   // Update form when activeApi changes
   useEffect(() => {
@@ -526,13 +517,13 @@ const ApiForm = ({
 
       if (apiId) {
         // Update existing API
-        result = await updateApi(apiId, enhancedFormData);
+        result = await updateApi({ apiId, ...enhancedFormData }).unwrap();
       } else {
         // Create new API
-        result = await createApi(fileId, enhancedFormData);
+        result = await createApi({ fileId, ...enhancedFormData }).unwrap();
       }
 
-      onSave(result?.data);
+      onSave(result);
     } catch (err) {
       console.error('Error saving API definition:', err);
     }
@@ -553,7 +544,7 @@ const ApiForm = ({
           authorization: formData.authorization,
         };
 
-        await updateApi(apiId, configOnlyData);
+        await updateApi({ apiId, ...configOnlyData }).unwrap();
       } else {
         // If no API ID, we need to create a new API
         await saveApiDefinition();

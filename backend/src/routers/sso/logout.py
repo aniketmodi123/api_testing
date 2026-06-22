@@ -3,8 +3,8 @@ What this file does: Exposes the DELETE /logout route for blacklisting the calle
 """
 
 from fastapi import APIRouter, Header
+from schema import MessageResponse
 from utils import ExceptionHandler, blacklist_token, create_response
-from fastapi import APIRouter
 
 
 router = APIRouter()
@@ -21,6 +21,6 @@ async def logout_user(
         success = await blacklist_token(username, token=authorization)
         if not success:
             return create_response(206, error_message="Logout Unsuccessful")
-        return create_response(200, {"message":"Logout successful. Token is deactiveted."})
+        return create_response(200, {"message":"Logout successful. Token is deactiveted."}, MessageResponse)
     except Exception as e:
-        ExceptionHandler(e)
+        return ExceptionHandler(e)

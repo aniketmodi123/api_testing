@@ -9,7 +9,14 @@ import { json as jsonLang } from '@codemirror/lang-json';
 import { oneDark } from '@codemirror/theme-one-dark';
 import thinkingGif from '../../assets/think_emoji.gif';
 import { BackendApiCallService } from '../../services/backendApiCallService';
-import { useApi } from '../../store/api';
+import {
+  useBulkDeleteTestCasesMutation,
+  useDeleteTestCaseMutation,
+  useGetApiQuery,
+  useRunTestMutation,
+  useSaveApiMutation,
+  useSaveTestCaseMutation,
+} from '../../store/apiSlice';
 import { useEnvironment } from '../../store/environment';
 import { useNode } from '../../store/node';
 import { useWorkspace } from '../../store/workspace';
@@ -364,7 +371,7 @@ function KeyValueBodyTable({ rows, setRows, onSerialize }) {
 }
 
 export default function RequestPanel({ activeRequest, onMethodChange }) {
-  const { selectedNode, getNodeById } = useNode();
+  const { selectedNode, getNodeById, nodes } = useNode();
   const { variables, activeEnvironment } = useEnvironment();
   const variableSuggestionItems = useVariableSuggestions();
   const variableCompletion = useMemo(
@@ -372,25 +379,54 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
     [variableSuggestionItems]
   );
   const { isDarkMode } = useTheme();
-  const { activeWorkspace } = useWorkspace();
-  const {
-    getApi,
-    refreshApi,
-    getTestCases,
-    testCases,
-    activeApi,
-    runTest,
-    testResults,
-    clearTestResults,
-    createTestCase,
-    isLoading,
-    updateApi,
-    saveApi,
-    saveTestCase,
-    deleteTestCase,
-    bulkDeleteTestCases,
-    isFromCache,
-  } = useApi();
+  const { activeWorkspace, workspaceTree } = useWorkspace();
+  // Single RTK Query cache owns the file's api record + its test cases.
+  const fileNodeId =
+    selectedNode?.type === 'file' && selectedNode?.id ? selectedNode.id : null;
+  const { data: activeApi, isLoading } = useGetApiQuery(
+    { fileId: fileNodeId, includeCases: true },
+    { skip: !fileNodeId }
+  );
+  const testCases = activeApi?.test_cases ?? [];
+
+  // Breadcrumb shows the full folder path to the selected node, not just its name.
+  const breadcrumbPath = useMemo(() => {
+    const fallback =
+      selectedNode?.name ||
+      extractValue(activeApi, 'name', 'Untitled Request');
+    const targetId = selectedNode?.id;
+    if (!targetId) return fallback;
+
+    // Both sources hold the same nested file_tree; use whichever is populated.
+    const treeFromWorkspace = workspaceTree?.file_tree;
+    const roots =
+      Array.isArray(treeFromWorkspace) && treeFromWorkspace.length > 0
+        ? treeFromWorkspace
+        : nodes;
+    if (!Array.isArray(roots) || roots.length === 0) return fallback;
+
+    // DFS collects ancestor names from root down to the selected node.
+    const trail = [];
+    const dfs = nodeList => {
+      for (const node of nodeList) {
+        trail.push(node.name);
+        if (node.id === targetId) return true;
+        if (Array.isArray(node.children) && dfs(node.children)) return true;
+        trail.pop();
+      }
+      return false;
+    };
+
+    return dfs(roots) ? trail.join(' / ') : fallback;
+  }, [workspaceTree, nodes, selectedNode, activeApi]);
+
+  // runTest result persists on the mutation; reset() clears it on file switch.
+  const [runTest, { data: testResults, reset: clearTestResults }] =
+    useRunTestMutation();
+  const [saveApi] = useSaveApiMutation();
+  const [saveTestCase] = useSaveTestCaseMutation();
+  const [deleteTestCase] = useDeleteTestCaseMutation();
+  const [bulkDeleteTestCases] = useBulkDeleteTestCasesMutation();
 
   const [method, setMethod] = useState(
     activeRequest?.method || selectedNode?.method || 'GET'
@@ -483,6 +519,14 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
   // Initialize the body content and type when the activeApi changes
   useEffect(() => {
     if (activeApi) {
+      // Mirror the loaded api's endpoint/method onto the live request line
+      // (previously done in the getApi().then handler).
+      const apiEndpoint =
+        extractValue(activeApi, 'endpoint') || extractValue(activeApi, 'url');
+      if (apiEndpoint) setUrl(apiEndpoint);
+      const apiMethod = extractValue(activeApi, 'method');
+      if (apiMethod) setMethod(apiMethod);
+
       const requestBody =
         extractValue(activeApi, 'body') ||
         extractValue(activeApi, 'request_body') ||
@@ -589,7 +633,12 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
       setBodyContent('');
       setValidationSchema(JSON.stringify(defaultValidationSchema, null, 2));
     }
-  }, [activeApi]);
+    // Key on api identity + version, NOT the whole object: RTK test-case cache
+    // patches replace activeApi's reference (test_cases array) on every add/delete.
+    // Re-initing only when the api record itself loads/changes preserves unsaved
+    // request-line edits, matching the pre-RTK behavior.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeApi?.id, activeApi?.updated_at]);
 
   useEffect(() => {
     if (selectedNode) {
@@ -610,46 +659,13 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
         setUrl('');
       }
 
-      // Load API details if this is a file node
+      // File-node api record + test cases load via useGetApiQuery; the
+      // [activeApi] effect mirrors endpoint/method onto the request line.
       if (selectedNode.type === 'file' && selectedNode.id) {
-        // Load the API details
-        getApi(selectedNode.id)
-          .then(apiResponse => {
-            ('API data loaded:', apiResponse);
-
-            // Check if we got a 206 status (no API data)
-            if (apiResponse.status === 206) {
-            } else {
-              // Extract the API data from the response structure
-              const apiData = apiResponse?.data || {};
-
-              if (apiData) {
-                // Use the exact endpoint or URL from the API without modifying it
-                if (apiData.endpoint) {
-                  // Use the endpoint directly without adding any base URL
-                  setUrl(apiData.endpoint);
-                } else if (apiData.url) {
-                  // Use the URL directly if available
-                  setUrl(apiData.url);
-                }
-
-                // Set the method from the API
-                if (apiData.method) {
-                  setMethod(apiData.method);
-                }
-              }
-            }
-          })
-          .catch(err => console.error('Error loading API:', err));
-
-        // Load test cases for this API and reset selected test cases
         setSelectedTestCases([]);
-        getTestCases(selectedNode.id)
-          .then(testCasesResponse => {})
-          .catch(err => console.error('Error loading test cases:', err));
       }
     }
-  }, [selectedNode, getApi, getTestCases, clearTestResults]);
+  }, [selectedNode, clearTestResults]);
 
   const [activeTab, setActiveTab] = useState('api');
   const [responseTab, setResponseTab] = useState('body');
@@ -710,7 +726,7 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
 
     setIsSending(true);
     try {
-      const result = await runTest(selectedNode.id, selectedTestCases);
+      await runTest({ fileId: selectedNode.id, caseId: selectedTestCases }).unwrap();
       setActiveTab('apiTests');
     } catch (error) {
       console.error('Error running selected tests:', error);
@@ -731,10 +747,10 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
       // Extract test case ID from the test result
       const testCaseId = testResult.id || testResult.case_id;
       if (testCaseId) {
-        await runTest(selectedNode.id, [testCaseId]);
+        await runTest({ fileId: selectedNode.id, caseId: [testCaseId] }).unwrap();
       } else {
         // If no specific test case ID, run all tests
-        await runTest(selectedNode.id);
+        await runTest({ fileId: selectedNode.id }).unwrap();
       }
       setActiveTab('apiTests');
     } catch (error) {
@@ -766,11 +782,12 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
     if (!confirmDelete) return;
 
     try {
-      await bulkDeleteTestCases(casesToDelete);
-      // Clear selected test cases after deletion
+      await bulkDeleteTestCases({
+        caseIds: casesToDelete,
+        fileId: selectedNode.id,
+      }).unwrap();
+      // Clear selected test cases after deletion (list updates via cache patch).
       setSelectedTestCases([]);
-      // Refresh test cases list
-      await getTestCases(selectedNode.id);
     } catch (error) {
       console.error('Error deleting test cases:', error);
       alert(`Failed to delete test cases: ${error.message || 'Unknown error'}`);
@@ -1032,13 +1049,9 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
             },
           };
 
-      // Use the unified saveApi function for both create and update
-      await saveApi(selectedNode.id, apiData);
-
-      // Reload the API details if this was a new API
-      if (!activeApi) {
-        await getApi(selectedNode.id);
-      }
+      // Unified saveApi mutation for both create and update; cache-from-response
+      // (Sprint 2) patches the getApi entry, so no follow-up GET.
+      await saveApi({ fileId: selectedNode.id, ...apiData }).unwrap();
       setIsDirty(false);
     } catch (err) {
       console.error('Error saving API configuration:', err);
@@ -1103,11 +1116,13 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
       }
 
       try {
-        const result = await saveTestCase(selectedNode.id, testCaseData);
+        // Optimistic insert + cache-from-response patch the getApi entry.
+        const saved = await saveTestCase({
+          fileId: selectedNode.id,
+          ...testCaseData,
+        }).unwrap();
 
-        if (result && (result.data || result.success)) {
-          await getTestCases(selectedNode.id);
-        } else {
+        if (!saved) {
           alert('Failed to save test case. Please try again.');
         }
 
@@ -1169,10 +1184,8 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
 
     try {
       setIsUpdatingConfig(true);
-      const result = await saveApi(selectedNode.id, modalApiData);
-
-      // Reload the API details
-      await getApi(selectedNode.id);
+      // Cache-from-response (Sprint 2) patches the getApi entry, no follow-up GET.
+      await saveApi({ fileId: selectedNode.id, ...modalApiData }).unwrap();
       setEditingApiInModal(false);
     } catch (err) {
       console.error('Error saving API configuration:', err);
@@ -1187,11 +1200,12 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
 
     try {
       setIsSending(true);
-      const result = await runTest(selectedNode.id);
+      const result = await runTest({ fileId: selectedNode.id }).unwrap();
 
-      // Update the selected test result with new data if available
-      if (result && result.data && Array.isArray(result.data)) {
-        const updatedResult = result.data.find(
+      // Update the selected test result with new data if available (result is
+      // the normalized { test_cases: [...] } shape).
+      if (result && Array.isArray(result.test_cases)) {
+        const updatedResult = result.test_cases.find(
           r =>
             r.case === selectedTestResult.case ||
             r.name === selectedTestResult.name
@@ -1273,21 +1287,19 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
         throw new Error('Invalid fileId for saving test case');
       }
 
-      // Use the saveTestCase function from the store. If we have a fileId use it
-      // (store-style); otherwise fall back to selectedNode.id. Keep name sensible.
-      const result = await saveTestCase(
-        resolvedFileId,
-        {
-          name:
-            updatedData.name ||
-            `Test case - ${caseId || new Date().toLocaleTimeString()}`,
-          headers: updatedData.request?.headers || {},
-          params: updatedData.request?.params || {},
-          body: updatedData.request?.body || null,
-          expected: updatedData.expected || null,
-        },
-        caseId
-      );
+      // saveTestCase mutation handles create (no caseId) + update (caseId);
+      // passing fileId fires the optimistic cache patch (Sprint 3).
+      const result = await saveTestCase({
+        fileId: resolvedFileId,
+        caseId,
+        name:
+          updatedData.name ||
+          `Test case - ${caseId || new Date().toLocaleTimeString()}`,
+        headers: updatedData.request?.headers || {},
+        params: updatedData.request?.params || {},
+        body: updatedData.request?.body || null,
+        expected: updatedData.expected || null,
+      }).unwrap();
 
       return result;
     } catch (error) {
@@ -1386,10 +1398,7 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
               strokeLinejoin="round"
             />
           </svg>
-          <span className={styles.breadcrumbName}>
-            {selectedNode?.name ||
-              extractValue(activeApi, 'name', 'Untitled Request')}
-          </span>
+          <span className={styles.breadcrumbName}>{breadcrumbPath}</span>
         </div>
 
         <div className={styles.headerActions}>
@@ -1462,20 +1471,6 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
           variables={variables || {}}
           placeholder="Paste a URL or cURL command here"
         />
-
-        {isFromCache && selectedNode?.id && (
-          <button
-            className={styles.cacheRefreshBtn}
-            title="Loaded from local cache — click to fetch fresh data from server"
-            onClick={() => {
-              refreshApi(selectedNode.id).catch(err =>
-                console.error('Refresh failed:', err)
-              );
-            }}
-          >
-            ↻ cached
-          </button>
-        )}
 
         <div className={styles.buttonGroup}>
           <div className="sendButtonContainer">
@@ -2180,7 +2175,7 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
                           );
                           return;
                         }
-                        runTest(selectedNode.id);
+                        runTest({ fileId: selectedNode.id });
                       }}
                       disabled={isSending}
                     >
@@ -2234,10 +2229,10 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
                                 );
                                 return;
                               }
-                              runTest(
-                                selectedNode.id,
-                                testCase.id || testCase.case_id
-                              );
+                              runTest({
+                                fileId: selectedNode.id,
+                                caseId: testCase.id || testCase.case_id,
+                              });
                             }}
                             disabled={isSending}
                           >
@@ -2267,9 +2262,11 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
                               );
                               if (!confirmDelete) return;
                               try {
-                                await deleteTestCase(id);
-                                // Refresh list after deletion
-                                getTestCases(selectedNode.id);
+                                // Optimistic removal patches the cached list.
+                                await deleteTestCase({
+                                  caseId: id,
+                                  fileId: selectedNode.id,
+                                }).unwrap();
                               } catch (err) {
                                 console.error(
                                   'Failed to delete test case:',
@@ -2522,8 +2519,8 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
                 fileId={selectedNode.id}
                 caseId={editingTestCaseId}
                 onSave={() => {
+                  // TestCaseForm's save mutation invalidates the file cache → list refreshes.
                   setShowTestCaseForm(false);
-                  getTestCases(selectedNode.id);
                 }}
                 onCancel={() => setShowTestCaseForm(false)}
               />

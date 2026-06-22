@@ -10,7 +10,7 @@ from dateutil.relativedelta import relativedelta
 from config import get_db
 from common_querys import log_failed_attempt
 from models import User, OTPAttempt
-from schema import ChangePassword, ForgotPassword
+from schema import ChangePassword, ForgotPassword, MessageResponse
 from utils import (
     ExceptionHandler,
     blacklist_token,
@@ -90,12 +90,12 @@ async def change_password(
         _user = res.scalar_one_or_none()
 
         if not _user:
-            return create_response(206, "User not found")
+            return create_response(404, error_message="User not found")
 
         if not _user.is_active:
             # if your log_failed_attempt is sync, remove await
             await log_failed_attempt(db, username)
-            return create_response(206, error_message="User account is not active")
+            return create_response(403, error_message="User account is not active")
 
         if not verify_password(request.old_password, _user.password):
             await log_failed_attempt(db, username)
@@ -107,11 +107,11 @@ async def change_password(
         await blacklist_token(username)
 
         await db.commit()
-        return create_response(200, {"message": "Password updated successfully"})
+        return create_response(200, {"message": "Password updated successfully"}, MessageResponse)
 
     except Exception as e:
         await db.rollback()
-        ExceptionHandler(e)
+        return ExceptionHandler(e)
 
 
 @router.post("/forgot-password")
@@ -132,18 +132,18 @@ async def forgot_password(
         _user = result.scalars().first()
 
         if not _user:
-            return create_response(206, "User not found")
+            return create_response(404, error_message="User not found")
 
         if not _user.is_active:
             await log_failed_attempt(db, user_name)
-            return create_response(206, "User account is not active")
+            return create_response(403, error_message="User account is not active")
 
         _user.password = get_password_hash(request.new_password)
 
         await blacklist_token(user_name)
 
         await db.commit()
-        return create_response(200, {"message": "Password updated successfully"})
+        return create_response(200, {"message": "Password updated successfully"}, MessageResponse)
 
     except Exception as e:
         await db.rollback()

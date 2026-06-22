@@ -30,13 +30,13 @@ async def delete_user(
         user = result.scalar_one_or_none()
 
         if user is None:
-            return create_response(400, error_message="User not found")
+            return create_response(404, error_message="User not found")
 
         await blacklist_token(username)
         user.is_active = False
         await db.commit()
 
-        return create_response(200 , error_message= "User account successfully deleted")
+        return create_response(200, message="User account successfully deleted")
     except Exception as e:
         await db.rollback()
-        ExceptionHandler(e)
+        return ExceptionHandler(e)

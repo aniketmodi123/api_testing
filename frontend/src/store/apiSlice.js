@@ -1,13 +1,11 @@
 import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
-
-// Get API base URL from environment
-const API_BASE =
-  import.meta.env.VITE_API_BASE || 'https://api-testing-2vjt.onrender.com';
+import { unwrapBackendResponse } from './unwrapResponse';
+import { API_BASE, getAuthHeaders } from '../api';
 
 // Base query with auth headers and response transformation
 const baseQuery = fetchBaseQuery({
   baseUrl: API_BASE,
-  prepareHeaders: (headers, { getState }) => {
+  prepareHeaders: headers => {
     // Always add accept header
     headers.set('accept', 'application/json');
 
@@ -18,47 +16,15 @@ const baseQuery = fetchBaseQuery({
       headers.set('User-Agent', 'API-Testing-Tool/1.0');
     }
 
-    // Get token from localStorage or Redux state
-    const token = localStorage.getItem('token');
-    const user = localStorage.getItem('user');
-
-    let userObj = null;
-    try {
-      if (user) {
-        userObj = JSON.parse(user);
-      }
-    } catch (e) {
-      console.error('Error parsing user from localStorage:', e);
-    }
-
-    // Add authorization header
-    if (token) {
-      const bearerToken = token.startsWith('Bearer ')
-        ? token
-        : `Bearer ${token}`;
-      headers.set('authorization', bearerToken);
-    }
-
-    // Add username header
-    if (userObj?.email) {
-      headers.set('username', userObj.email);
-    }
+    // Apply the shared auth headers (single source — see getAuthHeaders in api.js).
+    const { Authorization, username } = getAuthHeaders();
+    if (Authorization) headers.set('authorization', Authorization);
+    if (username) headers.set('username', username);
 
     // Add workspace ID header from localStorage if available
     const activeWorkspaceId = localStorage.getItem('activeWorkspaceId');
     if (activeWorkspaceId) {
       headers.set('workspace-id', activeWorkspaceId);
-    }
-
-    // Debug: log presence of auth info (do NOT log token contents)
-    if (import.meta.env.VITE_ENABLE_DEBUG_LOGS === 'true') {
-      try {
-        const hasToken = !!token;
-        const usernameHeader = user ? (() => { try { return JSON.parse(user).email } catch (e) { return null } })() : null;
-        console.debug('[apiSlice.prepareHeaders] hasToken:', hasToken, 'username:', usernameHeader, 'workspaceId:', activeWorkspaceId);
-      } catch (e) {
-        console.debug('[apiSlice.prepareHeaders] debug parse error', e);
-      }
     }
 
     // Add content-type for POST/PUT requests
@@ -70,75 +36,10 @@ const baseQuery = fetchBaseQuery({
   },
 });
 
-// Wrapper to handle standard backend response format
+// Wrapper to unwrap the standard backend response envelope.
 const baseQueryWithTransform = async (args, api, extraOptions) => {
   const result = await baseQuery(args, api, extraOptions);
-
-  if (result.data) {
-    console.log('API Response:', {
-      url: args.url || args,
-      response: result.data,
-    });
-
-    // Handle standard backend response format
-    if (
-      result.data &&
-      typeof result.data === 'object' &&
-      'response_code' in result.data
-    ) {
-      const { response_code, data, error_message } = result.data;
-
-      // Handle special cases first
-      if (
-        response_code === 206 &&
-        error_message === 'No variables found for this environment'
-      ) {
-        // Return empty object for "no variables" case
-        return { ...result, data: {} };
-      }
-
-      // For successful responses, return the appropriate data
-      if (response_code >= 200 && response_code < 300 && data !== undefined) {
-        // Special handling for environment variables endpoint
-        const url = args.url || args;
-        if (
-          typeof url === 'string' &&
-          url.includes('/variables') &&
-          !url.includes('/variables/')
-        ) {
-          // For environment variables list endpoint, extract the variables object
-          if (data && typeof data === 'object' && 'variables' in data) {
-            return { ...result, data: data.variables };
-          }
-        }
-
-        // Special handling for environments list endpoint
-        if (
-          typeof url === 'string' &&
-          url.includes('/environments') &&
-          !url.includes('/environments/')
-        ) {
-          // For environments list endpoint, extract the environments array
-          if (data && typeof data === 'object' && 'environments' in data) {
-            return { ...result, data: data.environments };
-          }
-        }
-
-        // For all other successful responses, return the data property
-        return { ...result, data: data };
-      }
-
-      // For error responses, keep the full structure for error handling
-      if (error_message) {
-        return {
-          ...result,
-          error: { status: response_code, data: result.data },
-        };
-      }
-    }
-  }
-
-  return result;
+  return unwrapBackendResponse(result, args.url || args);
 };
 
 // Base query with auth handling and error processing
@@ -166,11 +67,85 @@ const baseQueryWithAuth = async (args, api, extraOptions) => {
   return result;
 };
 
+// Shape a raw api record the way editor consumers expect.
+// Mirrors store/api.jsx normalizeApi so the migrated cache matches the old one.
+const normalizeApi = api =>
+  api && typeof api === 'object'
+    ? {
+        ...api,
+        method: api.method || 'GET',
+        url: api.url || api.endpoint || '',
+        description: api.description || '',
+        headers: api.headers || {},
+      }
+    : api;
+
+// Editor reads a file's api record AND its test cases from ONE getApi cache entry.
+// Test-case mutations patch this same entry — no separate test-case cache to reconcile.
+const apiArg = fileId => ({ fileId, includeCases: true });
+
+// Map one raw case-result shape (backends differ) into the unified row the runner UI reads.
+const mapRunCase = (tc, index = 0) => ({
+  id: tc?.id ?? tc?.case_id ?? index,
+  name: tc?.name ?? tc?.case ?? `Test Case ${index + 1}`,
+  passed: Boolean(tc?.passed ?? tc?.ok ?? tc?.success ?? false),
+  failures: Array.isArray(tc?.failures)
+    ? tc.failures
+    : tc?.error
+      ? [tc.error]
+      : [],
+  status_code:
+    tc?.status_code ?? tc?.status ?? tc?.response?.status_code ?? null,
+  duration_ms: tc?.duration_ms ?? tc?.duration ?? tc?.execution_time ?? null,
+  request: tc?.request ?? null,
+  response: tc?.response ?? (tc?.json ? { json: tc.json } : null),
+  raw: tc,
+});
+
+// Normalize the /run payload (array, { test_cases }, or single object) into
+// { test_cases: [...] } — the shape RequestPanel/TestRunner consume.
+const normalizeRunResult = data => {
+  if (!data) return data;
+  if (Array.isArray(data)) {
+    return { test_cases: data.map((tc, idx) => mapRunCase(tc, idx)) };
+  }
+  if (data.test_cases) {
+    return {
+      ...data,
+      test_cases: (data.test_cases || []).map((tc, idx) => mapRunCase(tc, idx)),
+    };
+  }
+  const single = mapRunCase(
+    {
+      case_id: data.case_id,
+      name: data.name || data.case || 'Single Test Execution',
+      response: data.response || data.body,
+      passed: data.passed,
+      error: data.error,
+      status_code: data.status_code,
+      duration: data.execution_time || data.duration,
+    },
+    0
+  );
+  return { test_cases: [single] };
+};
+
+// Patch the cached file view's test_cases list in place. No-op if the file is not
+// cached yet (the mutation's invalidatesTag then covers the refetch).
+const patchCases = (dispatch, fileId, recipe) =>
+  dispatch(
+    apiSlice.util.updateQueryData('getApi', apiArg(fileId), draft => {
+      if (!draft) return;
+      if (!Array.isArray(draft.test_cases)) draft.test_cases = [];
+      recipe(draft.test_cases);
+    })
+  );
+
 // Create the API slice
 export const apiSlice = createApi({
   reducerPath: 'api',
   baseQuery: baseQueryWithAuth,
-  tagTypes: ['Workspace', 'User', 'Environment', 'Node', 'ApiCase', 'Header', 'GlobalVariable', 'BulkTestSchedule', 'BulkTestExecution', 'ScheduleAlert', 'WorkspaceMember', 'CollectionVariable'],
+  tagTypes: ['Workspace', 'User', 'Environment', 'Variable', 'Node', 'ApiCase', 'Header', 'GlobalVariable', 'BulkTestSchedule', 'BulkTestExecution', 'ScheduleAlert', 'WorkspaceMember', 'CollectionVariable'],
   endpoints: builder => ({
     // Authentication endpoints
     signIn: builder.mutation({
@@ -304,8 +279,13 @@ export const apiSlice = createApi({
         // If response is already an array or direct data, return as is
         return response;
       },
-      providesTags: (result, error, workspaceId) => [
-        { type: 'Environment', id: workspaceId },
+      providesTags: result => [
+        { type: 'Environment', id: 'LIST' },
+        ...(Array.isArray(result)
+          ? result
+              .filter(env => env && env.id != null)
+              .map(env => ({ type: 'Environment', id: env.id }))
+          : []),
       ],
     }),
 
@@ -323,9 +303,7 @@ export const apiSlice = createApi({
         }
         return response;
       },
-      invalidatesTags: (result, error, { workspaceId }) => [
-        { type: 'Environment', id: workspaceId },
-      ],
+      invalidatesTags: () => [{ type: 'Environment', id: 'LIST' }],
     }),
 
     updateEnvironment: builder.mutation({
@@ -342,7 +320,9 @@ export const apiSlice = createApi({
         }
         return response;
       },
-      invalidatesTags: ['Environment'],
+      invalidatesTags: (result, error, { environmentId }) => [
+        { type: 'Environment', id: environmentId },
+      ],
     }),
 
     deleteEnvironment: builder.mutation({
@@ -350,7 +330,10 @@ export const apiSlice = createApi({
         url: `/environment/workspace/${workspaceId}/environments/${environmentId}`,
         method: 'DELETE',
       }),
-      invalidatesTags: ['Environment'],
+      invalidatesTags: (result, error, { environmentId }) => [
+        { type: 'Environment', id: environmentId },
+        { type: 'Environment', id: 'LIST' },
+      ],
     }),
 
     getEnvironmentVariables: builder.query({
@@ -391,7 +374,7 @@ export const apiSlice = createApi({
         return response;
       },
       providesTags: (result, error, { environmentId }) => [
-        { type: 'Environment', id: environmentId },
+        { type: 'Variable', id: environmentId },
       ],
     }),
 
@@ -410,7 +393,7 @@ export const apiSlice = createApi({
         return response;
       },
       invalidatesTags: (result, error, { environmentId }) => [
-        { type: 'Environment', id: environmentId },
+        { type: 'Variable', id: environmentId },
       ],
     }),
 
@@ -420,7 +403,7 @@ export const apiSlice = createApi({
         method: 'DELETE',
       }),
       invalidatesTags: (result, error, { environmentId }) => [
-        { type: 'Environment', id: environmentId },
+        { type: 'Variable', id: environmentId },
       ],
     }),
 
@@ -430,7 +413,21 @@ export const apiSlice = createApi({
         url: '/api/list',
         params: filters,
       }),
-      providesTags: ['ApiCase'],
+      providesTags: result => {
+        const items = Array.isArray(result)
+          ? result
+          : Array.isArray(result?.items)
+            ? result.items
+            : Array.isArray(result?.data)
+              ? result.data
+              : [];
+        return [
+          { type: 'ApiCase', id: 'LIST' },
+          ...items
+            .filter(item => item && item.id != null)
+            .map(item => ({ type: 'ApiCase', id: item.id })),
+        ];
+      },
     }),
 
     getApi: builder.query({
@@ -438,6 +435,9 @@ export const apiSlice = createApi({
         url: `/file/${fileId}/api`,
         params: { include_cases: includeCases },
       }),
+      // Normalize the api record (method/url/headers defaults) while keeping
+      // the test_cases list spread in — matches the old Zustand cache shape.
+      transformResponse: data => normalizeApi(data),
       providesTags: (result, error, { fileId }) => [
         { type: 'ApiCase', id: fileId },
       ],
@@ -449,7 +449,24 @@ export const apiSlice = createApi({
         method: 'POST',
         body: apiData,
       }),
-      invalidatesTags: ['ApiCase'],
+      // Cache-from-response: seed the file view from the created entity, no follow-up GET.
+      async onQueryStarted({ fileId }, { dispatch, queryFulfilled }) {
+        try {
+          const { data: saved } = await queryFulfilled;
+          if (!saved) return;
+          dispatch(
+            apiSlice.util.updateQueryData('getApi', apiArg(fileId), draft => {
+              Object.assign(draft, normalizeApi(saved));
+            })
+          );
+        } catch {
+          /* invalidatesTags refetch covers the failure path */
+        }
+      },
+      invalidatesTags: (result, error, { fileId }) => [
+        { type: 'ApiCase', id: fileId },
+        { type: 'ApiCase', id: 'LIST' },
+      ],
     }),
 
     saveApi: builder.mutation({
@@ -458,7 +475,24 @@ export const apiSlice = createApi({
         method: 'POST',
         body: apiData,
       }),
-      invalidatesTags: ['ApiCase'],
+      // Cache-from-response: patch the file view from the saved entity. Object.assign
+      // preserves draft.test_cases (saveApi does not change test cases).
+      async onQueryStarted({ fileId }, { dispatch, queryFulfilled }) {
+        try {
+          const { data: saved } = await queryFulfilled;
+          if (!saved) return;
+          dispatch(
+            apiSlice.util.updateQueryData('getApi', apiArg(fileId), draft => {
+              Object.assign(draft, normalizeApi(saved));
+            })
+          );
+        } catch {
+          /* invalidatesTags refetch covers the failure path */
+        }
+      },
+      invalidatesTags: (result, error, { fileId }) => [
+        { type: 'ApiCase', id: fileId },
+      ],
     }),
 
     updateApi: builder.mutation({
@@ -467,7 +501,26 @@ export const apiSlice = createApi({
         method: 'PUT',
         body: apiData,
       }),
-      invalidatesTags: ['ApiCase'],
+      // Cache-from-response when the caller passes fileId (knows the cache entry to patch).
+      async onQueryStarted({ fileId }, { dispatch, queryFulfilled }) {
+        if (fileId == null) return;
+        try {
+          const { data: saved } = await queryFulfilled;
+          if (!saved) return;
+          dispatch(
+            apiSlice.util.updateQueryData('getApi', apiArg(fileId), draft => {
+              Object.assign(draft, normalizeApi(saved));
+            })
+          );
+        } catch {
+          /* invalidatesTags refetch covers the failure path */
+        }
+      },
+      // fileId is optional; when callers pass it we invalidate the parent
+      // file view (getApi id:fileId), else fall back to the api record id.
+      invalidatesTags: (result, error, { apiId, fileId }) => [
+        { type: 'ApiCase', id: fileId ?? apiId },
+      ],
     }),
 
     deleteApi: builder.mutation({
@@ -475,7 +528,10 @@ export const apiSlice = createApi({
         url: `/api/${apiId}`,
         method: 'DELETE',
       }),
-      invalidatesTags: ['ApiCase'],
+      invalidatesTags: (result, error, apiId) => [
+        { type: 'ApiCase', id: apiId },
+        { type: 'ApiCase', id: 'LIST' },
+      ],
     }),
 
     // Test Case endpoints
@@ -485,7 +541,33 @@ export const apiSlice = createApi({
         method: 'POST',
         body: testCaseData,
       }),
-      invalidatesTags: ['ApiCase'],
+      // Optimistic insert under a temp id; reconcile with the saved row on success.
+      async onQueryStarted(
+        { fileId, ...testCaseData },
+        { dispatch, queryFulfilled }
+      ) {
+        const tempId = `optimistic-${Date.now()}`;
+        const patch = patchCases(dispatch, fileId, cases =>
+          cases.push({ ...testCaseData, id: tempId })
+        );
+        try {
+          const { data: saved } = await queryFulfilled;
+          if (saved) {
+            patchCases(dispatch, fileId, cases => {
+              const i = cases.findIndex(tc => tc.id === tempId);
+              if (i >= 0) cases[i] = saved;
+            });
+          } else {
+            patch.undo();
+          }
+        } catch {
+          patch.undo();
+        }
+      },
+      invalidatesTags: (result, error, { fileId }) => [
+        { type: 'ApiCase', id: fileId },
+        { type: 'ApiCase', id: 'LIST' },
+      ],
     }),
 
     bulkCreateTestCases: builder.mutation({
@@ -494,7 +576,40 @@ export const apiSlice = createApi({
         method: 'POST',
         body: { test_cases: testCases },
       }),
-      invalidatesTags: ['ApiCase'],
+      // Optimistic insert of the whole batch under temp ids; on success drop the
+      // temp rows and append the server-created rows.
+      async onQueryStarted(
+        { fileId, testCases },
+        { dispatch, queryFulfilled }
+      ) {
+        const optimistic = testCases.map((tc, idx) => ({
+          ...tc,
+          id: `optimistic-${Date.now()}-${idx}`,
+        }));
+        const tempIds = new Set(optimistic.map(tc => tc.id));
+        const patch = patchCases(dispatch, fileId, cases =>
+          cases.push(...optimistic)
+        );
+        try {
+          const { data: saved } = await queryFulfilled;
+          const created = saved?.created;
+          if (Array.isArray(created)) {
+            patchCases(dispatch, fileId, cases => {
+              const kept = cases.filter(tc => !tempIds.has(tc.id));
+              cases.length = 0;
+              cases.push(...kept, ...created);
+            });
+          } else {
+            patch.undo();
+          }
+        } catch {
+          patch.undo();
+        }
+      },
+      invalidatesTags: (result, error, { fileId }) => [
+        { type: 'ApiCase', id: fileId },
+        { type: 'ApiCase', id: 'LIST' },
+      ],
     }),
 
     saveTestCase: builder.mutation({
@@ -510,7 +625,46 @@ export const apiSlice = createApi({
           body: testCaseData,
         };
       },
-      invalidatesTags: ['ApiCase'],
+      // Optimistic: edit merges into the matched row, create inserts a temp row;
+      // both reconcile with the saved entity by id on success.
+      async onQueryStarted(
+        { fileId, caseId, ...testCaseData },
+        { dispatch, queryFulfilled }
+      ) {
+        const tempId = `optimistic-${Date.now()}`;
+        const patch = patchCases(dispatch, fileId, cases => {
+          if (caseId) {
+            const i = cases.findIndex(tc => tc.id === caseId);
+            if (i >= 0) cases[i] = { ...cases[i], ...testCaseData };
+          } else {
+            cases.push({ ...testCaseData, id: tempId });
+          }
+        });
+        try {
+          const { data: saved } = await queryFulfilled;
+          if (saved) {
+            const matchId = caseId ?? tempId;
+            patchCases(dispatch, fileId, cases => {
+              const i = cases.findIndex(tc => tc.id === matchId);
+              if (i >= 0) cases[i] = saved;
+            });
+          } else {
+            patch.undo();
+          }
+        } catch {
+          patch.undo();
+        }
+      },
+      invalidatesTags: (result, error, { fileId, caseId }) =>
+        caseId
+          ? [
+              { type: 'ApiCase', id: fileId },
+              { type: 'ApiCase', id: caseId },
+            ]
+          : [
+              { type: 'ApiCase', id: fileId },
+              { type: 'ApiCase', id: 'LIST' },
+            ],
     }),
 
     getTestCase: builder.query({
@@ -528,20 +682,109 @@ export const apiSlice = createApi({
     }),
 
     updateTestCase: builder.mutation({
-      query: ({ caseId, ...testCaseData }) => ({
+      // fileId is a cache-targeting arg only — strip it from the request body.
+      // eslint-disable-next-line no-unused-vars
+      query: ({ caseId, fileId, ...testCaseData }) => ({
         url: `/api/cases/${caseId}`,
         method: 'PUT',
         body: testCaseData,
       }),
-      invalidatesTags: ['ApiCase'],
+      // Optimistic merge into the matched row; reconcile with the saved entity.
+      // Requires fileId to locate the cache entry (caller passes the active file).
+      async onQueryStarted(
+        { caseId, fileId, ...testCaseData },
+        { dispatch, queryFulfilled }
+      ) {
+        if (fileId == null) return;
+        const patch = patchCases(dispatch, fileId, cases => {
+          const i = cases.findIndex(tc => tc.id === caseId);
+          if (i >= 0) cases[i] = { ...cases[i], ...testCaseData };
+        });
+        try {
+          const { data: saved } = await queryFulfilled;
+          if (saved) {
+            patchCases(dispatch, fileId, cases => {
+              const i = cases.findIndex(tc => tc.id === caseId);
+              if (i >= 0) cases[i] = saved;
+            });
+          } else {
+            patch.undo();
+          }
+        } catch {
+          patch.undo();
+        }
+      },
+      // fileId is optional; when passed we also refresh the parent file view.
+      invalidatesTags: (result, error, { caseId, fileId }) =>
+        fileId
+          ? [
+              { type: 'ApiCase', id: fileId },
+              { type: 'ApiCase', id: caseId },
+            ]
+          : [{ type: 'ApiCase', id: caseId }],
     }),
 
     deleteTestCase: builder.mutation({
-      query: caseId => ({
+      query: ({ caseId }) => ({
         url: `/case/${caseId}`,
         method: 'DELETE',
       }),
-      invalidatesTags: ['ApiCase'],
+      // Optimistic removal; restore the row if the server rejects. Requires fileId
+      // to locate the cache entry (caller passes the active file).
+      async onQueryStarted({ caseId, fileId }, { dispatch, queryFulfilled }) {
+        if (fileId == null) return;
+        const patch = patchCases(dispatch, fileId, cases => {
+          const i = cases.findIndex(tc => tc.id === caseId);
+          if (i >= 0) cases.splice(i, 1);
+        });
+        try {
+          await queryFulfilled;
+        } catch {
+          patch.undo();
+        }
+      },
+      invalidatesTags: (result, error, { caseId, fileId }) =>
+        fileId
+          ? [
+              { type: 'ApiCase', id: fileId },
+              { type: 'ApiCase', id: caseId },
+              { type: 'ApiCase', id: 'LIST' },
+            ]
+          : [
+              { type: 'ApiCase', id: caseId },
+              { type: 'ApiCase', id: 'LIST' },
+            ],
+    }),
+
+    bulkDeleteTestCases: builder.mutation({
+      query: ({ caseIds }) => ({
+        url: '/cases/bulk',
+        method: 'DELETE',
+        body: caseIds,
+      }),
+      // Optimistic removal of the batch; restore all rows if the server rejects.
+      // Requires fileId to locate the cache entry (caller passes the active file).
+      async onQueryStarted({ caseIds, fileId }, { dispatch, queryFulfilled }) {
+        if (fileId == null) return;
+        const ids = new Set(caseIds);
+        const patch = patchCases(dispatch, fileId, cases => {
+          const kept = cases.filter(tc => !ids.has(tc.id));
+          cases.length = 0;
+          cases.push(...kept);
+        });
+        try {
+          await queryFulfilled;
+        } catch {
+          patch.undo();
+        }
+      },
+      invalidatesTags: (result, error, { fileId }) =>
+        fileId
+          ? [
+              { type: 'ApiCase', id: fileId },
+              { type: 'ApiCase', id: 'LIST' },
+            ]
+          : [{ type: 'ApiCase', id: 'LIST' }],
     }),
 
     // Test execution
@@ -554,6 +797,9 @@ export const apiSlice = createApi({
           case_id: caseId,
         },
       }),
+      // Unify the differing backend shapes into { test_cases: [...] } here so every
+      // caller reads one normalized result (was store/api.jsx runTest mapCase).
+      transformResponse: normalizeRunResult,
     }),
 
     // Bulk test management
@@ -875,6 +1121,7 @@ export const {
   useGetTestCaseDetailsQuery,
   useUpdateTestCaseMutation,
   useDeleteTestCaseMutation,
+  useBulkDeleteTestCasesMutation,
   useRunTestMutation,
 
   // Bulk Test hooks

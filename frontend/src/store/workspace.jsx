@@ -1,5 +1,66 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from 'react';
 import { workspaceService } from '../services/workspaceService';
+
+// --- Structural sharing -------------------------------------------------------
+// The backend returns the FULL workspace tree on every node mutation. Replacing
+// state with that response wholesale gives every node a new object reference, so
+// React.memo can never skip an unchanged subtree. These helpers merge the new
+// tree onto the previous one, reusing the old object reference for any node (and
+// any node list) that is structurally unchanged — only changed nodes and their
+// ancestors get fresh references.
+
+function _shallowEqualNode(a, b) {
+  const aKeys = Object.keys(a);
+  if (aKeys.length !== Object.keys(b).length) return false;
+  for (const key of aKeys) {
+    if (a[key] !== b[key]) return false;
+  }
+  return true;
+}
+
+function _mergeNodeList(oldList, newList) {
+  if (!Array.isArray(oldList) || !Array.isArray(newList)) return newList;
+  const oldById = new Map(oldList.map(node => [node.id, node]));
+  let changed = newList.length !== oldList.length;
+  const merged = newList.map((node, index) => {
+    const mergedNode = _mergeNode(oldById.get(node.id), node);
+    if (mergedNode !== oldList[index]) changed = true;
+    return mergedNode;
+  });
+  // Reuse the old array reference when nothing in it moved or changed.
+  return changed ? merged : oldList;
+}
+
+function _mergeNode(oldNode, newNode) {
+  if (!oldNode || !newNode) return newNode;
+  let candidate = newNode;
+  if (Array.isArray(newNode.children)) {
+    const mergedChildren = _mergeNodeList(oldNode.children, newNode.children);
+    if (mergedChildren !== newNode.children) {
+      candidate = { ...newNode, children: mergedChildren };
+    }
+  }
+  // children is compared by reference here — unchanged subtrees keep their ref.
+  return _shallowEqualNode(oldNode, candidate) ? oldNode : candidate;
+}
+
+function mergeWorkspaceTrees(prev, next) {
+  if (
+    !prev ||
+    !next ||
+    !Array.isArray(prev.file_tree) ||
+    !Array.isArray(next.file_tree)
+  ) {
+    return next;
+  }
+  return { ...next, file_tree: _mergeNodeList(prev.file_tree, next.file_tree) };
+}
 
 // Create context with default values
 const WorkspaceContext = createContext({
@@ -32,6 +93,13 @@ export function WorkspaceProvider({ children }) {
   const [workspaceTree, setWorkspaceTree] = useState(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [shouldLoadWorkspaces, setShouldLoadWorkspaces] = useState(false);
+
+  // Exposed to consumers in place of the raw setter: merges a full-tree mutation
+  // response onto the current tree so unchanged node references are preserved
+  // (enables React.memo to skip unchanged subtrees in CollectionTree).
+  const patchWorkspaceTree = useCallback(next => {
+    setWorkspaceTree(prev => mergeWorkspaceTrees(prev, next));
+  }, []);
 
   // Persist activeWorkspace so StrictMode remounts restore it immediately
   useEffect(() => {
@@ -286,7 +354,7 @@ export function WorkspaceProvider({ children }) {
         activeWorkspace,
         setActiveWorkspace,
         workspaceTree,
-        setWorkspaceTree, // <-- expose setter
+        setWorkspaceTree: patchWorkspaceTree, // structural-sharing setter
         loading,
         error,
         createWorkspace,

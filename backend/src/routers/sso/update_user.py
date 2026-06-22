@@ -2,12 +2,12 @@
 What this file does: Exposes the PUT /update_user route for updating the authenticated user's profile fields.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, Header
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from config import get_db
 from models import User
-from schema import UserResponse, UserUpdate
+from schema import MessageResponse, UserUpdate
 from utils import (
     ExceptionHandler,
     create_response,
@@ -16,7 +16,7 @@ from utils import (
 
 router = APIRouter()
 
-@router.put("/update_user", response_model=UserResponse)
+@router.put("/update_user")
 async def update_user(
     user_update: UserUpdate,
     username:str = Header(...),
@@ -33,7 +33,7 @@ async def update_user(
         user = result.scalar_one_or_none()
 
         if user is None:
-            return create_response(400, error_message="User not found")
+            return create_response(404, error_message="User not found")
 
         # Check if email is being updated and if it's already taken
         if "email" in update_data:
@@ -43,7 +43,7 @@ async def update_user(
             )
             result = await db.execute(stmt)
             if result.scalar_one_or_none():
-                return create_response(400, error_message="Email already taken")
+                return create_response(409, error_message="Email already taken")
 
         # Update user fields
         for field, value in update_data.items():
@@ -51,8 +51,8 @@ async def update_user(
 
         await db.commit()
 
-        return create_response(201, {"message": "User profile updated successfully"})
+        return create_response(200, {"message": "User profile updated successfully"}, MessageResponse)
 
     except Exception as e:
         await db.rollback()
-        ExceptionHandler(e)
+        return ExceptionHandler(e)

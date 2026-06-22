@@ -10,7 +10,7 @@ from config import (
     get_db
 )
 from models import User
-from schema import UserSignUp
+from schema import UserSignUp, MessageResponse
 from utils import (
     ExceptionHandler,
     get_password_hash,
@@ -28,7 +28,7 @@ async def sign_up(user_data: UserSignUp, db: AsyncSession = Depends(get_db)):
         stmt = select(User).where(User.email == user_data.email)
         result = await db.execute(stmt)
         if result.scalar_one_or_none():
-            return create_response(400, error_message ="Email already registered")
+            return create_response(409, error_message ="Email already registered")
 
         # Create new user
         hashed_password = get_password_hash(user_data.password)
@@ -41,8 +41,8 @@ async def sign_up(user_data: UserSignUp, db: AsyncSession = Depends(get_db)):
         db.add(new_user)
         await db.commit()
 
-        return create_response(201, {"message": "User registered successfully"})
+        return create_response(201, {"message": "User registered successfully"}, MessageResponse)
 
     except Exception as e:
         await db.rollback()
-        ExceptionHandler(e)
+        return ExceptionHandler(e)

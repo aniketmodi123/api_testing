@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { useNode } from '../../store/node';
 import { useWorkspace } from '../../store/workspace';
 import { toPostmanCollection } from '../../utils/importExport';
@@ -9,8 +9,22 @@ import LookingLoader from '../LookingLoader/LookingLoader';
 import MoveCopyPanel from '../MoveCopyPanel';
 import styles from './CollectionTree.module.css';
 
-// Recursive component for rendering node items (folders and files)
-const NodeItem = ({
+// HTTP method → CSS color variable. Module-scoped so it is a stable reference
+// (keeps getMethodColor's useCallback identity stable across renders).
+const METHOD_CSS_VAR = {
+  GET:     '--viz-method-get',
+  POST:    '--viz-method-post',
+  PUT:     '--viz-method-put',
+  DELETE:  '--viz-method-delete',
+  PATCH:   '--viz-method-patch',
+  HEAD:    '--viz-method-head',
+  OPTIONS: '--viz-method-options',
+};
+
+// Recursive component for rendering node items (folders and files).
+// Memoized so an unchanged node (stable object ref via structural sharing in the
+// workspace store) skips re-render when a sibling/unrelated node mutates.
+const NodeItem = memo(({
   node,
   expandedFolders,
   toggleFolder,
@@ -267,7 +281,8 @@ const NodeItem = ({
       </div>
     );
   }
-};
+});
+NodeItem.displayName = 'NodeItem';
 
 export default function CollectionTree({ onSelectRequest }) {
   // Local loading state for API calls
@@ -331,18 +346,21 @@ export default function CollectionTree({ onSelectRequest }) {
     workspaceTree?.file_tree ||
     (nodes.length > 0 ? nodes : activeWorkspace ? [] : []);
 
-  const toggleFolder = folderId => {
+  const toggleFolder = useCallback(folderId => {
     setExpandedFolders(prev =>
       prev.includes(folderId)
         ? prev.filter(id => id !== folderId)
         : [...prev, folderId]
     );
-  };
+  }, []);
 
-  const handleSelectRequest = request => {
-    setSelectedItem(request.id);
-    onSelectRequest && onSelectRequest(request);
-  };
+  const handleSelectRequest = useCallback(
+    request => {
+      setSelectedItem(request.id);
+      onSelectRequest && onSelectRequest(request);
+    },
+    [onSelectRequest]
+  );
 
   // This function is no longer used but kept for future reference
   const isActionInProgress = () => {
@@ -380,38 +398,44 @@ export default function CollectionTree({ onSelectRequest }) {
   };
 
   const [deleteLoading, setDeleteLoading] = useState(false);
-  const handleDeleteNode = (nodeId, e) => {
-    e.stopPropagation();
+  const handleDeleteNode = useCallback(
+    (nodeId, e) => {
+      e.stopPropagation();
 
-    // Find the node name for better UX
-    const nodeToDelete = nodes.flat(Infinity).find(n => n.id === nodeId) || {
-      name: 'this item',
-    };
+      // Find the node name for better UX
+      const nodeToDelete = nodes.flat(Infinity).find(n => n.id === nodeId) || {
+        name: 'this item',
+      };
 
-    setModalConfig({
-      nodeName: nodeToDelete.name,
-      nodeId,
-    });
-    setModalOpen(true);
-  };
+      setModalConfig({
+        nodeName: nodeToDelete.name,
+        nodeId,
+      });
+      setModalOpen(true);
+    },
+    [nodes]
+  );
 
   // Close all menus to ensure only one is open at a time
-  const closeAllMenus = () => {
+  const closeAllMenus = useCallback(() => {
     setMenuUpdateTrigger(prev => prev + 1);
-  };
+  }, []);
 
   // Handle rename action
-  const handleRenameAction = node => {
-    setNodeToRename(node);
-    setNewName(node.name);
-    setIsRenaming(true);
+  const handleRenameAction = useCallback(
+    node => {
+      setNodeToRename(node);
+      setNewName(node.name);
+      setIsRenaming(true);
 
-    // Reset other states
-    setIsAddingFolder(false);
-    setIsCreatingItem(false);
+      // Reset other states
+      setIsAddingFolder(false);
+      setIsCreatingItem(false);
 
-    closeAllMenus();
-  }; // Handle rename submit
+      closeAllMenus();
+    },
+    [closeAllMenus]
+  ); // Handle rename submit
   const handleRename = async () => {
     if (newName.trim() && nodeToRename) {
       const newNameValue = newName.trim();
@@ -444,23 +468,26 @@ export default function CollectionTree({ onSelectRequest }) {
   };
 
   // Handle creating a new item (folder or file)
-  const handleCreateNewItem = parentId => {
-    // Expand the parent folder
-    if (!expandedFolders.includes(parentId)) {
-      toggleFolder(parentId);
-    }
+  const handleCreateNewItem = useCallback(
+    parentId => {
+      // Expand the parent folder
+      if (!expandedFolders.includes(parentId)) {
+        toggleFolder(parentId);
+      }
 
-    setParentFolderId(parentId);
-    setNewItemName('');
-    setIsCreatingItem(true);
-    setIsCreatingFolder(true); // Default to folder
+      setParentFolderId(parentId);
+      setNewItemName('');
+      setIsCreatingItem(true);
+      setIsCreatingFolder(true); // Default to folder
 
-    // Reset other states
-    setIsAddingFolder(false);
-    setIsRenaming(false);
+      // Reset other states
+      setIsAddingFolder(false);
+      setIsRenaming(false);
 
-    closeAllMenus();
-  }; // Handle creating the new item
+      closeAllMenus();
+    },
+    [expandedFolders, toggleFolder, closeAllMenus]
+  ); // Handle creating the new item
   const handleCreateItem = async () => {
     if (newItemName.trim() && activeWorkspace) {
       const itemName = newItemName.trim();
@@ -513,13 +540,13 @@ export default function CollectionTree({ onSelectRequest }) {
   };
 
   // Handle Move/Copy action
-  const handleMoveCopyAction = node => {
+  const handleMoveCopyAction = useCallback(node => {
     setMoveCopyNode(node);
     setIsMoveCopyPanelOpen(true);
-  };
+  }, []);
 
   // Export a folder subtree as Postman v2.1 JSON download
-  const handleExportFolder = node => {
+  const handleExportFolder = useCallback(node => {
     const subtree = [node];
     const collection = toPostmanCollection(subtree, node.name);
     const blob = new Blob([JSON.stringify(collection, null, 2)], {
@@ -531,12 +558,12 @@ export default function CollectionTree({ onSelectRequest }) {
     a.download = `${node.name.replace(/\s+/g, '_')}_postman.json`;
     a.click();
     URL.revokeObjectURL(url);
-  };
+  }, []);
 
   // Open import modal
-  const handleImportCollection = () => {
+  const handleImportCollection = useCallback(() => {
     setIsImportModalOpen(true);
-  };
+  }, []);
 
   // Filter nodes based on search text
   const filteredNodes =
@@ -546,21 +573,11 @@ export default function CollectionTree({ onSelectRequest }) {
           node.name.toLowerCase().includes(filterText.toLowerCase())
         );
 
-  const METHOD_CSS_VAR = {
-    GET:     '--viz-method-get',
-    POST:    '--viz-method-post',
-    PUT:     '--viz-method-put',
-    DELETE:  '--viz-method-delete',
-    PATCH:   '--viz-method-patch',
-    HEAD:    '--viz-method-head',
-    OPTIONS: '--viz-method-options',
-  };
-
-  const getMethodColor = method => {
+  const getMethodColor = useCallback(method => {
     const varName = METHOD_CSS_VAR[method];
     if (!varName) return 'var(--text-muted)';
     return `var(${varName})`;
-  };
+  }, []);
 
   // Helper to force refresh and wait before closing Move/Copy panel
   const refreshAndWait = async () => {

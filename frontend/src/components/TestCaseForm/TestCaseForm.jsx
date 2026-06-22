@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react';
 import AssertionBuilder from '../AssertionBuilder';
-import { useApi } from '../../store/api';
+import {
+  useBulkCreateTestCasesMutation,
+  useGetApiQuery,
+  useGetTestCaseDetailsQuery,
+  useGetTestCaseQuery,
+  useSaveTestCaseMutation,
+} from '../../store/apiSlice';
 import { Button, JsonEditor } from '../common';
 import styles from './TestCaseForm.module.css';
 
@@ -52,36 +58,29 @@ const TestCaseForm = ({
   const [bulkImportJson, setBulkImportJson] = useState('');
   const [bulkImportError, setBulkImportError] = useState('');
 
-  const {
-    createTestCase,
-    getTestCases,
-    updateTestCase,
-    selectedTestCase,
-    isLoading,
-    error,
-    selectTestCase,
-    saveTestCase,
-    testCaseDetails,
-    bulkCreateTestCases,
-    getApi,
-    activeApi,
-  } = useApi();
+  // Server reads from the single RTK Query cache; new-case ngrok headers need the
+  // file's api record, edit mode needs the case + its details.
+  const { data: activeApi } = useGetApiQuery(
+    { fileId, includeCases: true },
+    { skip: !fileId }
+  );
+  const { data: selectedTestCase } = useGetTestCaseQuery(caseId, {
+    skip: !caseId,
+  });
+  const { data: testCaseDetails } = useGetTestCaseDetailsQuery(caseId, {
+    skip: !caseId,
+  });
 
-  // Load API data for new test cases to auto-add ngrok headers
-  useEffect(() => {
-    const loadApiData = async () => {
-      if (fileId && !caseId) {
-        // Only for new test cases
-        try {
-          await getApi(fileId);
-        } catch (err) {
-          console.error('Failed to load API data for test case:', err);
-        }
-      }
-    };
+  const [saveTestCase, { isLoading: isSaving, error: saveError }] =
+    useSaveTestCaseMutation();
+  const [bulkCreateTestCases, { isLoading: isBulkSaving, error: bulkError }] =
+    useBulkCreateTestCasesMutation();
 
-    loadApiData();
-  }, [fileId, caseId, getApi]);
+  const isLoading = isSaving || isBulkSaving;
+  const error =
+    saveError || bulkError
+      ? (saveError || bulkError)?.data?.error_message || 'Failed to save test case'
+      : null;
 
   // Auto-add ngrok headers for new test cases
   useEffect(() => {
@@ -100,21 +99,6 @@ const TestCaseForm = ({
       }
     }
   }, [activeApi, caseId]);
-
-  // Load test case data if editing an existing case
-  useEffect(() => {
-    const loadTestCase = async () => {
-      if (caseId) {
-        try {
-          await selectTestCase(caseId);
-        } catch (err) {
-          console.error('Failed to load test case:', err);
-        }
-      }
-    };
-
-    loadTestCase();
-  }, [caseId, selectTestCase]);
 
   // Update form when selectedTestCase changes
   useEffect(() => {
@@ -206,8 +190,8 @@ const TestCaseForm = ({
       }
 
       // Send the bulk create request
-      const result = await bulkCreateTestCases(fileId, testCases);
-      onSave(result?.data);
+      const saved = await bulkCreateTestCases({ fileId, testCases }).unwrap();
+      onSave(saved);
     } catch (err) {
       console.error('Error bulk importing test cases:', err);
       setBulkImportError(err.message || 'Failed to bulk import test cases');
@@ -219,9 +203,10 @@ const TestCaseForm = ({
     e.preventDefault();
 
     try {
-      // Use the unified saveTestCase function that handles both create and update
-      const result = await saveTestCase(fileId, formData, caseId);
-      onSave(result?.data);
+      // Use the unified saveTestCase mutation that handles both create and update.
+      // Passing fileId fires the optimistic cache patch (Sprint 3).
+      const saved = await saveTestCase({ fileId, caseId, ...formData }).unwrap();
+      onSave(saved);
     } catch (err) {
       console.error('Error saving test case:', err);
     }

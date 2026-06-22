@@ -5,6 +5,7 @@ What this file does: Exposes the POST /sign_in route for authenticating users an
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,6 +28,16 @@ from utils import (
 router = APIRouter()
 
 
+class AccessTokenResponse(BaseModel):
+    """Carry the JWT access token issued after a successful sign-in.
+
+    Attributes:
+        access_token: Signed JWT string for use in the Authorization header.
+    """
+
+    access_token: str
+
+
 @router.post("/sign_in")
 async def sign_in(user_credentials: UserSignIn, db: AsyncSession = Depends(get_db)):
     """POST /sign_in — verify credentials, issue a 7-day JWT, cache the token, and log the attempt."""
@@ -39,6 +50,7 @@ async def sign_in(user_credentials: UserSignIn, db: AsyncSession = Depends(get_d
         # Verify user exists and password is correct
         if not user or not verify_password(user_credentials.password, user.password):
             await log_failed_attempt(db, user_credentials.email)
+            await db.commit()
             return create_response(401, error_message = "Incorrect username or password")
 
         # Create access token
@@ -58,10 +70,9 @@ async def sign_in(user_credentials: UserSignIn, db: AsyncSession = Depends(get_d
 
         # Log successful login
         await log_success_attempt(db, user.username)
-        return create_response(200, {"access_token": access_token})
+        await db.commit()
+        return create_response(200, {"access_token": access_token}, AccessTokenResponse)
 
     except Exception as e:
         await db.rollback()
-        ExceptionHandler(e)
-    finally:
-        await db.commit()
+        return ExceptionHandler(e)

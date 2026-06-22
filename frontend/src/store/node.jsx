@@ -12,21 +12,11 @@ export function NodeProvider({ children }) {
   const [nodes, setNodes] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
-
-  // Debounce mechanism to prevent rapid API calls
-  const [debouncedRefresh, setDebouncedRefresh] = useState(0);
-
-  // Convert refreshTrigger to debounced version
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedRefresh(refreshTrigger);
-    }, 300); // 300ms debounce
-
-    return () => clearTimeout(timer);
-  }, [refreshTrigger]);
 
   // Fetch nodes for the current workspace
+  // Runs on mount and when the active workspace changes. Mutations no longer
+  // force a refetch here — each mutation response carries the full updated tree
+  // and the CollectionTree patches workspaceTree from it (see CollectionTree).
   useEffect(() => {
     let retryCount = 0;
     const maxRetries = 3;
@@ -88,7 +78,7 @@ export function NodeProvider({ children }) {
     return () => {
       clearTimeout(retryTimeout);
     };
-  }, [activeWorkspace, debouncedRefresh, shouldLoadWorkspaces]);
+  }, [activeWorkspace, shouldLoadWorkspaces]);
 
   // Function to fetch nodes by workspace ID
   const fetchNodesByWorkspaceId = async workspaceId => {
@@ -151,7 +141,6 @@ export function NodeProvider({ children }) {
       };
 
       const result = await nodeService.createNode(apiData);
-      setRefreshTrigger(prev => prev + 1); // Trigger refresh
       return result;
     } catch (err) {
       console.error('Error creating node:', err);
@@ -179,8 +168,6 @@ export function NodeProvider({ children }) {
         const cacheKey = `workspace_nodes_${activeWorkspace.id}`;
         sessionStorage.removeItem(cacheKey);
       }
-
-      setRefreshTrigger(prev => prev + 1); // Trigger refresh
 
       // If we updated the selected node, update its data
       if (selectedNode && selectedNode.id === numericNodeId) {
@@ -216,7 +203,6 @@ export function NodeProvider({ children }) {
         sessionStorage.removeItem(cacheKey);
       }
 
-      setRefreshTrigger(prev => prev + 1); // Trigger refresh
       return true;
     } catch (err) {
       console.error('Error deleting node:', err);
@@ -321,7 +307,6 @@ export function NodeProvider({ children }) {
         createFile,
         fetchNodesByWorkspaceId,
         getNodeById,
-        refreshNodes: () => setRefreshTrigger(prev => prev + 1),
       }}
     >
       {children}
