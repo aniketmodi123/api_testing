@@ -55,4 +55,4 @@ async def create_workspace(
 
     except Exception as e:
         await db.rollback()
-        ExceptionHandler(e)
+        return ExceptionHandler(e)

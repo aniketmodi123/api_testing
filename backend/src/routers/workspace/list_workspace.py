@@ -75,4 +75,4 @@ async def list_workspaces(
         return create_response(200, value_correction(workspace_list))
 
     except Exception as e:
-        ExceptionHandler(e)
+        return ExceptionHandler(e)

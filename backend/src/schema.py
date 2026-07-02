@@ -92,6 +92,16 @@ class TokenResponse(BaseModel):
     user: UserResponse
 
 
+class WsTicketResponse(BaseModel):
+    """Carry a short-lived ticket for authenticating a WebSocket proxy connection.
+
+    Attributes:
+        ticket: Signed JWT scoped to ws_proxy use only, valid for 30 seconds.
+    """
+
+    ticket: str
+
+
 class MessageResponse(BaseModel):
     """Carry a plain human-readable message in a response body.
 
@@ -500,6 +510,29 @@ class HeaderResponse(BaseModel):
     folder_id: int
     content: Dict[str, Any]
     created_at: Any
+
+    class Config:
+        from_attributes = True
+
+
+class HeaderWithFolderResponse(BaseModel):
+    """Represent a folder's header record together with its owning folder's identity.
+
+    Attributes:
+        id: Header record primary key.
+        folder_id: Node id of the folder this header set belongs to.
+        content: JSON dict of header key→value pairs.
+        created_at: Creation timestamp.
+        folder_name: Display name of the owning folder.
+        workspace_id: Owning workspace id.
+    """
+
+    id: int
+    folder_id: int
+    content: Dict[str, Any]
+    created_at: Any
+    folder_name: str
+    workspace_id: int
 
     class Config:
         from_attributes = True
@@ -1265,6 +1298,141 @@ class ApiExecuteRequest(BaseModel):
     body_type: Optional[str] = Field(None, description="Body type: JSON, form-data, url-encoded, raw, XML, none")
     options: Dict[str, Any] = Field(default_factory=dict, description="Additional options")
     expected: Optional[Dict[str, Any]] = Field(None, description="Expected response criteria for validation")
+
+
+class CaseRunResult(BaseModel):
+    """Represent one test case's execution outcome from POST /run or /bulk_run_cases.
+
+    Attributes:
+        case: Case display name; ``None`` on fallback error paths that lack the name.
+        case_id: ApiCase primary key; ``None`` on fallback error paths.
+        success: ``True`` when the case's expectations passed.
+        failures: Assertion failure messages; empty when success is ``True``.
+        status_code: HTTP status the target returned; ``None`` when the request never completed (timeout/network error).
+        duration_ms: Wall-clock request time in milliseconds; ``None`` when the request never completed.
+        api: Resolved method/endpoint/path actually sent.
+        request: Method/url/headers/params/body/expected actually sent.
+        response: Status code and parsed JSON body from the target; empty when the request never completed.
+    """
+
+    case: Optional[str] = None
+    case_id: Optional[int] = None
+    success: bool
+    failures: List[str] = Field(default_factory=list)
+    status_code: Optional[int] = None
+    duration_ms: Optional[float] = None
+    api: Dict[str, Any]
+    request: Dict[str, Any]
+    response: Dict[str, Any]
+
+
+class ExecuteDirectResponse(BaseModel):
+    """Represent the outcome of firing one external HTTP request via POST /api/execute-direct.
+
+    Attributes:
+        status_code: HTTP status the target returned.
+        headers: Response headers from the target.
+        text: Raw response body text.
+        json: Parsed JSON response body; ``None`` when the body is not valid JSON. (Field name
+              matches the wire contract; shadows ``BaseModel.json()`` — harmless, pydantic-v2
+              only warns, callers still read ``data.json``.)
+        execution_time: Wall-clock request time in seconds.
+        resolved_url: Final URL sent, after variable substitution and query param merge.
+        resolved_headers: Final headers sent, after variable substitution and auth injection.
+        variables_used: Variable name to value map used to resolve this request.
+        request_details: Method/original_url/resolved_params/has_body actually sent.
+    """
+
+    status_code: int
+    headers: Dict[str, Any]
+    text: str
+    json: Optional[Any] = None
+    execution_time: float
+    resolved_url: str
+    resolved_headers: Dict[str, Any]
+    variables_used: Dict[str, Any]
+    request_details: Dict[str, Any]
+
+
+class ExecuteWithValidationResponse(ExecuteDirectResponse):
+    """Represent POST /api/execute-with-validation's response — execute-direct's result plus assertion outcomes.
+
+    Attributes:
+        validation: Performed/passed/failures/expected_criteria/summary for the assertion check.
+    """
+
+    validation: Dict[str, Any]
+
+
+class TestConnectivityResponse(BaseModel):
+    """Represent reachability probe results from POST /api/test-connectivity.
+
+    Attributes:
+        url_tested: Original URL passed by the caller.
+        connectivity_results: Map of each tested URL variant to its reachability result.
+        recommendation: Human-readable suggestion for which URL form to use.
+    """
+
+    url_tested: str
+    connectivity_results: Dict[str, Any]
+    recommendation: str
+
+
+class BulkRunCasesResponse(BaseModel):
+    """Represent bulk test results mapped into the workspace node tree from POST /bulk_run_cases.
+
+    Attributes:
+        created_at: Timestamp the bulk run completed.
+        file_tree: Root-level tree nodes; folders carry children, file nodes carry run results.
+        total_nodes: Count of nodes in the workspace this run touched.
+    """
+
+    created_at: datetime
+    file_tree: List[Dict[str, Any]]
+    total_nodes: int
+
+
+class GraphQLIntrospectResponse(BaseModel):
+    """Represent the raw GraphQL introspection result from POST /api/graphql-introspect.
+
+    Attributes:
+        data: Raw introspection payload as returned by the target endpoint's __schema query.
+    """
+
+    data: Dict[str, Any]
+
+
+class RegressionDiffCase(BaseModel):
+    """Represent one case's comparison outcome within a regression diff.
+
+    Attributes:
+        case_id: ApiCase primary key.
+        case_name: Case display name.
+        change: ``"added"`` only in the compare run; ``"removed"`` only in the base run;
+                ``"modified"`` changed fields exist; ``"unchanged"`` no differences.
+        changes: Field-level change entries; empty when change is added, removed, or unchanged.
+    """
+
+    case_id: int
+    case_name: str
+    change: Literal["added", "removed", "modified", "unchanged"]
+    changes: List[Dict[str, Any]]
+
+
+class RegressionDiffResponse(BaseModel):
+    """Represent the comparison between two bulk execution result sets from GET /run/{exec_id}/diff.
+
+    Attributes:
+        base_exec_id: BulkTestExecution id used as the baseline.
+        compare_exec_id: BulkTestExecution id compared against the baseline.
+        summary: Counts of total/modified/added/removed/unchanged cases.
+        cases: Per-case comparison results.
+    """
+
+    base_exec_id: int
+    compare_exec_id: int
+    summary: Dict[str, int]
+    cases: List[RegressionDiffCase]
 
 
 class BulkSelectedItem(BaseModel):
@@ -2148,6 +2316,90 @@ class OAuth2TokenStatusResponse(BaseModel):
     expired: Optional[bool] = None
     has_refresh_token: Optional[bool] = None
     created_at: Optional[str] = None
+
+
+class MonitorResponse(BaseModel):
+    """Carry a monitor's identity plus its current uptime/latency rollup.
+
+    Attributes:
+        id: Monitor row id.
+        workspace_id: Workspace the monitor belongs to.
+        schedule_id: Bulk test schedule this monitor wraps.
+        name: Display name.
+        uptime_pct: Percent of completed executions in the last 30 days that did not fail; ``None`` when no completed executions exist in that window.
+        p95_latency_ms: 95th-percentile execution duration over the same window; ``None`` when no completed executions exist.
+        last_status: Status of the most recent completed execution; ``None`` when no completed executions exist.
+        updated_at: ISO timestamp of the last rollup write; ``None`` when never updated.
+    """
+
+    id: int
+    workspace_id: int
+    schedule_id: int
+    name: str
+    uptime_pct: Optional[float] = None
+    p95_latency_ms: Optional[int] = None
+    last_status: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class MonitorExecutionResponse(BaseModel):
+    """Carry one completed bulk-test execution as a point in a monitor's latency series.
+
+    Attributes:
+        execution_id: Execution row id.
+        started_at: ISO timestamp the run started; ``None`` if not recorded.
+        finished_at: ISO timestamp the run finished; ``None`` if not recorded.
+        status: Outcome of the execution, e.g. ``"success"``, ``"partial"``, ``"failed"``.
+        duration_ms: Wall-clock duration of the execution.
+        total_cases: Number of cases included in the run.
+        passed: Number of cases that passed.
+        failed: Number of cases that failed.
+    """
+
+    execution_id: int
+    started_at: Optional[str] = None
+    finished_at: Optional[str] = None
+    status: str
+    duration_ms: int
+    total_cases: int
+    passed: int
+    failed: int
+
+
+class MonitorDetailResponse(MonitorResponse):
+    """Carry monitor detail plus the last 50 completed executions as a latency series.
+
+    Attributes:
+        latency_series: Most recent completed executions, newest first.
+    """
+
+    latency_series: List[MonitorExecutionResponse]
+
+
+class AuditLogResponse(BaseModel):
+    """Carry one immutable audit log row.
+
+    Attributes:
+        id: Audit log row id.
+        username: Email of the user who performed the action.
+        workspace_id: Workspace the action was scoped to.
+        action: Verb string describing what happened, e.g. ``"monitor.create"``.
+        entity_type: Object type acted on, e.g. ``"monitor"``, ``"node"``.
+        entity_id: Numeric id of the affected object; ``None`` when not applicable.
+        metadata: Extra context captured at write time; ``None`` when none was recorded.
+        ip: Client IP that performed the action; ``None`` when not available.
+        created_at: ISO timestamp the action was recorded.
+    """
+
+    id: int
+    username: str
+    workspace_id: int
+    action: str
+    entity_type: str
+    entity_id: Optional[int] = None
+    metadata: Optional[Dict[str, Any]] = None
+    ip: Optional[str] = None
+    created_at: str
 
 
 # Resolve the self-referential children field on BulkTreeNode.

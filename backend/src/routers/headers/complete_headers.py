@@ -3,13 +3,14 @@ What this file does: Exposes GET /{folder_id}/headers/complete and /inheritance-
 """
 
 from fastapi import APIRouter, Depends, Header as FastAPIHeader
-from sqlalchemy import select, and_
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Dict, Any
 
 from config import get_db
-from common_querys import get_user_by_username, verify_folder_ownership, get_headers
+from common_querys import get_user_by_username, can_access_workspace, get_headers
 from models import Node, Header
+from schema import CompleteHeadersResponse, HeaderInheritancePreviewResponse
 from utils import ExceptionHandler, create_response, value_correction
 
 router = APIRouter()
@@ -31,15 +32,18 @@ async def get_complete_folder_headers(
         if not user:
             return create_response(400, error_message="User not found")
 
-        # Verify folder ownership
-        target_folder = await verify_folder_ownership(db, folder_id, user.id)
+        # Fetch folder, then require at least viewer access
+        folder_result = await db.execute(select(Node).where(Node.id == folder_id))
+        target_folder = folder_result.scalar_one_or_none()
         if not target_folder:
-            return create_response(206, error_message="Folder not found or access denied")
+            return create_response(404, error_message="Folder not found")
+        if not await can_access_workspace(db, target_folder.workspace_id, user.id, min_role="viewer"):
+            return create_response(403, error_message="Access denied")
 
         # Get path from root to target folder
         folder_path, folder_ids, headers_map, merge_result = await get_headers(db, folder_id)
         if not folder_path:
-            return create_response(206, error_message="Folder not found")
+            return create_response(404, error_message="Folder not found")
 
         # Prepare response data
         data = {
@@ -67,10 +71,10 @@ async def get_complete_folder_headers(
                 if folder_id in headers_map
             }
 
-        return create_response(200, value_correction(data))
+        return create_response(200, value_correction(data), CompleteHeadersResponse)
 
     except Exception as e:
-        ExceptionHandler(e)
+        return ExceptionHandler(e)
 
 
 # Bonus: Get inheritance preview (useful for UI)
@@ -87,15 +91,18 @@ async def get_headers_inheritance_preview(
         if not user:
             return create_response(400, error_message="User not found")
 
-        # Verify folder ownership
-        target_folder = await verify_folder_ownership(db, folder_id, user.id)
+        # Fetch folder, then require at least viewer access
+        folder_result = await db.execute(select(Node).where(Node.id == folder_id))
+        target_folder = folder_result.scalar_one_or_none()
         if not target_folder:
-            return create_response(206, error_message="Folder not found or access denied")
+            return create_response(404, error_message="Folder not found")
+        if not await can_access_workspace(db, target_folder.workspace_id, user.id, min_role="viewer"):
+            return create_response(403, error_message="Access denied")
 
         # Get path from root to target folder
         folder_path, folder_ids, headers_map, merge_result = await get_headers(db, folder_id)
         if not folder_path:
-            return create_response(206, error_message="Folder not found")
+            return create_response(404, error_message="Folder not found")
 
         # Build inheritance preview
         inheritance_preview = []
@@ -127,7 +134,7 @@ async def get_headers_inheritance_preview(
             "folders_with_headers": len([f for f in inheritance_preview if f["has_headers"]])
         }
 
-        return create_response(200, value_correction(data))
+        return create_response(200, value_correction(data), HeaderInheritancePreviewResponse)
 
     except Exception as e:
-        ExceptionHandler(e)
+        return ExceptionHandler(e)

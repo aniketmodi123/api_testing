@@ -50,6 +50,34 @@ class RequestToCurlBody(BaseModel):
     body_type: str = "json"
 
 
+class CurlToRequestResponse(BaseModel):
+    """Represent a parsed cURL command from POST /curl/to-request.
+
+    Attributes:
+        method: HTTP method inferred or parsed from -X/--request.
+        url: Request URL with query string stripped.
+        headers: Parsed -H/--header entries; empty dict when none.
+        params: Query params split from the URL; empty dict when none.
+        body: Parsed JSON body, or raw string when not valid JSON; ``None`` when no body.
+    """
+
+    method: str
+    url: str
+    headers: Dict[str, str]
+    params: Dict[str, str]
+    body: Optional[Any] = None
+
+
+class RequestToCurlResponse(BaseModel):
+    """Represent a built cURL command from POST /request/to-curl.
+
+    Attributes:
+        curl: The constructed cURL command string.
+    """
+
+    curl: str
+
+
 # ---------- Helpers ----------
 
 def _normalise_curl(raw: str) -> str:
@@ -201,7 +229,7 @@ async def curl_to_request(
         except ValueError as e:
             return create_response(400, error_message=str(e))
 
-        return create_response(200, data=result)
+        return create_response(200, data=result, schema=CurlToRequestResponse)
     except Exception as e:
         return ExceptionHandler(e)
 
@@ -226,6 +254,6 @@ async def request_to_curl(
             payload.body,
             payload.body_type,
         )
-        return create_response(200, data={"curl": curl_str})
+        return create_response(200, data={"curl": curl_str}, schema=RequestToCurlResponse)
     except Exception as e:
         return ExceptionHandler(e)

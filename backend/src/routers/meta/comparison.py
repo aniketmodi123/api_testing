@@ -2,10 +2,30 @@
 What this file does: Exposes GET /meta/comparison — returns a static feature-by-feature
 comparison of APIPilot vs Postman, suitable for rendering a "why us" table in the frontend.
 """
+from typing import Optional
+
 from fastapi import APIRouter
+from pydantic import BaseModel
+
 from utils import create_response
 
 router = APIRouter()
+
+
+class FeatureComparisonResponse(BaseModel):
+    """Represent one row of the APIPilot vs Postman comparison table.
+
+    Attributes:
+        feature: Feature name.
+        postman: Postman's support level for this feature, as free text.
+        apipilot: APIPilot's support level for this feature, as free text.
+        edge: Marketing callout for this row; ``None`` when APIPilot has no differentiating edge.
+    """
+
+    feature: str
+    postman: str
+    apipilot: str
+    edge: Optional[str] = None
 
 _COMPARISON = [
     {
@@ -110,4 +130,4 @@ _COMPARISON = [
 @router.get("/meta/comparison")
 async def feature_comparison():
     """GET /meta/comparison — return APIPilot vs Postman feature comparison as JSON; no auth required."""
-    return create_response(200, data=_COMPARISON)
+    return create_response(200, data=_COMPARISON, schema=FeatureComparisonResponse)

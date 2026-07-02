@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from common_querys import can_access_workspace, get_user_by_username
+from common_querys import can_access_workspace, get_user_by_username, write_audit
 from config import get_db
 from models import Flow, FlowStep
 from utils import ExceptionHandler, create_response
@@ -56,6 +56,72 @@ class FlowIn(BaseModel):
     graph: Optional[Dict[str, Any]] = None
     enabled: bool = True
     steps: List[FlowStepIn] = []
+
+
+class FlowStepOut(BaseModel):
+    """Represent one persisted flow step within a FlowResponse.
+
+    Attributes:
+        id: Primary key.
+        step_order: Zero-based execution order.
+        type: ``"request"`` | ``"condition"`` | ``"delay"`` | ``"set_var"``.
+        api_id: Api called by this step; ``None`` for non-request steps.
+        config: Step-type-specific parameters; ``None`` when not set.
+        extract: Jsonpath extraction rules; ``None`` when not set.
+        condition: Branch condition; ``None`` for non-condition steps.
+    """
+
+    id: int
+    step_order: int
+    type: str
+    api_id: Optional[int] = None
+    config: Optional[Dict[str, Any]] = None
+    extract: Optional[Dict[str, Any]] = None
+    condition: Optional[Dict[str, Any]] = None
+
+
+class FlowResponse(BaseModel):
+    """Represent a flow with its steps from create/get/update flow endpoints.
+
+    Attributes:
+        id: Primary key.
+        workspace_id: Owning workspace.
+        name: Flow display name.
+        description: Optional free-text note; ``None`` when not set.
+        graph: UI canvas layout JSON; ``None`` when not yet positioned.
+        enabled: ``True`` when the flow can be executed.
+        created_at: Creation timestamp as a string.
+        updated_at: Last modification timestamp as a string.
+        steps: Ordered steps that make up the flow.
+    """
+
+    id: int
+    workspace_id: int
+    name: str
+    description: Optional[str] = None
+    graph: Optional[Dict[str, Any]] = None
+    enabled: bool
+    created_at: str
+    updated_at: str
+    steps: List[FlowStepOut]
+
+
+class FlowSummaryResponse(BaseModel):
+    """Represent one flow row from GET /workspace/{workspace_id}/flow.
+
+    Attributes:
+        id: Primary key.
+        name: Flow display name.
+        description: Optional free-text note; ``None`` when not set.
+        enabled: ``True`` when the flow can be executed.
+        created_at: Creation timestamp as a string.
+    """
+
+    id: int
+    name: str
+    description: Optional[str] = None
+    enabled: bool
+    created_at: str
 
 
 # ---------- Helpers ----------
@@ -147,6 +213,7 @@ async def create_flow(
                 condition=s.condition,
             ))
 
+        await write_audit(db, username=user.username, action="flow.create", entity_type="flow", entity_id=flow.id, workspace_id=workspace_id)
         await db.commit()
         await db.refresh(flow)
 
@@ -154,7 +221,7 @@ async def create_flow(
         steps_result = await db.execute(select(FlowStep).where(FlowStep.flow_id == flow.id).order_by(FlowStep.step_order))
         flow.steps = steps_result.scalars().all()
 
-        return create_response(201, data=_flow_to_dict(flow))
+        return create_response(201, data=_flow_to_dict(flow), schema=FlowResponse)
     except Exception as e:
         await db.rollback()
         return ExceptionHandler(e)
@@ -182,7 +249,7 @@ async def list_flows(
         flows = result.scalars().all()
 
         data = [{"id": f.id, "name": f.name, "description": f.description, "enabled": f.enabled, "created_at": str(f.created_at)} for f in flows]
-        return create_response(200, data=data)
+        return create_response(200, data=data, schema=FlowSummaryResponse)
     except Exception as e:
         return ExceptionHandler(e)
 
@@ -211,7 +278,7 @@ async def get_flow(
         steps_result = await db.execute(select(FlowStep).where(FlowStep.flow_id == flow_id).order_by(FlowStep.step_order))
         flow.steps = steps_result.scalars().all()
 
-        return create_response(200, data=_flow_to_dict(flow))
+        return create_response(200, data=_flow_to_dict(flow), schema=FlowResponse)
     except Exception as e:
         return ExceptionHandler(e)
 
@@ -260,12 +327,13 @@ async def update_flow(
                 condition=s.condition,
             ))
 
+        await write_audit(db, username=user.username, action="flow.update", entity_type="flow", entity_id=flow_id, workspace_id=flow.workspace_id)
         await db.commit()
         await db.refresh(flow)
         steps_result = await db.execute(select(FlowStep).where(FlowStep.flow_id == flow_id).order_by(FlowStep.step_order))
         flow.steps = steps_result.scalars().all()
 
-        return create_response(200, data=_flow_to_dict(flow))
+        return create_response(200, data=_flow_to_dict(flow), schema=FlowResponse)
     except Exception as e:
         await db.rollback()
         return ExceptionHandler(e)
@@ -293,6 +361,7 @@ async def delete_flow(
             return create_response(403, error_message="Access denied")
 
         await db.delete(flow)
+        await write_audit(db, username=user.username, action="flow.delete", entity_type="flow", entity_id=flow_id, workspace_id=flow.workspace_id)
         await db.commit()
         return create_response(200, message="Flow deleted")
     except Exception as e:

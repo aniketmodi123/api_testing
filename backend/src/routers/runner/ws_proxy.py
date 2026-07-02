@@ -1,20 +1,74 @@
 """
-What this file does: Exposes a WebSocket endpoint at /api/ws-proxy that bidirectionally relays messages between the frontend client and a target WebSocket URL.
+What this file does: Exposes GET /api/ws-ticket (mints a short-lived auth ticket) and the
+WebSocket endpoint /api/ws-proxy that bidirectionally relays messages between the frontend
+client and a target WebSocket URL.
 """
 import asyncio
 import logging
+from dateutil.relativedelta import relativedelta
+from jose import JWTError, jwt
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, Header, WebSocket, WebSocketDisconnect
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from ssrf import assert_safe_url
+from config import JWT_ALGORITHM, JWT_SECRET_KEY, get_db
+from common_querys import get_user_by_username
+from utils import create_access_token, create_response
+from schema import WsTicketResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+_TICKET_SCOPE = "ws_proxy"
+_TICKET_TTL_SECONDS = 30
+
+
+@router.get("/ws-ticket")
+async def issue_ws_ticket(username: str = Header(...), db: AsyncSession = Depends(get_db)):
+    """GET /api/ws-ticket — mint a 30s-lived ticket so the WebSocket proxy (which the global
+    JWT middleware never sees, since BaseHTTPMiddleware skips websocket scope) can verify the
+    caller without the browser's native WebSocket API needing to send custom headers."""
+    try:
+        user = await get_user_by_username(db, username)
+        if not user:
+            return create_response(400, error_message="User not found")
+
+        ticket = await create_access_token(
+            {"username": user.email, "scope": _TICKET_SCOPE},
+            expires_delta=relativedelta(seconds=_TICKET_TTL_SECONDS),
+        )
+        return create_response(200, data={"ticket": ticket}, schema=WsTicketResponse)
+    except Exception as e:
+        logger.warning("ws_ticket mint failed: username=%s error=%s", username, e)
+        return create_response(500, error_message="Could not issue ticket")
+
+
+def _verify_ticket(ticket: str) -> bool:
+    """What it does: Return True when ticket is a non-expired JWT minted with ws_proxy scope.
+
+    Notes:
+        - No persistent single-use tracking — the 30s TTL is the only replay defense. A wider
+          window would need a DB-backed burn (e.g. the Cache blacklist table); deferred since
+          this proxy only lets the ticket holder relay to a target THEY choose, not read other
+          users' data.
+    """
+    try:
+        payload = jwt.decode(ticket, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+    except JWTError:
+        return False
+    return payload.get("scope") == _TICKET_SCOPE and bool(payload.get("username"))
+
 
 @router.websocket("/ws-proxy")
-async def websocket_proxy(ws: WebSocket, target_url: str):
+async def websocket_proxy(ws: WebSocket, target_url: str, ticket: str):
     """Bidirectional WebSocket proxy — relays messages between frontend and target_url."""
     await ws.accept()
+
+    if not _verify_ticket(ticket):
+        await ws.send_text('{"error":"Unauthorized: invalid or expired ticket"}')
+        await ws.close(code=1008)
+        return
 
     try:
         import websockets

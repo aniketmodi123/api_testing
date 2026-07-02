@@ -45,4 +45,4 @@ async def list_themes(
         return create_response(200, data, UserThemeListResponse)
 
     except Exception as e:
-        ExceptionHandler(e)
+        return ExceptionHandler(e)

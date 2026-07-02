@@ -2064,7 +2064,7 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
                           body: JSON.stringify({ url }),
                         });
                         const data = await res.json();
-                        if (data.error) setGqlSchemaError(data.error);
+                        if (data.error_message) setGqlSchemaError(data.error_message);
                         else setGqlSchemaError(null);
                       } catch (err) {
                         setGqlSchemaError('Failed to load schema');

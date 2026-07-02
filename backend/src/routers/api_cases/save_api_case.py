@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_db
-from common_querys import resolve_file_access, write_audit
+from common_querys import can_access_workspace, resolve_file_access, write_audit
 from models import ApiCase
 from schema import ApiCaseCreateRequest, ApiCaseDetailResponse, BulkCaseCreateResponse
 from utils import ExceptionHandler, create_response
@@ -48,6 +48,8 @@ async def save_api_case(
             return create_response(400, error_message="Can only create test cases for APIs in files, not folders")
         if fa.api is None:
             return create_response(404, error_message="No API found in this file")
+        if not await can_access_workspace(db, fa.node.workspace_id, fa.user.id, min_role="editor"):
+            return create_response(403, error_message="Editor access or higher required")
 
         api = fa.api
         status_code = 200
@@ -150,6 +152,8 @@ async def bulk_create_api_cases(
             return create_response(400, error_message="Can only create test cases for APIs in files, not folders")
         if fa.api is None:
             return create_response(404, error_message="No API found in this file")
+        if not await can_access_workspace(db, fa.node.workspace_id, fa.user.id, min_role="editor"):
+            return create_response(403, error_message="Editor access or higher required")
 
         api = fa.api
 

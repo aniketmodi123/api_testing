@@ -10,6 +10,7 @@ from typing import Optional
 from config import get_db
 from common_querys import get_user_by_username, can_access_workspace
 from models import AuditLog
+from schema import AuditLogResponse
 from utils import ExceptionHandler, create_response
 
 router = APIRouter()
@@ -59,6 +60,6 @@ async def list_audit_logs(
             }
             for r in rows
         ]
-        return create_response(200, data=data)
+        return create_response(200, data, AuditLogResponse)
     except Exception as e:
         return ExceptionHandler(e)

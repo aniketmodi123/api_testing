@@ -14,7 +14,7 @@ router = APIRouter()
 
 async def _stream_sse(target_url: str):
     """What it does: Open a streaming GET to target_url and yield each raw SSE line."""
-    client = await get_http_client()
+    client = get_http_client()
     async with client.stream("GET", target_url, headers={"Accept": "text/event-stream"},
                              timeout=None) as resp:
         async for line in resp.aiter_lines():

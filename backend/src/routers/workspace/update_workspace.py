@@ -3,7 +3,7 @@ What this file does: Exposes the PUT /workspace/{workspace_id} route for updatin
 """
 
 from fastapi import APIRouter, Depends, Header
-from sqlalchemy import select, and_
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_db
@@ -34,18 +34,13 @@ async def update_workspace(
             return create_response(400, error_message="User not found")
 
         # Get workspace
-        result = await db.execute(
-            select(Workspace).where(
-                and_(
-                    Workspace.id == workspace_id,
-                    Workspace.user_id == user.id
-                )
-            )
-        )
+        result = await db.execute(select(Workspace).where(Workspace.id == workspace_id))
         workspace = result.scalar_one_or_none()
 
         if not workspace:
-            return create_response(206, error_message="Workspace not found or access denied")
+            return create_response(404, error_message="Workspace not found")
+        if workspace.user_id != user.id:
+            return create_response(403, error_message="Only the workspace owner can update it")
 
         # Update workspace fields
         if workspace_data.name is not None:
@@ -67,4 +62,4 @@ async def update_workspace(
 
     except Exception as e:
         await db.rollback()
-        ExceptionHandler(e)
+        return ExceptionHandler(e)

@@ -7,10 +7,10 @@ from typing import Dict, Any, List
 from routers.runner.validator import evaluate_expect
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, or_
 from sqlalchemy.orm import selectinload
 from config import get_db
-from models import Api, Workspace, Node
+from models import Api, Workspace, Node, WorkspaceMember
 from utils import ExceptionHandler, resolve_variables
 from common_querys import get_user_by_username, get_headers, resolve_auth, build_scope_chain
 from auth_strategies import apply_auth
@@ -19,14 +19,31 @@ from auth_strategies import apply_auth
 
 async def verify_nodes(db: AsyncSession, node_id: list[int], user_id: int):
     """
-    What it does: Return the Node rows for the given IDs that belong to workspaces owned by user_id.
+    What it does: Return the Node rows for the given IDs whose workspace the user can access
+    (owner or joined member — running tests is a viewer-level action).
     Returns:
-        list[Node]: Nodes the user owns; excludes any IDs belonging to other users.
+        list[Node]: Nodes whose workspace the user owns or is a joined member of; excludes
+                    any IDs belonging to workspaces the user has no access to.
     """
+    if not node_id:
+        return []
     result = await db.execute(
         select(Node)
         .join(Workspace, Node.workspace_id == Workspace.id)
-        .where(and_(Node.id.in_(node_id), Workspace.user_id == user_id))
+        .outerjoin(
+            WorkspaceMember,
+            and_(
+                WorkspaceMember.workspace_id == Workspace.id,
+                WorkspaceMember.user_id == user_id,
+                WorkspaceMember.joined_at.isnot(None),
+            ),
+        )
+        .where(
+            and_(
+                Node.id.in_(node_id),
+                or_(Workspace.user_id == user_id, WorkspaceMember.user_id.isnot(None)),
+            )
+        )
     )
     return result.scalars().all()
 

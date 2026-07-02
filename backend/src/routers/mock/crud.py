@@ -91,6 +91,62 @@ class UpdateRouteBody(BaseModel):
     priority: Optional[int] = None
 
 
+# ---------- Response schemas ----------
+
+class MockRouteResponse(BaseModel):
+    """Serialized mock route returned by route create/update and server-detail endpoints.
+
+    Attributes:
+        id: Route primary key.
+        server_id: Owning mock server id.
+        method: HTTP method the route matches.
+        path: URL path template; ``{param}`` segments are wildcards.
+        status_code: HTTP status code the route returns.
+        response_headers: Stored response header dict; ``None`` when none set.
+        response_body: Stored response body string; ``None`` when empty.
+        delay_ms: Milliseconds the server waits before responding.
+        priority: Match priority when paths overlap; higher wins.
+        created_at: Creation timestamp as an ISO string.
+    """
+    id: int
+    server_id: int
+    method: str
+    path: str
+    status_code: int
+    response_headers: Optional[dict] = None
+    response_body: Optional[str] = None
+    delay_ms: int
+    priority: int
+    created_at: str
+
+
+class MockServerResponse(BaseModel):
+    """Serialized mock server returned by server create/list/get/update endpoints.
+
+    Attributes:
+        id: Server primary key.
+        workspace_id: Owning workspace id.
+        name: Display name.
+        description: Free-text description; ``None`` when not set.
+        public_token: Unguessable token used in the public serve URL.
+        enabled: ``True`` when the server accepts traffic.
+        rate_limit: Max requests per minute; ``0`` disables limiting.
+        created_at: Creation timestamp as an ISO string.
+        updated_at: Last-modification timestamp as an ISO string.
+        routes: Server's routes; populated only by the server-detail endpoint, ``None`` otherwise.
+    """
+    id: int
+    workspace_id: int
+    name: str
+    description: Optional[str] = None
+    public_token: str
+    enabled: bool
+    rate_limit: int
+    created_at: str
+    updated_at: str
+    routes: Optional[List[MockRouteResponse]] = None
+
+
 _ALLOWED_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE"}
 
 
@@ -157,7 +213,7 @@ async def create_mock_server(
         await write_audit(db, username, "mock_server.create", "mock_server", server.id, workspace_id=payload.workspace_id)
         await db.commit()
         await db.refresh(server)
-        return create_response(200, data=_server_dict(server))
+        return create_response(200, data=_server_dict(server), schema=MockServerResponse)
     except Exception as e:
         await db.rollback()
         return ExceptionHandler(e)
@@ -181,7 +237,7 @@ async def list_mock_servers(
         servers = (
             await db.execute(select(MockServer).where(MockServer.workspace_id == workspace_id))
         ).scalars().all()
-        return create_response(200, data=[_server_dict(s) for s in servers])
+        return create_response(200, data=[_server_dict(s) for s in servers], schema=MockServerResponse)
     except Exception as e:
         return ExceptionHandler(e)
 
@@ -207,13 +263,13 @@ async def get_mock_server(
             )
         ).scalar_one_or_none()
         if not server:
-            return create_response(206, error_message="Mock server not found")
+            return create_response(404, error_message="Mock server not found")
 
         access = await can_access_workspace(db, server.workspace_id, user.id, min_role="viewer")
         if not access:
             return create_response(403, error_message="Access denied")
 
-        return create_response(200, data=_server_dict(server, include_routes=True))
+        return create_response(200, data=_server_dict(server, include_routes=True), schema=MockServerResponse)
     except Exception as e:
         return ExceptionHandler(e)
 
@@ -233,7 +289,7 @@ async def update_mock_server(
 
         server = (await db.execute(select(MockServer).where(MockServer.id == server_id))).scalar_one_or_none()
         if not server:
-            return create_response(206, error_message="Mock server not found")
+            return create_response(404, error_message="Mock server not found")
 
         access = await can_access_workspace(db, server.workspace_id, user.id, min_role="editor")
         if not access:
@@ -248,9 +304,10 @@ async def update_mock_server(
         if payload.rate_limit is not None:
             server.rate_limit = payload.rate_limit
 
+        await write_audit(db, username, "mock_server.update", "mock_server", server_id, workspace_id=server.workspace_id)
         await db.commit()
         await db.refresh(server)
-        return create_response(200, data=_server_dict(server))
+        return create_response(200, data=_server_dict(server), schema=MockServerResponse)
     except Exception as e:
         await db.rollback()
         return ExceptionHandler(e)
@@ -270,7 +327,7 @@ async def delete_mock_server(
 
         server = (await db.execute(select(MockServer).where(MockServer.id == server_id))).scalar_one_or_none()
         if not server:
-            return create_response(206, error_message="Mock server not found")
+            return create_response(404, error_message="Mock server not found")
 
         access = await can_access_workspace(db, server.workspace_id, user.id, min_role="editor")
         if not access:
@@ -302,7 +359,7 @@ async def add_mock_route(
 
         server = (await db.execute(select(MockServer).where(MockServer.id == server_id))).scalar_one_or_none()
         if not server:
-            return create_response(206, error_message="Mock server not found")
+            return create_response(404, error_message="Mock server not found")
 
         access = await can_access_workspace(db, server.workspace_id, user.id, min_role="editor")
         if not access:
@@ -323,9 +380,11 @@ async def add_mock_route(
             priority=payload.priority,
         )
         db.add(route)
+        await db.flush()
+        await write_audit(db, username, "mock_route.create", "mock_route", route.id, workspace_id=server.workspace_id)
         await db.commit()
         await db.refresh(route)
-        return create_response(200, data=_route_dict(route))
+        return create_response(200, data=_route_dict(route), schema=MockRouteResponse)
     except Exception as e:
         await db.rollback()
         return ExceptionHandler(e)
@@ -351,9 +410,11 @@ async def update_mock_route(
             )
         ).scalar_one_or_none()
         if not route:
-            return create_response(206, error_message="Route not found")
+            return create_response(404, error_message="Route not found")
 
         server = (await db.execute(select(MockServer).where(MockServer.id == server_id))).scalar_one_or_none()
+        if not server:
+            return create_response(404, error_message="Mock server not found")
         access = await can_access_workspace(db, server.workspace_id, user.id, min_role="editor")
         if not access:
             return create_response(403, error_message="Access denied")
@@ -376,9 +437,10 @@ async def update_mock_route(
         if payload.priority is not None:
             route.priority = payload.priority
 
+        await write_audit(db, username, "mock_route.update", "mock_route", route_id, workspace_id=server.workspace_id)
         await db.commit()
         await db.refresh(route)
-        return create_response(200, data=_route_dict(route))
+        return create_response(200, data=_route_dict(route), schema=MockRouteResponse)
     except Exception as e:
         await db.rollback()
         return ExceptionHandler(e)
@@ -403,13 +465,16 @@ async def delete_mock_route(
             )
         ).scalar_one_or_none()
         if not route:
-            return create_response(206, error_message="Route not found")
+            return create_response(404, error_message="Route not found")
 
         server = (await db.execute(select(MockServer).where(MockServer.id == server_id))).scalar_one_or_none()
+        if not server:
+            return create_response(404, error_message="Mock server not found")
         access = await can_access_workspace(db, server.workspace_id, user.id, min_role="editor")
         if not access:
             return create_response(403, error_message="Access denied")
 
+        await write_audit(db, username, "mock_route.delete", "mock_route", route_id, workspace_id=server.workspace_id)
         await db.delete(route)
         await db.commit()
         return create_response(200, message="Route deleted")

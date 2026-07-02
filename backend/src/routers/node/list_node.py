@@ -3,13 +3,13 @@ What this file does: Exposes GET /node/{node_id} for retrieving a node's details
 """
 
 from fastapi import APIRouter, Depends, Header
-from sqlalchemy import select, and_
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from config import get_db
-from common_querys import get_node_path, get_user_by_username
-from models import Workspace, Node
+from common_querys import get_node_path, get_user_by_username, can_access_workspace
+from models import Node
 from utils import (
     ExceptionHandler,
     create_response,
@@ -31,22 +31,18 @@ async def get_node_with_children(
         if not user:
             return create_response(400, error_message="User not found")
 
-        # Verify node ownership and get node with children
+        # Fetch node with children
         result = await db.execute(
-            select(Node)
-            .options(selectinload(Node.children))
-            .join(Workspace, Node.workspace_id == Workspace.id)
-            .where(
-                and_(
-                    Node.id == node_id,
-                    Workspace.user_id == user.id
-                )
-            )
+            select(Node).options(selectinload(Node.children)).where(Node.id == node_id)
         )
         node = result.scalar_one_or_none()
 
         if not node:
-            return create_response(206, error_message="Node not found or access denied")
+            return create_response(404, error_message="Node not found")
+
+        # Verify the caller has at least viewer access to the node's workspace
+        if not await can_access_workspace(db, node.workspace_id, user.id, min_role="viewer"):
+            return create_response(403, error_message="Access denied")
 
         # Get breadcrumb path
         path = await get_node_path(db, node_id)
@@ -79,5 +75,5 @@ async def get_node_with_children(
         return create_response(200, value_correction(data))
 
     except Exception as e:
-        ExceptionHandler(e)
+        return ExceptionHandler(e)
 

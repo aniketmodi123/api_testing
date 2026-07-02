@@ -44,6 +44,26 @@ class ContractTestBody(BaseModel):
     timeout: float = 10.0
 
 
+class ContractTestResponse(BaseModel):
+    """Represent the violation report from POST /spec/{spec_id}/contract-test.
+
+    Attributes:
+        spec_id: ApiSpec tested against.
+        tested: Number of spec paths fired.
+        passed: Paths whose live response matched the spec's response schema.
+        failed: Paths whose live response violated the spec's response schema.
+        unmatched: Spec paths with no corresponding Api in the workspace.
+        results: Per-path result dicts — method, path, status, violations, error.
+    """
+
+    spec_id: int
+    tested: int
+    passed: int
+    failed: int
+    unmatched: int
+    results: List[Dict[str, Any]]
+
+
 # ---------- Helpers ----------
 
 def _get_response_schema(operation: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -172,7 +192,7 @@ async def contract_test(
         # Step 2: load spec
         spec = (await db.execute(select(ApiSpec).where(ApiSpec.id == spec_id))).scalar_one_or_none()
         if not spec:
-            return create_response(206, error_message="Spec not found")
+            return create_response(404, error_message="Spec not found")
         if spec.workspace_id != payload.workspace_id:
             return create_response(403, error_message="Spec does not belong to this workspace")
 
@@ -225,6 +245,6 @@ async def contract_test(
             "failed": failed,
             "unmatched": unmatched,
             "results": results,
-        })
+        }, schema=ContractTestResponse)
     except Exception as e:
         return ExceptionHandler(e)

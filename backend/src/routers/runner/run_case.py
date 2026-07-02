@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Header
 from pydantic import BaseModel
 
 from routers.runner.runner import run_from_list_api
+from schema import CaseRunResult
 from utils import (
     ExceptionHandler,
     create_response,
@@ -20,7 +21,7 @@ from config import (
     get_db
 )
 
-from common_querys import verify_node_ownership, get_user_by_username, get_workspace_variables, get_headers, resolve_auth, build_scope_chain
+from common_querys import resolve_file_access, get_headers, resolve_auth, build_scope_chain
 from auth_strategies import apply_auth
 from models import Api
 
@@ -46,13 +47,15 @@ async def get_file_api(
 ):
     """POST /run — resolve workspace variables and folder headers, then execute the specified (or all) test cases for a file's API."""
     try:
-        user = await get_user_by_username(db, username)
-        if not user:
+        access = await resolve_file_access(db, username, req.file_id)
+        if not access.user:
             return create_response(400, error_message="User not found")
+        if not access.node:
+            return create_response(404, error_message="File not found")
+        if not access.can_access:
+            return create_response(403, error_message="Access denied")
 
-        file_node = await verify_node_ownership(db, req.file_id, user.id)
-        if not file_node:
-            return create_response(206, error_message="File not found or access denied")
+        file_node = access.node
 
         if file_node.type != "file":
             return create_response(400, error_message="Can only get API from files, not folders")
@@ -61,11 +64,11 @@ async def get_file_api(
         result = await db.execute(query)
         api = result.scalar_one_or_none()
         if not api:
-            return create_response(206, error_message="No API found in this file")
+            return create_response(404, error_message="No API found in this file")
 
         folder_path, folder_ids, headers_map, merge_result = await get_headers(db, api.file_id)
         if not folder_path:
-            return create_response(206, error_message="Folder not found")
+            return create_response(404, error_message="Folder not found")
 
         workspace_variables = await build_scope_chain(db, file_id=req.file_id, username=username, workspace_id=file_node.workspace_id)
 
@@ -120,14 +123,14 @@ async def get_file_api(
             })
 
         if not cases_data:
-            return create_response(206, error_message="No test cases found")
+            return create_response(404, error_message="No test cases found")
 
         data["test_cases"] = cases_data
         data["total_cases"] = len(cases_data)
 
         results = await run_from_list_api(data)
 
-        return results["flat"]
+        return create_response(200, data=results["flat"], schema=CaseRunResult)
 
     except Exception as e:
-        ExceptionHandler(e)
+        return ExceptionHandler(e)

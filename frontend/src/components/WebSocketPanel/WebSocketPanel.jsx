@@ -1,13 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
+import { api } from '../../api';
 import styles from './WebSocketPanel.module.css';
 
 const MAX_MESSAGES = 200;
 const API_BASE = import.meta.env.VITE_API_BASE || 'https://api-testing-2vjt.onrender.com';
 
-function getProxyWsUrl(targetUrl) {
+// The WS proxy can't see the normal Authorization header — browsers don't let
+// WebSocket() send custom headers — so we fetch a 30s ticket over a regular
+// (auth-header-bearing) HTTP call and pass it as a query param instead.
+function getProxyWsUrl(targetUrl, ticket) {
   const base = API_BASE.replace(/^https?:\/\//, '');
   const scheme = API_BASE.startsWith('https') ? 'wss' : 'ws';
-  return `${scheme}://${base}/api/ws-proxy?target_url=${encodeURIComponent(targetUrl)}`;
+  return `${scheme}://${base}/api/ws-proxy?target_url=${encodeURIComponent(targetUrl)}&ticket=${encodeURIComponent(ticket)}`;
 }
 
 export default function WebSocketPanel({ url }) {
@@ -37,14 +41,25 @@ export default function WebSocketPanel({ url }) {
     });
   };
 
-  const connect = () => {
+  const connect = async () => {
     if (wsRef.current) {
       wsRef.current.close();
     }
     setStatus('connecting');
     setMessages([]);
 
-    const proxyUrl = getProxyWsUrl(url);
+    let ticket;
+    try {
+      const resp = await api.get('/api/ws-ticket');
+      ticket = resp.data?.data?.ticket;
+      if (!ticket) throw new Error('No ticket in response');
+    } catch {
+      setStatus('disconnected');
+      addMessage('system', 'Could not authenticate WebSocket connection');
+      return;
+    }
+
+    const proxyUrl = getProxyWsUrl(url, ticket);
     const ws = new WebSocket(proxyUrl);
     wsRef.current = ws;
 

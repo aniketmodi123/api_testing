@@ -7,9 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete
 
 from models import Environment, Workspace
-from schema import EnvironmentUpdate
+from schema import EnvironmentUpdate, EnvironmentResponse, EnvironmentListResponse
 from config import get_db
-from common_querys import get_user_by_username
+from common_querys import get_user_by_username, can_access_workspace, write_audit
 from utils import ExceptionHandler, create_response, value_correction
 
 router = APIRouter()
@@ -28,16 +28,14 @@ async def list_environments(
         if not user:
             return create_response(400, error_message="User not found")
 
-        # Verify workspace exists and user has access
-        workspace_query = select(Workspace).where(
-            Workspace.id == workspace_id,
-            Workspace.user_id == user.id
-        )
+        # Verify workspace exists and user has at least viewer access
+        workspace_query = select(Workspace.id).where(Workspace.id == workspace_id)
         workspace_result = await db.execute(workspace_query)
-        workspace = workspace_result.scalar_one_or_none()
+        if workspace_result.scalar_one_or_none() is None:
+            return create_response(404, error_message="Workspace not found")
 
-        if not workspace:
-            return create_response(206, error_message="Workspace not found or access denied")
+        if not await can_access_workspace(db, workspace_id, user.id, min_role="viewer"):
+            return create_response(403, error_message="Access denied")
 
         # Get all environments for this workspace
         environments_query = select(Environment).where(
@@ -78,10 +76,10 @@ async def list_environments(
             } if active_environment else None
         }
 
-        return create_response(200, value_correction(data))
+        return create_response(200, value_correction(data), EnvironmentListResponse)
 
     except Exception as e:
-        ExceptionHandler(e)
+        return ExceptionHandler(e)
 
 
 @router.get("/workspace/{workspace_id}/environments/{environment_id}")
@@ -98,16 +96,14 @@ async def get_environment(
         if not user:
             return create_response(400, error_message="User not found")
 
-        # Verify workspace exists and user has access
-        workspace_query = select(Workspace).where(
-            Workspace.id == workspace_id,
-            Workspace.user_id == user.id
-        )
+        # Verify workspace exists and user has at least viewer access
+        workspace_query = select(Workspace.id).where(Workspace.id == workspace_id)
         workspace_result = await db.execute(workspace_query)
-        workspace = workspace_result.scalar_one_or_none()
+        if workspace_result.scalar_one_or_none() is None:
+            return create_response(404, error_message="Workspace not found")
 
-        if not workspace:
-            return create_response(206, error_message="Workspace not found or access denied")
+        if not await can_access_workspace(db, workspace_id, user.id, min_role="viewer"):
+            return create_response(403, error_message="Access denied")
 
         # Get the environment
         environment_query = select(Environment).where(
@@ -118,7 +114,7 @@ async def get_environment(
         environment = environment_result.scalar_one_or_none()
 
         if not environment:
-            return create_response(206, error_message="Environment not found")
+            return create_response(404, error_message="Environment not found")
 
         # Get environment variables
         masked_variables = {}
@@ -138,10 +134,10 @@ async def get_environment(
             "variables": masked_variables
         }
 
-        return create_response(200, value_correction(data))
+        return create_response(200, value_correction(data), EnvironmentResponse)
 
     except Exception as e:
-        ExceptionHandler(e)
+        return ExceptionHandler(e)
 
 
 @router.put("/workspace/{workspace_id}/environments/{environment_id}")
@@ -159,16 +155,14 @@ async def update_environment(
         if not user:
             return create_response(400, error_message="User not found")
 
-        # Verify workspace exists and user has access
-        workspace_query = select(Workspace).where(
-            Workspace.id == workspace_id,
-            Workspace.user_id == user.id
-        )
+        # Verify workspace exists and user has at least editor access
+        workspace_query = select(Workspace.id).where(Workspace.id == workspace_id)
         workspace_result = await db.execute(workspace_query)
-        workspace = workspace_result.scalar_one_or_none()
+        if workspace_result.scalar_one_or_none() is None:
+            return create_response(404, error_message="Workspace not found")
 
-        if not workspace:
-            return create_response(206, error_message="Workspace not found or access denied")
+        if not await can_access_workspace(db, workspace_id, user.id, min_role="editor"):
+            return create_response(403, error_message="Editor access or higher required")
 
         # Get the environment
         environment_query = select(Environment).where(
@@ -179,7 +173,7 @@ async def update_environment(
         environment = environment_result.scalar_one_or_none()
 
         if not environment:
-            return create_response(206, error_message="Environment not found")
+            return create_response(404, error_message="Environment not found")
 
         # Check if new name conflicts with existing environments
         if environment_data.name and environment_data.name != environment.name:
@@ -224,6 +218,7 @@ async def update_environment(
             )
             await db.execute(update_query)
 
+        await write_audit(db, username=user.username, action="environment.update", entity_type="environment", entity_id=environment_id, workspace_id=workspace_id, metadata=update_data)
         await db.commit()
 
         # Refresh and return updated environment
@@ -239,11 +234,11 @@ async def update_environment(
             "workspace_id": environment.workspace_id
         }
 
-        return create_response(200, value_correction(data))
+        return create_response(200, value_correction(data), EnvironmentResponse)
 
     except Exception as e:
         await db.rollback()
-        ExceptionHandler(e)
+        return ExceptionHandler(e)
 
 
 @router.post("/workspace/{workspace_id}/environments/{environment_id}/activate")
@@ -260,16 +255,14 @@ async def activate_environment(
         if not user:
             return create_response(400, error_message="User not found")
 
-        # Verify workspace exists and user has access
-        workspace_query = select(Workspace).where(
-            Workspace.id == workspace_id,
-            Workspace.user_id == user.id
-        )
+        # Verify workspace exists and user has at least editor access
+        workspace_query = select(Workspace.id).where(Workspace.id == workspace_id)
         workspace_result = await db.execute(workspace_query)
-        workspace = workspace_result.scalar_one_or_none()
+        if workspace_result.scalar_one_or_none() is None:
+            return create_response(404, error_message="Workspace not found")
 
-        if not workspace:
-            return create_response(206, error_message="Workspace not found or access denied")
+        if not await can_access_workspace(db, workspace_id, user.id, min_role="editor"):
+            return create_response(403, error_message="Editor access or higher required")
 
         # Get the environment
         environment_query = select(Environment).where(
@@ -280,7 +273,7 @@ async def activate_environment(
         environment = environment_result.scalar_one_or_none()
 
         if not environment:
-            return create_response(206, error_message="Environment not found")
+            return create_response(404, error_message="Environment not found")
 
         # Deactivate all other environments in this workspace
         deactivate_query = (
@@ -301,6 +294,7 @@ async def activate_environment(
         )
         await db.execute(activate_query)
 
+        await write_audit(db, username=user.username, action="environment.activate", entity_type="environment", entity_id=environment_id, workspace_id=workspace_id)
         await db.commit()
 
         # Refresh and return updated environment
@@ -316,11 +310,11 @@ async def activate_environment(
             "workspace_id": environment.workspace_id
         }
 
-        return create_response(200, value_correction(data))
+        return create_response(200, value_correction(data), EnvironmentResponse)
 
     except Exception as e:
         await db.rollback()
-        ExceptionHandler(e)
+        return ExceptionHandler(e)
 
 
 @router.delete("/workspace/{workspace_id}/environments/{environment_id}")
@@ -337,16 +331,14 @@ async def delete_environment(
         if not user:
             return create_response(400, error_message="User not found")
 
-        # Verify workspace exists and user has access
-        workspace_query = select(Workspace).where(
-            Workspace.id == workspace_id,
-            Workspace.user_id == user.id
-        )
+        # Verify workspace exists and user has at least editor access
+        workspace_query = select(Workspace.id).where(Workspace.id == workspace_id)
         workspace_result = await db.execute(workspace_query)
-        workspace = workspace_result.scalar_one_or_none()
+        if workspace_result.scalar_one_or_none() is None:
+            return create_response(404, error_message="Workspace not found")
 
-        if not workspace:
-            return create_response(206, error_message="Workspace not found or access denied")
+        if not await can_access_workspace(db, workspace_id, user.id, min_role="editor"):
+            return create_response(403, error_message="Editor access or higher required")
 
         # Get the environment
         environment_query = select(Environment).where(
@@ -357,7 +349,7 @@ async def delete_environment(
         environment = environment_result.scalar_one_or_none()
 
         if not environment:
-            return create_response(206, error_message="Environment not found")
+            return create_response(404, error_message="Environment not found")
 
         environment_name = environment.name
 
@@ -367,6 +359,7 @@ async def delete_environment(
         )
         await db.execute(delete_env_query)
 
+        await write_audit(db, username=user.username, action="environment.delete", entity_type="environment", entity_id=environment_id, workspace_id=workspace_id, metadata={"name": environment_name})
         await db.commit()
 
         data = {
@@ -377,4 +370,4 @@ async def delete_environment(
 
     except Exception as e:
         await db.rollback()
-        ExceptionHandler(e)
+        return ExceptionHandler(e)

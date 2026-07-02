@@ -56,6 +56,27 @@ class LintViolation(BaseModel):
     message: str
 
 
+class GovernanceRuleResponse(BaseModel):
+    """Represent a governance rule as returned to the caller.
+
+    Attributes:
+        id: Rule row id.
+        name: Display label.
+        rule_type: ``"naming"``, ``"required_field"``, or ``"status_code"``.
+        target: ``"path"``, ``"name"``, ``"header"``, or ``"param"``.
+        value: Regex pattern (naming) or expected value/status code.
+        enabled: ``True`` when the rule is included in lint runs.
+        created_at: ISO timestamp the rule was created.
+    """
+    id: int
+    name: str
+    rule_type: str
+    target: str
+    value: str
+    enabled: bool
+    created_at: str
+
+
 class LintReport(BaseModel):
     """Summary and per-violation detail from a governance lint run.
 
@@ -129,7 +150,7 @@ async def list_governance_rules(
             .order_by(GovernanceRule.id)
         )).scalars().all()
 
-        return create_response(200, data=[
+        return create_response(200, [
             {
                 "id": r.id,
                 "name": r.name,
@@ -140,7 +161,7 @@ async def list_governance_rules(
                 "created_at": str(r.created_at),
             }
             for r in rows
-        ])
+        ], GovernanceRuleResponse)
     except Exception as e:
         return ExceptionHandler(e)
 
@@ -185,10 +206,22 @@ async def create_governance_rule(
         db.add(rule)
         await db.flush()
         rule_id = rule.id
-        await write_audit(db, username, "governance_rule_create", workspace_id, {"rule_id": rule_id, "name": payload.name})
+        await write_audit(
+            db, username, "governance_rule.create", "governance_rule", rule_id,
+            workspace_id=workspace_id, metadata={"name": payload.name},
+        )
         await db.commit()
+        await db.refresh(rule)
 
-        return create_response(201, data={"id": rule_id})
+        return create_response(201, {
+            "id": rule.id,
+            "name": rule.name,
+            "rule_type": rule.rule_type,
+            "target": rule.target,
+            "value": rule.value,
+            "enabled": rule.enabled,
+            "created_at": str(rule.created_at),
+        }, GovernanceRuleResponse)
     except Exception as e:
         await db.rollback()
         return ExceptionHandler(e)
@@ -235,9 +268,22 @@ async def update_governance_rule(
         rule.target = payload.target
         rule.value = payload.value
         rule.enabled = payload.enabled
+        await write_audit(
+            db, username, "governance_rule.update", "governance_rule", rule_id,
+            workspace_id=rule.workspace_id, metadata={"name": payload.name},
+        )
         await db.commit()
+        await db.refresh(rule)
 
-        return create_response(200, data={"id": rule_id})
+        return create_response(200, {
+            "id": rule.id,
+            "name": rule.name,
+            "rule_type": rule.rule_type,
+            "target": rule.target,
+            "value": rule.value,
+            "enabled": rule.enabled,
+            "created_at": str(rule.created_at),
+        }, GovernanceRuleResponse)
     except Exception as e:
         await db.rollback()
         return ExceptionHandler(e)
@@ -267,6 +313,10 @@ async def delete_governance_rule(
             return create_response(403, error_message="Admin role required")
 
         await db.delete(rule)
+        await write_audit(
+            db, username, "governance_rule.delete", "governance_rule", rule_id,
+            workspace_id=rule.workspace_id,
+        )
         await db.commit()
 
         return create_response(200, message="Rule deleted")
@@ -299,7 +349,7 @@ async def lint_workspace(
         )).scalars().all()
 
         if not rules:
-            return create_response(200, data={"total_apis": 0, "violations_count": 0, "violations": []})
+            return create_response(200, {"total_apis": 0, "violations_count": 0, "violations": []}, LintReport)
 
         # load all active apis in workspace via node join
         apis = (await db.execute(
@@ -309,7 +359,7 @@ async def lint_workspace(
         )).scalars().all()
 
         if not apis:
-            return create_response(200, data={"total_apis": 0, "violations_count": 0, "violations": []})
+            return create_response(200, {"total_apis": 0, "violations_count": 0, "violations": []}, LintReport)
 
         api_ids = [a.id for a in apis]
 
@@ -337,10 +387,10 @@ async def lint_workspace(
                         "message": msg,
                     })
 
-        return create_response(200, data={
+        return create_response(200, {
             "total_apis": len(apis),
             "violations_count": len(violations),
             "violations": violations,
-        })
+        }, LintReport)
     except Exception as e:
         return ExceptionHandler(e)

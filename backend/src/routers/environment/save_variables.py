@@ -6,11 +6,12 @@ from fastapi import APIRouter, Depends, Header as FastAPIHeader
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from common_querys import get_user_by_username
+from common_querys import get_user_by_username, can_access_workspace
 from config import get_db
 from models import Environment, Workspace
 from schema import (
-    VariablesSetRequest
+    VariablesSetRequest,
+    VariablesResponse
 )
 from utils import (
     ExceptionHandler,
@@ -36,16 +37,13 @@ async def save_environment_variables(
         if not user:
             return create_response(400, error_message="User not found")
 
-        # Verify workspace ownership
-        workspace_result = await db.execute(
-            select(Workspace).where(
-                Workspace.id == workspace_id,
-                Workspace.user_id == user.id
-            )
-        )
-        workspace = workspace_result.scalar_one_or_none()
-        if not workspace:
-            return create_response(206, error_message="Workspace not found or access denied")
+        # Verify workspace exists and user has at least editor access
+        workspace_result = await db.execute(select(Workspace.id).where(Workspace.id == workspace_id))
+        if workspace_result.scalar_one_or_none() is None:
+            return create_response(404, error_message="Workspace not found")
+
+        if not await can_access_workspace(db, workspace_id, user.id, min_role="editor"):
+            return create_response(403, error_message="Editor access or higher required")
 
         # Verify environment exists in this workspace
         environment_result = await db.execute(
@@ -56,7 +54,7 @@ async def save_environment_variables(
         )
         environment = environment_result.scalar_one_or_none()
         if not environment:
-            return create_response(206, error_message="Environment not found")
+            return create_response(404, error_message="Environment not found")
 
         # Convert VariablesSetRequest to simple dict format for JSON storage
         variables_dict = variables_data.variables  # Direct assignment since it's already Dict[str, str]
@@ -81,8 +79,8 @@ async def save_environment_variables(
 
         # Return appropriate status code
         status_code = 201 if is_create else 200
-        return create_response(status_code, value_correction(data))
+        return create_response(status_code, value_correction(data), VariablesResponse)
 
     except Exception as e:
         await db.rollback()
-        ExceptionHandler(e)
+        return ExceptionHandler(e)

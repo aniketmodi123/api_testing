@@ -123,7 +123,7 @@ async def invite_member(
 
     except Exception as e:
         await db.rollback()
-        ExceptionHandler(e)
+        return ExceptionHandler(e)
 
 
 # ---------------------------------------------------------------------------
@@ -186,7 +186,7 @@ async def join_workspace(
 
     except Exception as e:
         await db.rollback()
-        ExceptionHandler(e)
+        return ExceptionHandler(e)
 
 
 # ---------------------------------------------------------------------------
@@ -258,7 +258,7 @@ async def list_members(
         }))
 
     except Exception as e:
-        ExceptionHandler(e)
+        return ExceptionHandler(e)
 
 
 # ---------------------------------------------------------------------------
@@ -305,7 +305,7 @@ async def update_member_role(
 
     except Exception as e:
         await db.rollback()
-        ExceptionHandler(e)
+        return ExceptionHandler(e)
 
 
 # ---------------------------------------------------------------------------
@@ -347,4 +347,4 @@ async def remove_member(
 
     except Exception as e:
         await db.rollback()
-        ExceptionHandler(e)
+        return ExceptionHandler(e)

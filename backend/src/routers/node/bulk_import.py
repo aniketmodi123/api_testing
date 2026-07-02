@@ -7,7 +7,7 @@ from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_db
-from common_querys import get_user_by_username, verify_workspace_ownership, get_workspace_tree_response
+from common_querys import get_user_by_username, can_access_workspace, get_workspace_tree_response
 from models import Node, Api, ApiCase
 from schema import BulkImportRequest
 from utils import ExceptionHandler, create_response, value_correction
@@ -27,7 +27,7 @@ async def bulk_import_nodes(
         if not user:
             return create_response(400, error_message="User not found")
 
-        if not await verify_workspace_ownership(db, payload.workspace_id, user.id):
+        if not await can_access_workspace(db, payload.workspace_id, user.id, min_role="editor"):
             return create_response(403, error_message="Workspace access denied")
 
         # Map temp_id -> real DB Node id
@@ -111,7 +111,7 @@ async def bulk_import_nodes(
 
         data, err = await get_workspace_tree_response(db, payload.workspace_id, include_apis=True)
         if not data:
-            return create_response(206, error_message=err or "Import succeeded but workspace tree unavailable")
+            return create_response(404, error_message=err or "Import succeeded but workspace tree unavailable")
 
         return create_response(201, value_correction(data), message=f"Imported {len(processed_ids)} items")
 

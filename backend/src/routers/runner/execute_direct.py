@@ -6,7 +6,7 @@ from typing import Dict, Any
 from fastapi import APIRouter, Depends, Header as FastAPIHeader, HTTPException
 import httpx, time, json
 
-from schema import ApiExecuteRequest
+from schema import ApiExecuteRequest, ExecuteDirectResponse, ExecuteWithValidationResponse, TestConnectivityResponse
 from routers.runner.validator import evaluate_expect
 
 from utils import (
@@ -21,11 +21,9 @@ from utils import (
 from http_client import get_http_client, OUTBOUND_VERIFY_TLS
 from ssrf import assert_safe_url
 from routers.variables.global_variables import get_global_variables_for_user
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from common_querys import get_user_by_username, verify_node_ownership, get_headers, resolve_auth, build_scope_chain
+from common_querys import get_user_by_username, resolve_file_access, get_headers, resolve_auth, build_scope_chain
 from config import get_db
-from models import Environment, Node
 from auth_strategies import apply_auth_async
 
 def resolve_docker_url(url: str) -> str:
@@ -169,7 +167,8 @@ async def test_url_connectivity(
                 "url_tested": url,
                 "connectivity_results": results,
                 "recommendation": "Use the URL that shows 'success' status"
-            }
+            },
+            schema=TestConnectivityResponse,
         )
     except Exception as e:
         return handle_http_error(e, url=url, method="GET", headers={})
@@ -185,22 +184,18 @@ async def execute_api_direct(
 ):
     """POST /api/execute-direct — resolve variables (global → env), merge folder headers, and fire the external HTTP request; return response with timing and resolved metadata. When file_id is None (ephemeral/scratch request), skips DB scope chain and auth injection — fires with only the variables and headers supplied in the request body."""
     try:
-        # Verify user permissions
-        user = await get_user_by_username(db, username)
-        if not user:
-            return create_response(400, error_message="User not found")
-
         if request.file_id is not None:
-            # Saved request: verify ownership, load scope chain + folder headers + auth
-            if not await verify_node_ownership(db, request.file_id, user.id):
-                return create_response(400, error_message="Access denied")
+            # Saved request: resolve caller + node + access in one round trip, then load
+            # scope chain + folder headers + auth
+            access = await resolve_file_access(db, username, request.file_id)
+            if not access.user:
+                return create_response(400, error_message="User not found")
+            if not access.node:
+                return create_response(404, error_message="File not found")
+            if not access.can_access:
+                return create_response(403, error_message="Access denied")
 
-            file_query = select(Node).where(Node.id == request.file_id)
-            file_result = await db.execute(file_query)
-            file_node = file_result.scalar_one_or_none()
-            if not file_node:
-                return create_response(206, error_message="File not found")
-
+            file_node = access.node
             workspace_id = file_node.workspace_id
             merged_variables = await build_scope_chain(
                 db, file_id=request.file_id, username=username, workspace_id=workspace_id
@@ -208,7 +203,10 @@ async def execute_api_direct(
             _, __, ___, merge_result = await get_headers(db, request.file_id)
             merged_headers = merge_result.get("merged_headers", {})
         else:
-            # Ephemeral/scratch request: no DB lookup, no scope chain, no folder headers
+            # Ephemeral/scratch request: still verify the caller exists, but no scope chain
+            user = await get_user_by_username(db, username)
+            if not user:
+                return create_response(400, error_message="User not found")
             merged_variables = {}
             merged_headers = {}
 
@@ -290,7 +288,8 @@ async def execute_api_direct(
                     "resolved_params": resolved_params,
                     "has_body": resolved_body is not None,
                 },
-            }
+            },
+            schema=ExecuteDirectResponse,
         )
 
     except (httpx.ConnectError, httpx.TimeoutException, httpx.RequestError) as e:
@@ -378,7 +377,7 @@ async def execute_api_with_validation(
         }
 
         # 8. Return enhanced response with validation results
-        return create_response(200, data=execution_data)
+        return create_response(200, data=execution_data, schema=ExecuteWithValidationResponse)
 
     except Exception as e:
         logs(f"execute_with_validation error: {type(e).__name__}", type="error")

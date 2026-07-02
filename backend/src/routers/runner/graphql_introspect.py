@@ -7,6 +7,10 @@ import httpx
 from fastapi import APIRouter
 from pydantic import BaseModel
 
+from schema import GraphQLIntrospectResponse
+from ssrf import assert_safe_url
+from utils import ExceptionHandler, create_response, handle_http_error
+
 router = APIRouter()
 
 _INTROSPECTION_QUERY = """
@@ -52,8 +56,15 @@ class GraphQLIntrospectRequest(BaseModel):
 
 @router.post("/graphql-introspect")
 async def graphql_introspect(body: GraphQLIntrospectRequest):
-    """POST /api/graphql-introspect — proxy a GraphQL introspection query to the target URL and return the raw schema."""
+    """POST /api/graphql-introspect — proxy a GraphQL introspection query to the target URL and return the raw schema.
+
+    Notes:
+        - No per-route identity check: this is a stateless probe with no user-scoped resource
+          to authorize against; the global JWT AuthMiddleware already gates the route.
+    """
     try:
+        assert_safe_url(body.url)
+
         req_headers = {**(body.headers or {}), "Content-Type": "application/json"}
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.post(
@@ -63,7 +74,11 @@ async def graphql_introspect(body: GraphQLIntrospectRequest):
             )
         data = resp.json()
         if "data" not in data or "__schema" not in (data.get("data") or {}):
-            return {"error": "Endpoint did not return a valid GraphQL schema"}
-        return data
+            return create_response(502, error_message="Endpoint did not return a valid GraphQL schema")
+        return create_response(200, data=data, schema=GraphQLIntrospectResponse)
+    except ValueError as e:
+        return create_response(400, error_message=str(e))
+    except (httpx.HTTPError, httpx.ConnectError, httpx.TimeoutException) as e:
+        return handle_http_error(e, url=body.url, method="POST", headers=body.headers or {})
     except Exception as e:
-        return {"error": str(e)}
+        return ExceptionHandler(e)

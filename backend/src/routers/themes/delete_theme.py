@@ -51,4 +51,4 @@ async def delete_theme(
 
     except Exception as e:
         await db.rollback()
-        ExceptionHandler(e)
+        return ExceptionHandler(e)

@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_db
-from common_querys import get_user_by_username, verify_node_ownership, write_audit
+from common_querys import can_access_workspace, get_user_by_username, verify_node_ownership, write_audit
 from models import Api
 from schema import SetAuthRequest, SetAuthResponse
 from utils import ExceptionHandler, create_response
@@ -69,6 +69,8 @@ async def set_api_auth(
         file_node = await verify_node_ownership(db, api.file_id, user.id)
         if not file_node:
             return create_response(403, error_message="Access denied")
+        if not await can_access_workspace(db, file_node.workspace_id, user.id, min_role="editor"):
+            return create_response(403, error_message="Editor access or higher required")
 
         # Step 3: Encrypt secret fields
         encrypted_config = _encrypt_secrets(request.type, request.config)

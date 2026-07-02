@@ -26,6 +26,30 @@ class CommentCreate(BaseModel):
     parent_id: Optional[int] = None
 
 
+class CommentResponse(BaseModel):
+    """Serialized comment row returned by create and list endpoints.
+
+    Attributes:
+        id: Primary key of the comment.
+        workspace_id: Workspace the comment belongs to.
+        entity_type: Entity kind the comment is attached to — ``"node"``, ``"api"``, ``"api_case"``, or ``"flow"``.
+        entity_id: Numeric id of the commented entity.
+        author_username: Email of the user who posted the comment.
+        body: Comment text content.
+        parent_id: Parent comment id for threaded replies; ``None`` for top-level comments.
+        created_at: ISO timestamp when the comment was posted; ``None`` if unset.
+    """
+
+    id: int
+    workspace_id: int
+    entity_type: str
+    entity_id: int
+    author_username: str
+    body: str
+    parent_id: Optional[int] = None
+    created_at: Optional[str] = None
+
+
 @router.post("/workspace/{workspace_id}/comment")
 async def create_comment(
     workspace_id: int,
@@ -74,7 +98,7 @@ async def create_comment(
         await db.commit()
         await db.refresh(comment)
 
-        return create_response(201, data=_comment_dict(comment))
+        return create_response(201, data=_comment_dict(comment), schema=CommentResponse)
     except Exception as e:
         await db.rollback()
         return ExceptionHandler(e)
@@ -117,7 +141,7 @@ async def list_comments(
             )
         ).scalars().all()
 
-        return create_response(200, data=[_comment_dict(c) for c in comments])
+        return create_response(200, data=[_comment_dict(c) for c in comments], schema=CommentResponse)
     except Exception as e:
         return ExceptionHandler(e)
 
@@ -142,7 +166,7 @@ async def delete_comment(
             await db.execute(select(Comment).where(Comment.id == comment_id))
         ).scalar_one_or_none()
         if not comment:
-            return create_response(206, error_message="Comment not found")
+            return create_response(404, error_message="Comment not found")
 
         access = await can_access_workspace(db, comment.workspace_id, user.id, min_role="viewer")
         if not access:

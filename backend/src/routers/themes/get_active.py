@@ -48,4 +48,4 @@ async def get_active_theme(
         return create_response(200, data)
 
     except Exception as e:
-        ExceptionHandler(e)
+        return ExceptionHandler(e)

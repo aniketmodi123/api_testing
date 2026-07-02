@@ -21,6 +21,34 @@ class VersionCreate(BaseModel):
     message: Optional[str] = None
 
 
+class NodeVersionMeta(BaseModel):
+    """Version snapshot metadata returned by create and list endpoints (no snapshot body).
+
+    Attributes:
+        id: Primary key of the version.
+        node_id: Node the snapshot was captured from.
+        author_username: Email of the user who created the snapshot.
+        message: Description of the snapshot; ``None`` when not provided.
+        created_at: ISO timestamp when the snapshot was taken; ``None`` if unset.
+    """
+
+    id: int
+    node_id: int
+    author_username: str
+    message: Optional[str] = None
+    created_at: Optional[str] = None
+
+
+class NodeVersionDetail(NodeVersionMeta):
+    """Full version snapshot including the captured subtree blob.
+
+    Attributes:
+        snapshot: JSON blob of the node subtree at snapshot time (node + children + apis + cases).
+    """
+
+    snapshot: Dict[str, Any]
+
+
 async def _snapshot_node(db: AsyncSession, node: Node) -> Dict[str, Any]:
     """What it does: Recursively capture a node and its full subtree (children + apis + cases) as a plain dict for storage."""
     node_data = {
@@ -162,7 +190,7 @@ async def create_version(
 
         node = (await db.execute(select(Node).where(Node.id == node_id))).scalar_one_or_none()
         if not node:
-            return create_response(206, error_message="Node not found")
+            return create_response(404, error_message="Node not found")
 
         access = await can_access_workspace(db, node.workspace_id, user.id, min_role="editor")
         if not access:
@@ -188,7 +216,7 @@ async def create_version(
             "author_username": version.author_username,
             "message": version.message,
             "created_at": str(version.created_at) if version.created_at else None,
-        })
+        }, schema=NodeVersionMeta)
     except Exception as e:
         await db.rollback()
         return ExceptionHandler(e)
@@ -208,7 +236,7 @@ async def list_versions(
 
         node = (await db.execute(select(Node).where(Node.id == node_id))).scalar_one_or_none()
         if not node:
-            return create_response(206, error_message="Node not found")
+            return create_response(404, error_message="Node not found")
 
         access = await can_access_workspace(db, node.workspace_id, user.id, min_role="viewer")
         if not access:
@@ -231,7 +259,7 @@ async def list_versions(
                 "created_at": str(v.created_at) if v.created_at else None,
             }
             for v in versions
-        ])
+        ], schema=NodeVersionMeta)
     except Exception as e:
         return ExceptionHandler(e)
 
@@ -252,11 +280,11 @@ async def get_version(
             await db.execute(select(NodeVersion).where(NodeVersion.id == version_id))
         ).scalar_one_or_none()
         if not version:
-            return create_response(206, error_message="Version not found")
+            return create_response(404, error_message="Version not found")
 
         node = (await db.execute(select(Node).where(Node.id == version.node_id))).scalar_one_or_none()
         if not node:
-            return create_response(206, error_message="Node not found")
+            return create_response(404, error_message="Node not found")
 
         access = await can_access_workspace(db, node.workspace_id, user.id, min_role="viewer")
         if not access:
@@ -269,7 +297,7 @@ async def get_version(
             "message": version.message,
             "created_at": str(version.created_at) if version.created_at else None,
             "snapshot": version.snapshot,
-        })
+        }, schema=NodeVersionDetail)
     except Exception as e:
         return ExceptionHandler(e)
 
@@ -295,11 +323,11 @@ async def restore_version(
             await db.execute(select(NodeVersion).where(NodeVersion.id == version_id))
         ).scalar_one_or_none()
         if not version:
-            return create_response(206, error_message="Version not found")
+            return create_response(404, error_message="Version not found")
 
         node = (await db.execute(select(Node).where(Node.id == version.node_id))).scalar_one_or_none()
         if not node:
-            return create_response(206, error_message="Node not found")
+            return create_response(404, error_message="Node not found")
 
         access = await can_access_workspace(db, node.workspace_id, user.id, min_role="editor")
         if not access:

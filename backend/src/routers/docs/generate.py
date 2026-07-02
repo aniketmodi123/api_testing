@@ -93,7 +93,7 @@ async def generate_docs(
 
         node = (await db.execute(select(Node).where(Node.id == node_id))).scalar_one_or_none()
         if not node:
-            return create_response(206, error_message="Node not found")
+            return create_response(404, error_message="Node not found")
 
         access = await can_access_workspace(db, node.workspace_id, user.id, min_role="editor")
         if not access:

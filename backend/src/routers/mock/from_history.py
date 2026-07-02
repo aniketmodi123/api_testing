@@ -8,10 +8,19 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from common_querys import can_access_workspace, get_user_by_username
+from common_querys import can_access_workspace, get_user_by_username, write_audit
 from config import get_db
-from models import BulkTestResult, MockRoute, MockServer, RequestHistory
+from models import (
+    BulkTestExecution,
+    BulkTestResult,
+    BulkTestSchedule,
+    MockRoute,
+    MockServer,
+    RequestHistory,
+)
 from utils import ExceptionHandler, create_response
+
+from .crud import MockRouteResponse
 
 router = APIRouter()
 
@@ -87,7 +96,7 @@ async def create_route_from_history(
 
         server = (await db.execute(select(MockServer).where(MockServer.id == server_id))).scalar_one_or_none()
         if not server:
-            return create_response(206, error_message="Mock server not found")
+            return create_response(404, error_message="Mock server not found")
 
         access = await can_access_workspace(db, server.workspace_id, user.id, min_role="editor")
         if not access:
@@ -97,7 +106,11 @@ async def create_route_from_history(
             await db.execute(select(RequestHistory).where(RequestHistory.id == payload.history_id))
         ).scalar_one_or_none()
         if not history:
-            return create_response(206, error_message="History entry not found")
+            return create_response(404, error_message="History entry not found")
+
+        # cross-tenant guard: only copy history captured by this user or within the server's workspace
+        if history.username != username and history.workspace_id != server.workspace_id:
+            return create_response(403, error_message="Access denied")
 
         # derive path from URL if not overridden
         route_path = payload.path
@@ -116,9 +129,11 @@ async def create_route_from_history(
             priority=payload.priority,
         )
         db.add(route)
+        await db.flush()
+        await write_audit(db, username, "mock_route.create", "mock_route", route.id, workspace_id=server.workspace_id)
         await db.commit()
         await db.refresh(route)
-        return create_response(200, data=_route_dict(route))
+        return create_response(200, data=_route_dict(route), schema=MockRouteResponse)
     except Exception as e:
         await db.rollback()
         return ExceptionHandler(e)
@@ -143,17 +158,28 @@ async def create_route_from_result(
 
         server = (await db.execute(select(MockServer).where(MockServer.id == server_id))).scalar_one_or_none()
         if not server:
-            return create_response(206, error_message="Mock server not found")
+            return create_response(404, error_message="Mock server not found")
 
         access = await can_access_workspace(db, server.workspace_id, user.id, min_role="editor")
         if not access:
             return create_response(403, error_message="Access denied")
 
-        result = (
-            await db.execute(select(BulkTestResult).where(BulkTestResult.id == payload.result_id))
-        ).scalar_one_or_none()
-        if not result:
-            return create_response(206, error_message="Test result not found")
+        # fetch the result joined to its owning schedule's workspace for the cross-tenant guard
+        row = (
+            await db.execute(
+                select(BulkTestResult, BulkTestSchedule.workspace_id)
+                .join(BulkTestExecution, BulkTestResult.execution_id == BulkTestExecution.id)
+                .join(BulkTestSchedule, BulkTestExecution.schedule_id == BulkTestSchedule.id)
+                .where(BulkTestResult.id == payload.result_id)
+            )
+        ).first()
+        if not row:
+            return create_response(404, error_message="Test result not found")
+        result, result_workspace_id = row
+
+        # cross-tenant guard: only copy results produced within the server's workspace
+        if result_workspace_id != server.workspace_id:
+            return create_response(403, error_message="Access denied")
 
         req_snapshot = result.request or {}
         resp_snapshot = result.response or {}
@@ -182,9 +208,11 @@ async def create_route_from_result(
             priority=payload.priority,
         )
         db.add(route)
+        await db.flush()
+        await write_audit(db, username, "mock_route.create", "mock_route", route.id, workspace_id=server.workspace_id)
         await db.commit()
         await db.refresh(route)
-        return create_response(200, data=_route_dict(route))
+        return create_response(200, data=_route_dict(route), schema=MockRouteResponse)
     except Exception as e:
         await db.rollback()
         return ExceptionHandler(e)

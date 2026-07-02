@@ -5,12 +5,12 @@ What this file does: Exposes DELETE /case/{case_id} (single) and DELETE /cases/b
 from typing import List
 
 from fastapi import APIRouter, Depends, Header
-from sqlalchemy import and_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_db
-from common_querys import get_user_by_username, resolve_case_access, write_audit
-from models import Api, ApiCase, Node, Workspace
+from common_querys import can_access_workspace, get_user_by_username, resolve_case_access, write_audit
+from models import Api, ApiCase, Node, Workspace, WorkspaceMember
 from schema import BulkDeleteResponse
 from utils import ExceptionHandler, create_response
 
@@ -31,6 +31,8 @@ async def delete_test_case(
             return create_response(401, error_message="User not found")
         if ca.case is None or not ca.can_access:
             return create_response(404, error_message="Test case not found or access denied")
+        if not await can_access_workspace(db, ca.node.workspace_id, ca.user.id, min_role="editor"):
+            return create_response(403, error_message="Editor access or higher required")
 
         # Step 2: Audit (workspace_id comes from the resolved node — no extra query) and delete
         await write_audit(
@@ -67,16 +69,27 @@ async def delete_test_cases_bulk(
         if not user:
             return create_response(401, error_message="User not found")
 
-        # Step 2: Fetch the owned subset of the requested cases (in_() is guarded above)
+        # Step 2: Fetch the subset of requested cases the caller owns or has editor+ access to (in_() is guarded above)
         result = await db.execute(
             select(ApiCase)
             .join(Api, ApiCase.api_id == Api.id)
             .join(Node, Api.file_id == Node.id)
             .join(Workspace, Node.workspace_id == Workspace.id)
+            .outerjoin(
+                WorkspaceMember,
+                and_(
+                    WorkspaceMember.workspace_id == Workspace.id,
+                    WorkspaceMember.user_id == user.id,
+                    WorkspaceMember.joined_at.isnot(None),
+                ),
+            )
             .where(
                 and_(
                     ApiCase.id.in_(case_ids),
-                    Workspace.user_id == user.id,
+                    or_(
+                        Workspace.user_id == user.id,
+                        WorkspaceMember.role.in_(["editor", "admin"]),
+                    ),
                 )
             )
         )

@@ -3,7 +3,6 @@ What this file does: Exposes POST /bulk_run_cases for concurrently executing tes
 """
 
 from datetime import datetime
-from operator import and_
 import asyncio
 from typing import Union, List, Optional
 from fastapi import APIRouter, Depends, Header
@@ -39,28 +38,15 @@ class BulkRunnerSelected(BaseModel):
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
-from models import Api, Workspace, Node
-from routers.runner.runner import run_from_list_api
+from models import Api, Workspace
+from routers.runner.runner import run_from_list_api, verify_nodes
+from schema import BulkRunCasesResponse
 from utils import create_response, ExceptionHandler, value_correction, resolve_variables
-from common_querys import get_user_by_username, get_workspace_variables, get_headers, resolve_auth, build_scope_chain
+from common_querys import can_access_workspace, get_user_by_username, get_headers, resolve_auth, build_scope_chain
 from auth_strategies import apply_auth
 from config import get_db
 
 router = APIRouter()
-
-
-async def verify_nodes(db: AsyncSession, node_id: list[int], user_id: int):
-    """
-    What it does: Return the Node rows for the given IDs that belong to workspaces owned by user_id.
-    Returns:
-        list[Node]: Nodes the user owns; excludes any IDs belonging to other users.
-    """
-    result = await db.execute(
-        select(Node)
-        .join(Workspace, Node.workspace_id == Workspace.id)
-        .where(and_(Node.id.in_(node_id), Workspace.user_id == user_id))
-    )
-    return result.scalars().all()
 
 
 @router.post("/bulk_run_cases")
@@ -77,6 +63,12 @@ async def bulk_run_cases(
         if not user:
             return create_response(400, error_message="User not found")
 
+        # ---- Verify workspace access (the tree built below is keyed off this workspace_id
+        # header, not off file_ids, so an unchecked id would leak another workspace's node
+        # names/structure even though the run results stay scoped to the caller's own files) ----
+        if not await can_access_workspace(db, workspace_id, user.id, min_role="viewer"):
+            return create_response(403, error_message="Access denied to this workspace")
+
         # ---- Collect File IDs ----
         file_ids, api_requests = [], {}
         if req.type == "api":
@@ -88,7 +80,7 @@ async def bulk_run_cases(
 
         file_nodes = await verify_nodes(db, file_ids, user.id)
         if not file_nodes:
-            return create_response(206, error_message="File not found or access denied")
+            return create_response(404, error_message="File not found or access denied")
 
         # ---- Batch Query APIs for all files ----
         query = select(Api).where(Api.file_id.in_(file_ids)).options(selectinload(Api.cases))
@@ -172,7 +164,7 @@ async def bulk_run_cases(
         )
         workspace = result.scalar_one_or_none()
         if not workspace:
-            return create_response(206, error_message="Workspace not found")
+            return create_response(404, error_message="Workspace not found")
 
         node_dict = {
             node.id: {
@@ -210,7 +202,7 @@ async def bulk_run_cases(
             "file_tree": root_nodes,
             "total_nodes": len(workspace.nodes) if workspace.nodes else 0,
         }
-        return create_response(200, value_correction(data))
+        return create_response(200, value_correction(data), schema=BulkRunCasesResponse)
 
     except Exception as e:
-        ExceptionHandler(e)
+        return ExceptionHandler(e)

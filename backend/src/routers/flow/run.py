@@ -28,6 +28,76 @@ class FlowRunRequest(BaseModel):
     input_vars: Optional[Dict[str, Any]] = None
 
 
+class FlowRunAcceptedResponse(BaseModel):
+    """Represent the immediate response from POST /flow/{flow_id}/run.
+
+    Attributes:
+        run_id: FlowRun id created for this execution; poll GET /flow/run/{run_id} for results.
+        status: Always ``"running"`` at trigger time.
+    """
+
+    run_id: int
+    status: str
+
+
+class FlowStepResultOut(BaseModel):
+    """Represent one step's outcome within a FlowRunDetailResponse.
+
+    Attributes:
+        id: Primary key.
+        step_id: FlowStep that was executed.
+        step_order: Execution order at run time.
+        success: ``True`` when the step completed without error.
+        request: Outgoing request snapshot (secrets masked); ``None`` for non-request steps.
+        response: Response snapshot (secrets masked); ``None`` for non-request steps.
+        extracted: Variables extracted via jsonpath; ``None`` when no extraction ran.
+        duration_ms: Wall-clock step duration.
+        error_message: Failure message; ``None`` when the step succeeded.
+        created_at: Timestamp the result was recorded, as a string.
+    """
+
+    id: int
+    step_id: Optional[int] = None
+    step_order: int
+    success: bool
+    request: Optional[Dict[str, Any]] = None
+    response: Optional[Dict[str, Any]] = None
+    extracted: Optional[Dict[str, Any]] = None
+    duration_ms: int
+    error_message: Optional[str] = None
+    created_at: str
+
+
+class FlowRunSummaryResponse(BaseModel):
+    """Represent one FlowRun row from GET /flow/{flow_id}/runs.
+
+    Attributes:
+        id: Primary key.
+        flow_id: Flow this run belongs to.
+        status: ``"running"`` | ``"completed"`` | ``"failed"``.
+        started_at: Execution start timestamp, as a string.
+        finished_at: Execution end timestamp; ``None`` while still running.
+        error_message: Top-level failure message; ``None`` when the run succeeded.
+    """
+
+    id: int
+    flow_id: int
+    status: str
+    started_at: str
+    finished_at: Optional[str] = None
+    error_message: Optional[str] = None
+
+
+class FlowRunDetailResponse(FlowRunSummaryResponse):
+    """Represent a single run with all step results from GET /flow/run/{run_id}.
+
+    Attributes:
+        steps: Per-step results ordered by step_order.
+    """
+
+    steps: List[FlowStepResultOut]
+
+
 def _run_to_dict(run: FlowRun, steps: Optional[List[FlowStepResult]] = None) -> Dict[str, Any]:
     """What it does: Serialize a FlowRun (and optionally its step results) to a response dict."""
     d: Dict[str, Any] = {
@@ -100,7 +170,7 @@ async def run_flow(
         # Fire engine in background; engine opens its own session
         background_tasks.add_task(_background_execute, flow_id, username, payload.input_vars)
 
-        return create_response(202, data={"run_id": run_id, "status": "running"})
+        return create_response(202, data={"run_id": run_id, "status": "running"}, schema=FlowRunAcceptedResponse)
     except Exception as e:
         await db.rollback()
         return ExceptionHandler(e)
@@ -132,7 +202,7 @@ async def list_flow_runs(
         )
         runs = runs_result.scalars().all()
 
-        return create_response(200, data=[_run_to_dict(r) for r in runs])
+        return create_response(200, data=[_run_to_dict(r) for r in runs], schema=FlowRunSummaryResponse)
     except Exception as e:
         return ExceptionHandler(e)
 
@@ -169,6 +239,6 @@ async def get_flow_run(
         )
         steps = steps_result.scalars().all()
 
-        return create_response(200, data=_run_to_dict(run, steps))
+        return create_response(200, data=_run_to_dict(run, steps), schema=FlowRunDetailResponse)
     except Exception as e:
         return ExceptionHandler(e)

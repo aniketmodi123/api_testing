@@ -5,15 +5,64 @@ What this file does: Exposes list, detail, delete, and export endpoints for ApiS
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Header
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from common_querys import can_access_workspace, get_user_by_username, get_workspace_tree_response
+from common_querys import can_access_workspace, get_user_by_username, get_workspace_tree_response, write_audit
 from config import get_db
 from models import ApiSpec, Workspace
 from utils import ExceptionHandler, create_response
 
 router = APIRouter()
+
+
+# ---------- Pydantic schemas ----------
+
+class SpecSummaryResponse(BaseModel):
+    """Represent one ApiSpec row from GET /spec.
+
+    Attributes:
+        id: Primary key.
+        workspace_id: Owning workspace.
+        name: Display name given at import time.
+        version: Spec version string; ``None`` when not provided in the source spec.
+        format: ``"openapi"`` or ``"swagger"``.
+        created_at: Import timestamp as a string.
+    """
+
+    id: int
+    workspace_id: int
+    name: str
+    version: Optional[str] = None
+    format: str
+    created_at: str
+
+
+class SpecDetailResponse(SpecSummaryResponse):
+    """Represent a single spec with its stored documents from GET /spec/{spec_id}.
+
+    Attributes:
+        raw: Original uploaded spec exactly as submitted.
+        parsed: Normalised spec with ``$ref`` pointers inlined; used by contract-test.
+    """
+
+    raw: Dict[str, Any]
+    parsed: Dict[str, Any]
+
+
+class SpecExportResponse(BaseModel):
+    """Represent a generated OpenAPI document from GET /spec/{spec_id}/export.
+
+    Attributes:
+        openapi: OpenAPI version string, fixed at ``"3.0.3"``.
+        info: Document info block — title and version.
+        paths: Path-keyed operations built from the live workspace tree.
+    """
+
+    openapi: str
+    info: Dict[str, Any]
+    paths: Dict[str, Any]
 
 
 # ---------- Helpers ----------
@@ -117,7 +166,7 @@ async def list_specs(
             .offset(offset)
         )
         specs = (await db.execute(q)).scalars().all()
-        return create_response(200, data=[_spec_to_dict(s) for s in specs])
+        return create_response(200, data=[_spec_to_dict(s) for s in specs], schema=SpecSummaryResponse)
     except Exception as e:
         return ExceptionHandler(e)
 
@@ -136,7 +185,7 @@ async def get_spec(
 
         spec = (await db.execute(select(ApiSpec).where(ApiSpec.id == spec_id))).scalar_one_or_none()
         if not spec:
-            return create_response(206, error_message="Spec not found")
+            return create_response(404, error_message="Spec not found")
 
         access = await can_access_workspace(db, spec.workspace_id, user.id, min_role="viewer")
         if not access:
@@ -145,7 +194,7 @@ async def get_spec(
         data = _spec_to_dict(spec)
         data["raw"] = spec.raw
         data["parsed"] = spec.parsed
-        return create_response(200, data=data)
+        return create_response(200, data=data, schema=SpecDetailResponse)
     except Exception as e:
         return ExceptionHandler(e)
 
@@ -164,15 +213,16 @@ async def delete_spec(
 
         spec = (await db.execute(select(ApiSpec).where(ApiSpec.id == spec_id))).scalar_one_or_none()
         if not spec:
-            return create_response(206, error_message="Spec not found")
+            return create_response(404, error_message="Spec not found")
 
         access = await can_access_workspace(db, spec.workspace_id, user.id, min_role="editor")
         if not access:
             return create_response(403, error_message="Access denied")
 
         await db.delete(spec)
+        await write_audit(db, username=user.username, action="spec.delete", entity_type="spec", entity_id=spec_id, workspace_id=spec.workspace_id)
         await db.commit()
-        return create_response(204, message="Spec deleted")
+        return create_response(200, message="Spec deleted")
     except Exception as e:
         await db.rollback()
         return ExceptionHandler(e)
@@ -196,20 +246,20 @@ async def export_spec(
 
         spec = (await db.execute(select(ApiSpec).where(ApiSpec.id == spec_id))).scalar_one_or_none()
         if not spec:
-            return create_response(206, error_message="Spec not found")
+            return create_response(404, error_message="Spec not found")
 
         access = await can_access_workspace(db, spec.workspace_id, user.id, min_role="viewer")
         if not access:
             return create_response(403, error_message="Access denied")
 
         tree_data, err = await get_workspace_tree_response(db, spec.workspace_id, include_apis=True)
-        if err:
-            return create_response(206, error_message=err)
+        if not tree_data:
+            return create_response(404, error_message=err or "Workspace not found")
 
         workspace_name = tree_data.get("name", "Exported Collection")
         file_nodes = _collect_apis_from_tree(tree_data.get("file_tree", []))
         openapi_doc = _build_openapi_export(workspace_name, file_nodes)
 
-        return create_response(200, data=openapi_doc)
+        return create_response(200, data=openapi_doc, schema=SpecExportResponse)
     except Exception as e:
         return ExceptionHandler(e)

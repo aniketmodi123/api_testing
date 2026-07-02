@@ -34,7 +34,7 @@ async def publish_docs(
 
         node = (await db.execute(select(Node).where(Node.id == node_id))).scalar_one_or_none()
         if not node:
-            return create_response(206, error_message="Node not found")
+            return create_response(404, error_message="Node not found")
 
         access = await can_access_workspace(db, node.workspace_id, user.id, min_role="admin")
         if not access:
@@ -44,7 +44,7 @@ async def publish_docs(
             await db.execute(select(PublishedDoc).where(PublishedDoc.node_id == node_id))
         ).scalar_one_or_none()
         if not doc:
-            return create_response(206, error_message="No generated doc found — run generate first")
+            return create_response(404, error_message="No generated doc found — run generate first")
 
         if not doc.public_token:
             doc.public_token = secrets.token_hex(32)
@@ -76,7 +76,7 @@ async def revoke_docs(
 
         node = (await db.execute(select(Node).where(Node.id == node_id))).scalar_one_or_none()
         if not node:
-            return create_response(206, error_message="Node not found")
+            return create_response(404, error_message="Node not found")
 
         access = await can_access_workspace(db, node.workspace_id, user.id, min_role="admin")
         if not access:
@@ -86,7 +86,7 @@ async def revoke_docs(
             await db.execute(select(PublishedDoc).where(PublishedDoc.node_id == node_id))
         ).scalar_one_or_none()
         if not doc:
-            return create_response(206, error_message="No doc found for this node")
+            return create_response(404, error_message="No doc found for this node")
 
         doc.public_token = None
         await write_audit(db, username, "doc.revoke", "published_doc", doc.id, workspace_id=node.workspace_id)
@@ -115,7 +115,7 @@ async def get_public_doc(
         ).scalar_one_or_none()
 
         if not doc:
-            return create_response(206, error_message="Doc not found or not published")
+            return create_response(404, error_message="Doc not found or not published")
 
         return create_response(200, data={
             "doc_id": doc.id,

@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from common_querys import can_access_workspace, get_user_by_username
 from config import get_db
 from models import BulkTestExecution, BulkTestResult, BulkTestSchedule
+from schema import RegressionDiffResponse
 from utils import ExceptionHandler, create_response
 
 router = APIRouter()
@@ -134,7 +135,7 @@ async def regression_diff(
 
         workspace_id = await _get_exec_workspace(db, exec_id)
         if workspace_id is None:
-            return create_response(206, error_message="Execution not found")
+            return create_response(404, error_message="Execution not found")
 
         # Step 2: RBAC + compare exec workspace check
         access = await can_access_workspace(db, workspace_id, user.id, min_role="viewer")
@@ -143,7 +144,7 @@ async def regression_diff(
 
         cmp_workspace_id = await _get_exec_workspace(db, compare_exec_id)
         if cmp_workspace_id is None:
-            return create_response(206, error_message="Compare execution not found")
+            return create_response(404, error_message="Compare execution not found")
         if cmp_workspace_id != workspace_id:
             return create_response(403, error_message="Executions belong to different workspaces")
 
@@ -201,6 +202,6 @@ async def regression_diff(
                 "unchanged": len(case_diffs) - modified - added - removed,
             },
             "cases": case_diffs,
-        })
+        }, schema=RegressionDiffResponse)
     except Exception as e:
         return ExceptionHandler(e)

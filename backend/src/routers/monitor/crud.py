@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from common_querys import can_access_workspace, get_user_by_username, write_audit
 from config import get_db
 from models import BulkTestExecution, BulkTestSchedule, Monitor, Workspace
+from schema import MonitorDetailResponse, MonitorResponse
 from utils import ExceptionHandler, create_response
 
 router = APIRouter()
@@ -101,7 +102,7 @@ async def create_monitor(
             )
         ).scalar_one_or_none()
         if not schedule:
-            return create_response(206, error_message="Schedule not found in this workspace")
+            return create_response(404, error_message="Schedule not found in this workspace")
 
         existing = (
             await db.execute(select(Monitor).where(Monitor.schedule_id == schedule_id))
@@ -122,7 +123,7 @@ async def create_monitor(
         await db.commit()
         await db.refresh(monitor)
 
-        return create_response(201, data=_monitor_dict(monitor))
+        return create_response(201, _monitor_dict(monitor), MonitorResponse)
     except Exception as e:
         await db.rollback()
         return ExceptionHandler(e)
@@ -150,7 +151,7 @@ async def list_monitors(
             )
         ).scalars().all()
 
-        return create_response(200, data=[_monitor_dict(m) for m in monitors])
+        return create_response(200, [_monitor_dict(m) for m in monitors], MonitorResponse)
     except Exception as e:
         return ExceptionHandler(e)
 
@@ -171,7 +172,7 @@ async def get_monitor(
             await db.execute(select(Monitor).where(Monitor.id == monitor_id))
         ).scalar_one_or_none()
         if not monitor:
-            return create_response(206, error_message="Monitor not found")
+            return create_response(404, error_message="Monitor not found")
 
         access = await can_access_workspace(db, monitor.workspace_id, user.id, min_role="viewer")
         if not access:
@@ -203,7 +204,7 @@ async def get_monitor(
             for e in executions
         ]
 
-        return create_response(200, data={**_monitor_dict(monitor), "latency_series": series})
+        return create_response(200, {**_monitor_dict(monitor), "latency_series": series}, MonitorDetailResponse)
     except Exception as e:
         return ExceptionHandler(e)
 
@@ -225,7 +226,7 @@ async def update_monitor(
             await db.execute(select(Monitor).where(Monitor.id == monitor_id))
         ).scalar_one_or_none()
         if not monitor:
-            return create_response(206, error_message="Monitor not found")
+            return create_response(404, error_message="Monitor not found")
 
         access = await can_access_workspace(db, monitor.workspace_id, user.id, min_role="editor")
         if not access:
@@ -238,7 +239,7 @@ async def update_monitor(
         await db.commit()
         await db.refresh(monitor)
 
-        return create_response(200, data=_monitor_dict(monitor))
+        return create_response(200, _monitor_dict(monitor), MonitorResponse)
     except Exception as e:
         await db.rollback()
         return ExceptionHandler(e)
@@ -260,7 +261,7 @@ async def delete_monitor(
             await db.execute(select(Monitor).where(Monitor.id == monitor_id))
         ).scalar_one_or_none()
         if not monitor:
-            return create_response(206, error_message="Monitor not found")
+            return create_response(404, error_message="Monitor not found")
 
         access = await can_access_workspace(db, monitor.workspace_id, user.id, min_role="admin")
         if not access:

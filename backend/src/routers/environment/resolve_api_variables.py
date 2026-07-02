@@ -2,13 +2,15 @@
 What this file does: Exposes POST routes for resolving {{variable}} placeholders across all fields of a complete API data structure.
 """
 
-from fastapi import APIRouter, Depends, Header as FastAPIHeader, HTTPException
+from fastapi import APIRouter, Depends, Header as FastAPIHeader
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Dict, Any, Optional
 from pydantic import BaseModel, Field
 
 from config import get_db
-from common_querys import get_user_by_username
+from common_querys import get_user_by_username, can_access_workspace
+from models import Environment, Workspace
 from utils import resolve_api_variables, get_variables_from_api_data, ExceptionHandler, create_response, value_correction, get_environment_variables
 
 router = APIRouter()
@@ -67,19 +69,31 @@ async def resolve_api_data_variables(
         if not user:
             return create_response(400, error_message="User not found")
 
+        # Verify workspace exists and user has at least viewer access
+        workspace_result = await db.execute(select(Workspace.id).where(Workspace.id == workspace_id))
+        if workspace_result.scalar_one_or_none() is None:
+            return create_response(404, error_message="Workspace not found")
+
+        if not await can_access_workspace(db, workspace_id, user.id, min_role="viewer"):
+            return create_response(403, error_message="Access denied")
+
         # Extract variables found in the API data
         variables_found = list(get_variables_from_api_data(request_data.api_data))
 
-        # Resolve variables in API data
-        if request_data.environment_id:
-            environment_id = request_data.environment_id
-        else:
-            # You'll need to implement logic to get active environment
-            # For now, we'll require environment_id to be provided
-            raise HTTPException(
-                status_code=400,
-                detail="environment_id is required"
+        if not request_data.environment_id:
+            return create_response(400, error_message="environment_id is required")
+
+        # Verify the environment belongs to this workspace (prevents resolving another
+        # workspace's variables by passing an arbitrary environment_id)
+        environment_id = request_data.environment_id
+        env_check = await db.execute(
+            select(Environment.id).where(
+                Environment.id == environment_id,
+                Environment.workspace_id == workspace_id
             )
+        )
+        if env_check.scalar_one_or_none() is None:
+            return create_response(404, error_message="Environment not found in this workspace")
 
         resolved_api_data = await resolve_api_variables(
             environment_id=environment_id,
@@ -107,7 +121,7 @@ async def resolve_api_data_variables(
         return create_response(200, value_correction(data))
 
     except Exception as e:
-        ExceptionHandler(e)
+        return ExceptionHandler(e)
 
 
 @router.post("/workspace/{workspace_id}/environments/{environment_id}/resolve-api")
@@ -131,4 +145,4 @@ async def resolve_api_data_with_specific_environment(
         )
 
     except Exception as e:
-        ExceptionHandler(e)
+        return ExceptionHandler(e)
