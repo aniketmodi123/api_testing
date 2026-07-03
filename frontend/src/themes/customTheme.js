@@ -84,7 +84,7 @@ export function buildAccentOverride(hex) {
   };
 }
 
-const CUSTOM_THEMES_KEY = 'polaris-custom-themes';
+const CUSTOM_THEMES_KEY = 'apipilot-custom-themes';
 
 // Read the saved custom-theme list (fallback store; Phase H moves this to the backend).
 // Returns [] when storage is empty, unavailable, or holds malformed JSON.
@@ -114,7 +114,7 @@ export function exportThemeJson(name, tokenMap) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `polaris-theme-${name.toLowerCase().trim().replace(/\s+/g, '-')}.json`;
+  a.download = `apipilot-theme-${name.toLowerCase().trim().replace(/\s+/g, '-')}.json`;
   a.click();
   URL.revokeObjectURL(url);
 }

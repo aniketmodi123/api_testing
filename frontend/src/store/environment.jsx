@@ -170,9 +170,9 @@ export const EnvironmentProvider = ({ children }) => {
     setError(null);
 
     try {
-      // Get template variables from the 'api_testing' template
+      // Get template variables from the 'apipilot' template
       const templates = environmentService.getAvailableTemplates();
-      const template = templates.find(t => t.name === 'api_testing');
+      const template = templates.find(t => t.name === 'apipilot');
 
       // Convert template variables to simple key-value format
       const variables = {};

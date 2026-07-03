@@ -344,7 +344,7 @@ export class EnvironmentService {
   static getAvailableTemplates() {
     return [
       {
-        name: 'api_testing',
+        name: 'apipilot',
         displayName: 'ApiPilot',
         description: 'Common variables for ApiPilot',
         variables: [

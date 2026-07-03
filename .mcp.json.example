@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "apipilot": {
+      "command": "/Users/aniketmodi/Desktop/venv/bin/python3",
+      "args": ["-m", "mcp_server"],
+      "cwd": "/Users/aniketmodi/Desktop/api_testing/backend",
+      "env": {
+        "PLATFORM_BASE_URL": "http://localhost:7005",
+        "PLATFORM_EMAIL": "aniketmodi123@gmail.com",
+        "PLATFORM_PASSWORD": "<fill-your-password>"
+      }
+    }
+  }
+}

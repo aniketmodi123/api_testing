@@ -27,7 +27,7 @@ export const DEFAULT_PREFERENCES = {
   customTheme: null, // name of an active custom theme, if any
 };
 
-const STORAGE_KEY = 'polaris-preferences';
+const STORAGE_KEY = 'apipilot-preferences';
 
 function loadPreferences() {
   try {

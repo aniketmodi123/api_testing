@@ -1987,8 +1987,8 @@ class ApiCaseItem(BaseModel):
         name: Case display name; ``None`` when the case was stored without a name.
         headers: Case-level request headers; ``None`` when none were set.
         params: Case-level query/path params; ``None`` when none were set.
-        body: Request body dict (always present).
-        expected: Assertion criteria dict (always present).
+        body: Request body; usually a dict but legacy rows may hold any JSON value.
+        expected: Assertion criteria; usually a dict but legacy rows may hold any JSON value.
         created_at: Creation timestamp.
     """
 
@@ -1997,8 +1997,10 @@ class ApiCaseItem(BaseModel):
     name: Optional[str] = None
     headers: Optional[Dict[str, Any]] = None
     params: Optional[Dict[str, Any]] = None
-    body: Dict[str, Any]
-    expected: Dict[str, Any]
+    # JSON columns accept any JSON value — legacy rows store non-dict bodies, so a
+    # strict Dict type would 422 the whole response.
+    body: Any = None
+    expected: Any = None
     created_at: datetime
 
 
@@ -2097,9 +2099,9 @@ class TreeCaseItem(BaseModel):
         method: Inherited API HTTP method.
         endpoint: Inherited API endpoint.
         headers: Case-level headers; ``None`` when none were set.
-        body: Request body dict.
+        body: Request body; usually a dict but legacy rows may hold any JSON value.
         params: Case-level params; ``None`` when none were set.
-        expected: Assertion criteria dict.
+        expected: Assertion criteria; usually a dict but legacy rows may hold any JSON value.
         created_at: Creation timestamp.
     """
 
@@ -2108,9 +2110,11 @@ class TreeCaseItem(BaseModel):
     method: str
     endpoint: str
     headers: Optional[Dict[str, Any]] = None
-    body: Dict[str, Any]
+    # JSON columns accept any JSON value — legacy rows store non-dict bodies, so a
+    # strict Dict type would 422 the whole bulk-testing tree.
+    body: Any = None
     params: Optional[Dict[str, Any]] = None
-    expected: Dict[str, Any]
+    expected: Any = None
     created_at: datetime
 
 
@@ -2179,8 +2183,8 @@ class ApiCaseDetailResponse(BaseModel):
         name: Case display name; ``None`` when stored without a name.
         headers: Case-level headers; ``None`` when none were set.
         params: Case-level params; ``None`` when none were set.
-        body: Request body dict.
-        expected: Assertion criteria dict.
+        body: Request body; usually a dict but legacy rows may hold any JSON value.
+        expected: Assertion criteria; usually a dict but legacy rows may hold any JSON value.
         created_at: Creation timestamp.
         api_name: Owning API name.
         api_method: Owning API method.
@@ -2195,8 +2199,9 @@ class ApiCaseDetailResponse(BaseModel):
     name: Optional[str] = None
     headers: Optional[Dict[str, Any]] = None
     params: Optional[Dict[str, Any]] = None
-    body: Dict[str, Any]
-    expected: Dict[str, Any]
+    # JSON columns accept any JSON value — legacy rows store non-dict bodies.
+    body: Any = None
+    expected: Any = None
     created_at: datetime
     api_name: str
     api_method: str
@@ -2263,8 +2268,8 @@ class CaseDuplicateResponse(BaseModel):
         name: Duplicated case name.
         headers: Copied headers; ``None`` when the source had none.
         params: Copied params; ``None`` when the source had none.
-        body: Copied request body dict.
-        expected: Copied assertion criteria dict.
+        body: Copied request body; usually a dict but legacy rows may hold any JSON value.
+        expected: Copied assertion criteria; usually a dict but legacy rows may hold any JSON value.
         created_at: Creation timestamp.
         original_case_id: Id of the source case that was duplicated.
     """
@@ -2274,8 +2279,9 @@ class CaseDuplicateResponse(BaseModel):
     name: str
     headers: Optional[Dict[str, Any]] = None
     params: Optional[Dict[str, Any]] = None
-    body: Dict[str, Any]
-    expected: Dict[str, Any]
+    # JSON columns accept any JSON value — legacy rows store non-dict bodies.
+    body: Any = None
+    expected: Any = None
     created_at: datetime
     original_case_id: int
 
