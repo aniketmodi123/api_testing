@@ -1,71 +1,84 @@
 .button {
-  border-radius: 6px;
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-weight: 500;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: var(--space-2);
   border: none;
+  border-radius: var(--radius);
+  font-family: var(--font-ui);
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background var(--duration-base) var(--easing-default),
+    opacity var(--duration-base) var(--easing-default),
+    box-shadow var(--duration-base) var(--easing-default);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 /* Variants */
 .primary {
-  background-color: var(--primary);
+  background: var(--accent);
   color: white;
-  border: none;
 }
-
 .primary:hover:not(:disabled) {
-  background-color: var(--primary-dark);
+  background: var(--accent-hover);
+  box-shadow: 0 0 0 1px var(--accent-hover);
 }
 
 .secondary {
-  background-color: var(--background-lighter);
-  color: var(--text);
+  background: var(--surface-2);
+  color: var(--text-muted);
   border: 1px solid var(--border);
 }
-
 .secondary:hover:not(:disabled) {
-  background-color: var(--hover-background);
-  border-color: var(--primary);
+  background: var(--surface-3);
+  color: var(--text);
+  border-color: var(--accent);
 }
 
 .danger {
-  background-color: #dc2626;
-  color: #ffffff;
-  border: none;
+  background: var(--error-dim);
+  color: var(--error);
+  border: 1px solid transparent;
+}
+.danger:hover:not(:disabled) {
+  background: var(--error);
+  color: white;
 }
 
-.danger:hover:not(:disabled) {
-  background-color: #b91c1c;
+.ghost {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid transparent;
+}
+.ghost:hover:not(:disabled) {
+  background: var(--surface-3);
+  color: var(--text);
 }
 
 /* Sizes */
 .small {
-  padding: 6px 12px;
-  font-size: 13px;
+  padding: 4px var(--space-2);
+  font-size: var(--text-xs);
+  height: 26px;
 }
-
 .medium {
-  padding: 8px 16px;
-  font-size: 14px;
+  padding: 5px var(--space-3);
+  font-size: var(--text-sm);
+  height: 30px;
 }
-
 .large {
-  padding: 10px 20px;
-  font-size: 15px;
+  padding: 7px var(--space-4);
+  font-size: var(--text-base);
+  height: 36px;
 }
 
-/* Full width */
 .fullWidth {
   width: 100%;
 }
 
-/* Disabled state */
 .button:disabled {
-  opacity: 0.6;
+  opacity: 0.4;
   cursor: not-allowed;
 }

@@ -1,8 +1,18 @@
+"""
+What this file does: Provides validate_expected_spec (pre-store schema check) and evaluate_expect (live response assertion) for validating API test case expectations.
+"""
+
 # ---------- VALIDATOR (LIGHT MODE, WITH PRECHECK) ----------
 from __future__ import annotations
 
 import re
 from typing import Any, Dict, List, Tuple, Union
+
+try:
+    import jsonschema as _jsonschema
+    _JSONSCHEMA_AVAILABLE = True
+except ImportError:
+    _JSONSCHEMA_AVAILABLE = False
 
 JSON = Union[dict, list, str, int, float, bool, None]
 _MISSING = object()
@@ -22,16 +32,11 @@ _TYPE_MAP = {
 # =========================
 
 def _to_lower_headers(headers: Dict[str, str]) -> Dict[str, str]:
+    """What it does: Return a copy of the headers dict with all keys lowercased."""
     return {str(k).lower(): v for k, v in headers.items()}
 
 def _resolve_path(obj: JSON, path: str) -> Any:
-    """
-    Supports:
-      - 'a.b.c'
-      - 'a.b[0].c'
-      - '$.a.b[0].c'
-    Returns _MISSING sentinel if not found.
-    """
+    """What it does: Traverse obj using a dot-separated path (with optional [n] array indices and $ root prefix); return _MISSING sentinel when any segment is not found."""
     if not path:
         return obj
     if path.startswith("$"):
@@ -63,7 +68,7 @@ def _resolve_path(obj: JSON, path: str) -> Any:
     return cur
 
 def _subset(expected: Any, actual: Any) -> bool:
-    """Dict subset / list multi-subset / equality otherwise."""
+    """What it does: Return True when expected is a structural subset of actual — dict keys are subset-checked recursively, list items are matched without reuse, scalars use equality."""
     if isinstance(expected, dict) and isinstance(actual, dict):
         for k, v in expected.items():
             if k not in actual or not _subset(v, actual[k]):
@@ -86,6 +91,7 @@ def _subset(expected: Any, actual: Any) -> bool:
     return expected == actual
 
 def _contains(actual: Any, expected: Any) -> bool:
+    """What it does: Return True when actual string contains expected as a substring, or actual dict/list contains expected as a subset."""
     if isinstance(actual, str) and isinstance(expected, str):
         return expected in actual
     if isinstance(actual, (dict, list)):
@@ -93,11 +99,13 @@ def _contains(actual: Any, expected: Any) -> bool:
     return False
 
 def _type_ok(actual: Any, kinds: Union[str, List[str]]) -> bool:
+    """What it does: Return True when actual matches any of the JSON type names in kinds using _TYPE_MAP."""
     kinds = kinds if isinstance(kinds, list) else [kinds]
     pytypes = tuple(t for k in kinds for t in _TYPE_MAP.get(k, ()))
     return isinstance(actual, pytypes)
 
 def _apply_check(body_json: JSON, chk: Dict[str, Any], failures: List[str], *, prefix: str = "json") -> None:
+    """What it does: Evaluate a single check dict against body_json and append failure messages to failures; supports equals, type, regex, contains, length, gt/gte/lt/lte, present/absent, and schema."""
     path = chk.get("path")
     if not path or not isinstance(path, str):
         failures.append(f"{prefix}: missing/invalid 'path' in check {chk}")
@@ -159,25 +167,37 @@ def _apply_check(body_json: JSON, chk: Dict[str, Any], failures: List[str], *, p
                 elif op == "lt"  and not (val <  ref): failures.append(f"{path}: expected < {ref}, got {val}")
                 elif op == "lte" and not (val <= ref): failures.append(f"{path}: expected <= {ref}, got {val}")
 
+    # schema (JSON Schema validation)
+    if "schema" in chk:
+        if not _JSONSCHEMA_AVAILABLE:
+            failures.append(f"{path}: jsonschema library not installed")
+        elif val is _MISSING:
+            failures.append(f"{path}: schema validation requires value to be present")
+        else:
+            try:
+                _jsonschema.validate(instance=val, schema=chk["schema"])
+            except _jsonschema.ValidationError as e:
+                failures.append(f"{path}: schema validation failed: {e.message}")
+            except _jsonschema.SchemaError as e:
+                failures.append(f"{path}: invalid JSON schema: {e.message}")
+
 # =========================
 # Public: validate_expected_spec (pre-store schema check)
 # =========================
 
 def validate_expected_spec(expect: Any) -> Tuple[bool, List[str]]:
     """
-    Validate the *shape* of an `expected` object (no HTTP call).
-    Returns (ok, errors). Does NOT perform live response checks.
-
-    Rules:
-      - Must be a dict.
-      - Use exactly one of: 'status' (int 100..599) OR 'status_in' (list[int 100..599]).
-      - text_contains: str | [str,...]
-      - text_regex: str (must compile)
-      - headers / headers_regex: dict[str,str] (regex patterns must compile)
-      - json.checks: list of check objects; each has 'path': str and at least one predicate
-        among: equals, present, absent, regex, contains, length, type, gt, gte, lt, lte
-      - json.either: list of branches, each with "checks": [...]
-      - Optional flags: _mirror_http_status (bool), _require_content_for_error (bool)
+    What it does: Validate the structure of an expected object without making any HTTP call; used to catch schema errors before storing a test case.
+    Returns:
+        tuple[bool, list[str]]: (True, []) when valid; (False, error_messages) listing each structural problem found.
+    Steps:
+        - Step 1: Reject non-dict input immediately
+        - Step 2: Check status / status_in exclusivity and value ranges
+        - Step 3: Validate text_contains, text_contains_any, and text_regex field shapes and regex compilability
+        - Step 4: Validate headers and headers_regex as dict[str, str]; compile-check each regex pattern
+        - Step 5: Validate json.checks list — each item via _validate_one_check
+        - Step 6: Validate json.either list — each branch must have a non-empty checks list, each check via _validate_one_check
+        - Step 7: Validate optional boolean flags (_mirror_http_status, _require_content_for_error)
     """
     errs: List[str] = []
 
@@ -280,13 +300,14 @@ def validate_expected_spec(expect: Any) -> Tuple[bool, List[str]]:
     return (len(errs) == 0, errs)
 
 def _validate_one_check(chk: Any, errs: List[str], where: str) -> None:
+    """What it does: Validate a single check dict — verify path is a non-empty string, at least one predicate is present, and predicate values are correctly typed."""
     if not isinstance(chk, dict):
         errs.append(f"{where}: must be object")
         return
     if "path" not in chk or not isinstance(chk["path"], str) or not chk["path"]:
         errs.append(f"{where}.path: required string")
     # must contain at least one predicate:
-    predicates = ("equals", "present", "absent", "regex", "contains", "length", "type", "gt", "gte", "lt", "lte")
+    predicates = ("equals", "present", "absent", "regex", "contains", "length", "type", "gt", "gte", "lt", "lte", "schema")
     if not any(p in chk for p in predicates):
         errs.append(f"{where}: must contain one of {predicates}")
     # refine a few types
@@ -316,6 +337,9 @@ def _validate_one_check(chk: Any, errs: List[str], where: str) -> None:
     for op in ("gt", "gte", "lt", "lte"):
         if op in chk and not isinstance(chk[op], (int, float)):
             errs.append(f"{where}.{op}: must be number")
+    if "schema" in chk:
+        if not isinstance(chk["schema"], dict):
+            errs.append(f"{where}.schema: must be object (JSON Schema)")
 
 # =========================
 # Public: evaluate_expect (live response check)
@@ -323,20 +347,21 @@ def _validate_one_check(chk: Any, errs: List[str], where: str) -> None:
 
 def evaluate_expect(resp, expect: Dict[str, Any]) -> Tuple[bool, List[str]]:
     """
-    Validate an httpx/requests-like response against `expect`.
-
-    Supported top-level keys:
-      - status (int) OR status_in (list[int])
-      - text_contains (str | list[str])
-      - text_contains_any (str | list[str])  # optional helper
-      - text_regex (str)
-      - headers (dict[str,str])              # exact match (case-insensitive keys)
-      - headers_regex (dict[str,str])        # regex match on header values
-      - json: { checks: [...], either: [...] }
-
-    Optional flags:
-      - _mirror_http_status: True (default)
-      - _require_content_for_error: True (default)
+    What it does: Validate an httpx/requests-like response against an expected spec and return pass/fail with a list of failure messages.
+    Args:
+        resp: httpx or requests response object with status_code, text, headers, and json().
+        expect: Expected spec dict; empty dict passes all checks.
+    Returns:
+        tuple[bool, list[str]]: (True, []) when all assertions pass; (False, failure_messages) listing each assertion that failed.
+    Steps:
+        - Step 1: Check status / status_in against resp.status_code
+        - Step 2: Check text_contains (all needles) and text_contains_any (at least one needle)
+        - Step 3: Check text_regex against resp.text
+        - Step 4: Check exact headers (case-insensitive key match)
+        - Step 5: Check headers_regex — each pattern must match the header value
+        - Step 6: Parse resp.json() and evaluate json.checks and json.either branches via _apply_check
+        - Step 7: Apply _mirror_http_status safeguard — fail if response_code in JSON doesn't match HTTP status
+        - Step 8: Apply _require_content_for_error safeguard — fail 4xx/5xx responses with no text or JSON assertion
     """
     failures: List[str] = []
 
@@ -438,6 +463,7 @@ def evaluate_expect(resp, expect: Dict[str, Any]) -> Tuple[bool, List[str]]:
     return (len(failures) == 0, failures)
 
 def _has_response_code_assert(expect: Dict[str, Any]) -> bool:
+    """What it does: Return True when expect contains a json.checks or json.either entry that asserts path=="response_code" with equals."""
     jexp = expect.get("json") or {}
     for chk in jexp.get("checks", []) or []:
         if chk.get("path") == "response_code" and "equals" in chk:

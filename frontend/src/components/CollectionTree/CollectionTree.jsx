@@ -1,15 +1,30 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { useNode } from '../../store/node';
 import { useWorkspace } from '../../store/workspace';
+import { toPostmanCollection } from '../../utils/importExport';
 import { Button } from '../common';
 import ConfirmModal from '../ConfirmModal/ConfirmModal';
-import HeaderEditor from '../HeaderEditor/HeaderEditor';
+import ImportFileModal from '../ImportExport/ImportFileModal';
 import LookingLoader from '../LookingLoader/LookingLoader';
 import MoveCopyPanel from '../MoveCopyPanel';
 import styles from './CollectionTree.module.css';
 
-// Recursive component for rendering node items (folders and files)
-const NodeItem = ({
+// HTTP method → CSS color variable. Module-scoped so it is a stable reference
+// (keeps getMethodColor's useCallback identity stable across renders).
+const METHOD_CSS_VAR = {
+  GET:     '--viz-method-get',
+  POST:    '--viz-method-post',
+  PUT:     '--viz-method-put',
+  DELETE:  '--viz-method-delete',
+  PATCH:   '--viz-method-patch',
+  HEAD:    '--viz-method-head',
+  OPTIONS: '--viz-method-options',
+};
+
+// Recursive component for rendering node items (folders and files).
+// Memoized so an unchanged node (stable object ref via structural sharing in the
+// workspace store) skips re-render when a sibling/unrelated node mutates.
+const NodeItem = memo(({
   node,
   expandedFolders,
   toggleFolder,
@@ -20,7 +35,8 @@ const NodeItem = ({
   handleRenameAction,
   handleMoveCopyAction,
   handleCreateNewItem,
-  handleEditHeaders, // Added this prop
+  handleExportFolder,
+  handleImportCollection,
   closeAllMenus,
   level = 0,
 }) => {
@@ -75,13 +91,11 @@ const NodeItem = ({
       case 'moveorcopy':
         handleMoveCopyAction(node);
         break;
-      case 'headers':
-        // Only available for folders
-        if (node.type === 'folder' && handleEditHeaders) {
-          // Open the header editor modal for this folder
-          handleEditHeaders(node);
-        } else {
-        }
+      case 'export':
+        if (handleExportFolder) handleExportFolder(node);
+        break;
+      case 'importcollection':
+        if (handleImportCollection) handleImportCollection(node);
         break;
       case 'delete':
         handleDeleteNode(node.id, e);
@@ -94,88 +108,108 @@ const NodeItem = ({
   if (level > MAX_LEVEL) return null;
 
   if (node.type === 'folder') {
+    const isExpanded = expandedFolders.includes(node.id);
     return (
-      <div className={`${styles.subFolder} ${level > 0 ? styles.nested : ''}`}>
+      <div className={styles.nodeWrapper}>
         <div
-          className={styles.folderHeader}
-          onClick={() => toggleFolder(node.id)}
+          className={`${styles.nodeRow} ${styles.folderRow} ${selectedItem === node.id || selectedItem?.id === node.id ? styles.selected : ''}`}
+          style={{ paddingLeft: `${8 + level * 16}px` }}
+          onClick={() => { toggleFolder(node.id); handleSelectRequest(node); }}
+          onContextMenu={handleMenuClick}
         >
-          <span className={styles.expansionIcon}>
-            {expandedFolders.includes(node.id) ? '▼' : '▶'}
+          <span
+            className={`${styles.chevron} ${isExpanded ? styles.chevronOpen : ''}`}
+          >
+            ▶
           </span>
-          <span className={styles.folderName}>{node.name}</span>
-          <div className={styles.nodeActions}>
-            <Button
-              variant="secondary"
-              size="small"
+          <span className={styles.folderIcon}>📁</span>
+          <span className={styles.nodeName}>{node.name}</span>
+          <div
+            className={styles.nodeActions}
+            onClick={e => e.stopPropagation()}
+          >
+            <button
+              className={styles.nodeActionBtn}
+              title="More options"
               onClick={handleMenuClick}
-              title="Actions"
             >
-              ⋮
-            </Button>
-            {menuOpen && (
-              <div
-                className={styles.contextMenu}
-                style={{
-                  top: `${menuPosition.y}px`,
-                  left: `${menuPosition.x}px`,
-                }}
-                ref={menuRef}
-              >
-                <div
-                  className={`${styles.menuItem} ${styles.createItem}`}
-                  onClick={e => handleAction('createfolder', e)}
-                >
-                  Create Folder
-                </div>
-                <div
-                  className={styles.menuItem}
-                  onClick={e => handleAction('rename', e)}
-                >
-                  Rename
-                </div>
-                <div
-                  className={styles.menuItem}
-                  onClick={e => handleAction('moveorcopy', e)}
-                >
-                  Move/Copy
-                </div>
-                {node.type === 'folder' && (
-                  <div
-                    className={`${styles.menuItem} ${styles.headersItem}`}
-                    onClick={e => handleAction('headers', e)}
-                  >
-                    Edit Headers
-                  </div>
-                )}
-                <div
-                  className={styles.menuItem}
-                  onClick={e => handleAction('delete', e)}
-                >
-                  Delete
-                </div>
-              </div>
-            )}
+              ···
+            </button>
           </div>
         </div>
 
-        {node.children && expandedFolders.includes(node.id) && (
-          <div className={styles.folderItems}>
+        {menuOpen && (
+          <div
+            ref={menuRef}
+            className={styles.contextMenu}
+            style={{
+              position: 'fixed',
+              top: menuPosition.y,
+              left: menuPosition.x,
+              zIndex: 1000,
+            }}
+          >
+            <div
+              className={`${styles.menuItem} ${styles.createItem}`}
+              onClick={e => handleAction('createfolder', e)}
+            >
+              Create Folder
+            </div>
+            <div
+              className={styles.menuItem}
+              onClick={e => handleAction('rename', e)}
+            >
+              Rename
+            </div>
+            <div
+              className={styles.menuItem}
+              onClick={e => handleAction('moveorcopy', e)}
+            >
+              Move/Copy
+            </div>
+            {node.type === 'folder' && (
+              <div
+                className={styles.menuItem}
+                onClick={e => handleAction('export', e)}
+              >
+                Export as Postman
+              </div>
+            )}
+            {node.type === 'folder' && (
+              <div
+                className={styles.menuItem}
+                onClick={e => handleAction('importcollection', e)}
+              >
+                Import Collection
+              </div>
+            )}
+            <div
+              className={styles.menuItem}
+              onClick={e => handleAction('delete', e)}
+            >
+              Delete
+            </div>
+          </div>
+        )}
+
+        {isExpanded && node.children && node.children.length > 0 && (
+          <div className={styles.children}>
             {node.children.map(childNode => (
               <NodeItem
                 key={childNode.id}
                 node={childNode}
+                level={level + 1}
                 expandedFolders={expandedFolders}
                 toggleFolder={toggleFolder}
                 handleDeleteNode={handleDeleteNode}
                 handleSelectRequest={handleSelectRequest}
                 selectedItem={selectedItem}
                 getMethodColor={getMethodColor}
-                level={level + 1}
                 handleRenameAction={handleRenameAction}
                 handleMoveCopyAction={handleMoveCopyAction}
                 handleCreateNewItem={handleCreateNewItem}
-                handleEditHeaders={handleEditHeaders}
+                handleExportFolder={handleExportFolder}
+                handleImportCollection={handleImportCollection}
                 closeAllMenus={closeAllMenus}
               />
             ))}
@@ -185,62 +219,70 @@ const NodeItem = ({
     );
   } else {
     return (
-      <div
-        className={`${styles.requestItem} ${selectedItem === node.id ? styles.selected : ''}`}
-        onClick={() => handleSelectRequest(node)}
-      >
-        <span
-          className={styles.methodBadge}
-          style={{
-            backgroundColor: getMethodColor(node.method || 'GET'),
-          }}
+      <div className={styles.nodeWrapper}>
+        <div
+          className={`${styles.nodeRow} ${styles.fileRow} ${selectedItem === node.id || selectedItem?.id === node.id ? styles.selected : ''}`}
+          style={{ paddingLeft: `${8 + level * 16}px` }}
+          onClick={() => handleSelectRequest(node)}
+          onContextMenu={handleMenuClick}
         >
-          {node.method || 'GET'}
-        </span>
-        <span className={styles.requestName}>{node.name}</span>
-        <div className={styles.nodeActions}>
-          <Button
-            variant="secondary"
-            size="small"
-            onClick={handleMenuClick}
-            title="Actions"
+          <span
+            className={styles.methodBadge}
+            style={{ color: getMethodColor(node.method) }}
           >
-            ⋮
-          </Button>
-          {menuOpen && (
-            <div
-              className={styles.contextMenu}
-              style={{
-                top: `${menuPosition.y}px`,
-                left: `${menuPosition.x}px`,
-              }}
-              ref={menuRef}
+            {(node.method || 'GET').toUpperCase().slice(0, 3)}
+          </span>
+          <span className={styles.nodeName}>{node.name}</span>
+          <div
+            className={styles.nodeActions}
+            onClick={e => e.stopPropagation()}
+          >
+            <button
+              className={styles.nodeActionBtn}
+              title="More options"
+              onClick={handleMenuClick}
             >
-              <div
-                className={styles.menuItem}
-                onClick={e => handleAction('rename', e)}
-              >
-                Rename
-              </div>
-              <div
-                className={styles.menuItem}
-                onClick={e => handleAction('moveorcopy', e)}
-              >
-                Move/Copy
-              </div>
-              <div
-                className={styles.menuItem}
-                onClick={e => handleAction('delete', e)}
-              >
-                Delete
-              </div>
-            </div>
-          )}
+              ···
+            </button>
+          </div>
         </div>
+
+        {menuOpen && (
+          <div
+            ref={menuRef}
+            className={styles.contextMenu}
+            style={{
+              position: 'fixed',
+              top: menuPosition.y,
+              left: menuPosition.x,
+              zIndex: 1000,
+            }}
+          >
+            <div
+              className={styles.menuItem}
+              onClick={e => handleAction('rename', e)}
+            >
+              Rename
+            </div>
+            <div
+              className={styles.menuItem}
+              onClick={e => handleAction('moveorcopy', e)}
+            >
+              Move/Copy
+            </div>
+            <div
+              className={styles.menuItem}
+              onClick={e => handleAction('delete', e)}
+            >
+              Delete
+            </div>
+          </div>
+        )}
       </div>
     );
   }
-};
+});
+NodeItem.displayName = 'NodeItem';
 
 export default function CollectionTree({ onSelectRequest }) {
   // Local loading state for API calls
@@ -277,9 +319,8 @@ export default function CollectionTree({ onSelectRequest }) {
   const [newItemName, setNewItemName] = useState('');
   const [newApiMethod, setNewApiMethod] = useState('GET');
 
-  // Header editor state
-  const [isHeaderEditorOpen, setIsHeaderEditorOpen] = useState(false);
-  const [currentFolder, setCurrentFolder] = useState(null);
+  // Import/Export state
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   // Modal state
   const [modalOpen, setModalOpen] = useState(false);
@@ -305,18 +346,21 @@ export default function CollectionTree({ onSelectRequest }) {
     workspaceTree?.file_tree ||
     (nodes.length > 0 ? nodes : activeWorkspace ? [] : []);
 
-  const toggleFolder = folderId => {
+  const toggleFolder = useCallback(folderId => {
     setExpandedFolders(prev =>
       prev.includes(folderId)
         ? prev.filter(id => id !== folderId)
         : [...prev, folderId]
     );
-  };
+  }, []);
 
-  const handleSelectRequest = request => {
-    setSelectedItem(request.id);
-    onSelectRequest && onSelectRequest(request);
-  };
+  const handleSelectRequest = useCallback(
+    request => {
+      setSelectedItem(request.id);
+      onSelectRequest && onSelectRequest(request);
+    },
+    [onSelectRequest]
+  );
 
   // This function is no longer used but kept for future reference
   const isActionInProgress = () => {
@@ -354,38 +398,44 @@ export default function CollectionTree({ onSelectRequest }) {
   };
 
   const [deleteLoading, setDeleteLoading] = useState(false);
-  const handleDeleteNode = (nodeId, e) => {
-    e.stopPropagation();
+  const handleDeleteNode = useCallback(
+    (nodeId, e) => {
+      e.stopPropagation();
 
-    // Find the node name for better UX
-    const nodeToDelete = nodes.flat(Infinity).find(n => n.id === nodeId) || {
-      name: 'this item',
-    };
+      // Find the node name for better UX
+      const nodeToDelete = nodes.flat(Infinity).find(n => n.id === nodeId) || {
+        name: 'this item',
+      };
 
-    setModalConfig({
-      nodeName: nodeToDelete.name,
-      nodeId,
-    });
-    setModalOpen(true);
-  };
+      setModalConfig({
+        nodeName: nodeToDelete.name,
+        nodeId,
+      });
+      setModalOpen(true);
+    },
+    [nodes]
+  );
 
   // Close all menus to ensure only one is open at a time
-  const closeAllMenus = () => {
+  const closeAllMenus = useCallback(() => {
     setMenuUpdateTrigger(prev => prev + 1);
-  };
+  }, []);
 
   // Handle rename action
-  const handleRenameAction = node => {
-    setNodeToRename(node);
-    setNewName(node.name);
-    setIsRenaming(true);
+  const handleRenameAction = useCallback(
+    node => {
+      setNodeToRename(node);
+      setNewName(node.name);
+      setIsRenaming(true);
 
-    // Reset other states
-    setIsAddingFolder(false);
-    setIsCreatingItem(false);
+      // Reset other states
+      setIsAddingFolder(false);
+      setIsCreatingItem(false);
 
-    closeAllMenus();
-  }; // Handle rename submit
+      closeAllMenus();
+    },
+    [closeAllMenus]
+  ); // Handle rename submit
   const handleRename = async () => {
     if (newName.trim() && nodeToRename) {
       const newNameValue = newName.trim();
@@ -418,23 +468,26 @@ export default function CollectionTree({ onSelectRequest }) {
   };
 
   // Handle creating a new item (folder or file)
-  const handleCreateNewItem = parentId => {
-    // Expand the parent folder
-    if (!expandedFolders.includes(parentId)) {
-      toggleFolder(parentId);
-    }
+  const handleCreateNewItem = useCallback(
+    parentId => {
+      // Expand the parent folder
+      if (!expandedFolders.includes(parentId)) {
+        toggleFolder(parentId);
+      }
 
-    setParentFolderId(parentId);
-    setNewItemName('');
-    setIsCreatingItem(true);
-    setIsCreatingFolder(true); // Default to folder
+      setParentFolderId(parentId);
+      setNewItemName('');
+      setIsCreatingItem(true);
+      setIsCreatingFolder(true); // Default to folder
 
-    // Reset other states
-    setIsAddingFolder(false);
-    setIsRenaming(false);
+      // Reset other states
+      setIsAddingFolder(false);
+      setIsRenaming(false);
 
-    closeAllMenus();
-  }; // Handle creating the new item
+      closeAllMenus();
+    },
+    [expandedFolders, toggleFolder, closeAllMenus]
+  ); // Handle creating the new item
   const handleCreateItem = async () => {
     if (newItemName.trim() && activeWorkspace) {
       const itemName = newItemName.trim();
@@ -487,29 +540,32 @@ export default function CollectionTree({ onSelectRequest }) {
   };
 
   // Handle Move/Copy action
-  const handleMoveCopyAction = node => {
+  const handleMoveCopyAction = useCallback(node => {
     setMoveCopyNode(node);
     setIsMoveCopyPanelOpen(true);
-  };
+  }, []);
 
-  // Handle opening the header editor
-  const handleEditHeaders = node => {
-    if (node && node.type === 'folder') {
-      setCurrentFolder(node);
-      setIsHeaderEditorOpen(true);
-    } else {
-      console.error(
-        'Cannot open header editor: Invalid node or not a folder',
-        node
-      );
-    }
-  };
+  // Export a folder subtree as Postman v2.1 JSON download
+  const handleExportFolder = useCallback(node => {
+    const subtree = [node];
+    const collection = toPostmanCollection(subtree, node.name);
+    const blob = new Blob([JSON.stringify(collection, null, 2)], {
+      type: 'application/json',
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${node.name.replace(/\s+/g, '_')}_postman.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, []);
 
-  // Handle saving headers
-  const handleSaveHeaders = headerData => {
-    setIsHeaderEditorOpen(false);
-    setCurrentFolder(null);
-  }; // Filter nodes based on search text
+  // Open import modal
+  const handleImportCollection = useCallback(() => {
+    setIsImportModalOpen(true);
+  }, []);
+
+  // Filter nodes based on search text
   const filteredNodes =
     filterText.trim() === ''
       ? rootNodes
@@ -517,20 +573,11 @@ export default function CollectionTree({ onSelectRequest }) {
           node.name.toLowerCase().includes(filterText.toLowerCase())
         );
 
-  // Method badge color based on HTTP method
-  const getMethodColor = method => {
-    const methodColors = {
-      GET: '#10b981', // Green
-      POST: '#f97316', // Orange
-      PUT: '#3b82f6', // Blue
-      DELETE: '#ef4444', // Red
-      PATCH: '#8b5cf6', // Purple
-      HEAD: '#6b7280', // Gray
-      OPTIONS: '#6b7280', // Gray
-    };
-
-    return methodColors[method] || '#6b7280';
-  };
+  const getMethodColor = useCallback(method => {
+    const varName = METHOD_CSS_VAR[method];
+    if (!varName) return 'var(--text-muted)';
+    return `var(${varName})`;
+  }, []);
 
   // Helper to force refresh and wait before closing Move/Copy panel
   const refreshAndWait = async () => {
@@ -822,7 +869,8 @@ export default function CollectionTree({ onSelectRequest }) {
                 handleRenameAction={handleRenameAction}
                 handleMoveCopyAction={handleMoveCopyAction}
                 handleCreateNewItem={handleCreateNewItem}
-                handleEditHeaders={handleEditHeaders}
+                handleExportFolder={handleExportFolder}
+                handleImportCollection={handleImportCollection}
                 closeAllMenus={menuUpdateTrigger}
               />
             ))
@@ -877,27 +925,13 @@ export default function CollectionTree({ onSelectRequest }) {
         </div>
       )}
 
-      {/* Header Editor Modal */}
-      {isHeaderEditorOpen && currentFolder && (
-        <div
-          className={styles.modalOverlay}
-          onClick={e => {
-            // Close when clicking on the overlay background, not on the modal itself
-            if (e.target === e.currentTarget) {
-              setIsHeaderEditorOpen(false);
-              setCurrentFolder(null);
-            }
-          }}
-        >
-          <HeaderEditor
-            folder={currentFolder}
-            onClose={() => {
-              setIsHeaderEditorOpen(false);
-              setCurrentFolder(null);
-            }}
-            onSave={handleSaveHeaders}
-          />
-        </div>
+      {/* Import Collection Modal */}
+      {isImportModalOpen && (
+        <ImportFileModal
+          workspaceId={activeWorkspace?.id}
+          onClose={() => setIsImportModalOpen(false)}
+          onSuccess={() => refreshWorkspaces()}
+        />
       )}
 
       {/* Move/Copy Panel */}

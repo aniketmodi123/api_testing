@@ -5,25 +5,24 @@
 
 .textarea {
   width: 100%;
-  padding: 12px;
+  padding: var(--space-3);
   border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--input-background);
-  color: var(--text);
-  font-size: 14px;
-  font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
+  border-radius: var(--radius);
+  background: transparent;
+  color: transparent;
+  caret-color: var(--text);
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
   outline: none;
-  transition: border-color 0.2s;
+  transition: border-color var(--duration-base);
   position: relative;
   z-index: 2;
-  background: transparent; /* Make background transparent to show highlights */
   resize: vertical;
   line-height: 1.5;
 }
 
 .textarea:focus {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+  border-color: var(--accent);
 }
 
 .highlightLayer {
@@ -32,51 +31,38 @@
   left: 1px;
   right: 1px;
   bottom: 1px;
-  padding: 12px;
-  border-radius: 3px;
-  font-size: 14px;
-  font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
+  padding: var(--space-3);
+  border-radius: var(--radius);
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
   line-height: 1.5;
   pointer-events: none;
   z-index: 1;
-  background: var(--input-background);
-  color: transparent;
+  background: var(--surface-1);
+  color: var(--text);
   overflow: auto;
   white-space: pre-wrap;
   word-wrap: break-word;
 }
 
-/* Global styles for highlighted variables - using :global() for CSS modules */
-:global(.variable-found) {
-  background-color: rgba(34, 197, 94, 0.15) !important;
-  color: #22c55e !important;
-  border-radius: 3px;
-  padding: 1px 2px;
+:global(.variable-found),
+:global(.variable-missing) {
   font-weight: 600;
-  border: 1px solid rgba(34, 197, 94, 0.3);
   cursor: help;
   position: relative;
+}
+
+:global(.variable-found) {
+  color: var(--accent) !important;
 }
 
 :global(.variable-missing) {
-  background-color: rgba(239, 68, 68, 0.15) !important;
-  color: #ef4444 !important;
-  border-radius: 3px;
-  padding: 1px 2px;
-  font-weight: 600;
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  cursor: help;
-  position: relative;
+  color: var(--error) !important;
 }
 
-:global(.variable-found):hover {
-  background-color: rgba(34, 197, 94, 0.25) !important;
-  border-color: rgba(34, 197, 94, 0.5);
-}
-
+:global(.variable-found):hover,
 :global(.variable-missing):hover {
-  background-color: rgba(239, 68, 68, 0.25) !important;
-  border-color: rgba(239, 68, 68, 0.5);
+  text-decoration: underline;
 }
 
 /* Tooltip */
@@ -88,43 +74,35 @@
 }
 
 .tooltipContent {
-  background: var(--background-lighter);
+  background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 8px 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border-radius: var(--radius-lg);
+  padding: var(--space-2) var(--space-3);
+  box-shadow: var(--shadow-lg);
   max-width: 300px;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .tooltipVariable {
-  font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
-  color: var(--primary);
+  font-family: var(--font-mono);
+  color: var(--accent);
   margin-bottom: 4px;
 }
 
 .tooltipValue {
-  font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
+  font-family: var(--font-mono);
   color: var(--text);
   word-break: break-all;
-  background: var(--background);
+  background: var(--surface-1);
   padding: 4px 6px;
-  border-radius: 3px;
+  border-radius: var(--radius);
   border: 1px solid var(--border);
   margin-bottom: 4px;
 }
 
 .tooltipEnvironment {
   color: var(--text-muted);
-  font-size: 11px;
-  font-style: italic;
-}
-
-/* Dark theme adjustments */
-:root[data-theme="dark"] .tooltipContent {
-  background: var(--background);
-  border-color: var(--border);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  font-size: var(--text-xs);
 }
 
 /* Responsive design */

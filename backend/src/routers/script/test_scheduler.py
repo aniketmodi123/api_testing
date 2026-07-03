@@ -1,3 +1,6 @@
+"""
+What this file does: Background scheduler engine — polls enabled BulkTestSchedule rows every 30 seconds, fires run_execution_task for due schedules, advances next_run, and dispatches alerts on completion.
+"""
 import asyncio
 from calendar import day_name
 from datetime import datetime, timedelta
@@ -6,17 +9,21 @@ from sqlalchemy import or_, select
 from config import SessionLocal  # async_sessionmaker[AsyncSession]
 from models import BulkTestSchedule, BulkTestExecution, BulkTestResult
 from routers.runner.runner import bulk_run_cases
+from routers.monitor.crud import refresh_monitor_rollup
+from notification_service import dispatch_alerts
 from utils import logs
 
 CHECK_INTERVAL = 30  # seconds
 
 def _parse_hhmm(value: Optional[str]) -> tuple[int, int]:
+    """What it does: Parse a "HH:MM" string into an (hour, minute) int tuple; returns (0, 0) when value is None or malformed."""
     if not value or ":" not in value:
         return (0, 0)
     h, m = value.split(":", 1)
     return int(h), int(m)
 
 def _seed_first_next_run(s: BulkTestSchedule, now: datetime) -> Optional[datetime]:
+    """What it does: Compute the initial next_run timestamp for a schedule when next_run has not yet been set."""
     t = (s.type or "").lower()
     if t == "once":
         return s.date_time  # may be None; engine will ignore until set
@@ -74,6 +81,27 @@ def _seed_first_next_run(s: BulkTestSchedule, now: datetime) -> Optional[datetim
     return None
 
 async def compute_next_run(s: BulkTestSchedule) -> Optional[datetime]:
+    """
+    What it does: Advance next_run to the next strictly-future trigger time after a schedule has fired.
+    Args:
+        s: The schedule row to advance; reads type, interval_count, time, days_of_week, day_of_month, next_run.
+    Returns:
+        datetime: The next trigger time in the future.
+        None:
+            Returned when:
+            - type is ``"once"`` (disabled after first run)
+            - type is ``"weekly"`` and days_of_week is empty
+            - type is unrecognised
+    Steps:
+        - Step 1: Return None immediately for ``"once"`` schedules — no repeat
+        - Step 2: Determine the base start point from next_run or seed a new one; return None if base cannot be determined
+        - Step 3: If base is already in the future, return it as-is (handles first-run case)
+        - Step 4: For ``"minutes"`` — fast-forward by integral step multiples until strictly past now
+        - Step 5: For ``"hourly"`` — snap to configured minute, then advance by hour-step until past now
+        - Step 6: For ``"daily"`` — advance by day-step until past now, keeping configured HH:MM
+        - Step 7: For ``"weekly"`` — advance week blocks and find first matching weekday at configured HH:MM past now
+        - Step 8: For ``"monthly"`` — advance by month-step count until the target day/time is past now
+    """
     now = datetime.now()
     t = (s.type or "").lower()
 
@@ -161,6 +189,7 @@ async def compute_next_run(s: BulkTestSchedule) -> Optional[datetime]:
 
 
 def _accumulate_execution_stats(exec_obj: BulkTestExecution, case_results: List[Dict[str, Any]]):
+    """What it does: Tally pass/fail counts and total duration from case results and write them onto the execution row."""
     total = len(case_results)
     passed = sum(1 for r in case_results if r.get("success"))
     failed = total - passed
@@ -174,6 +203,11 @@ def _accumulate_execution_stats(exec_obj: BulkTestExecution, case_results: List[
 
 # ------------- background task (fresh session) -------------
 async def run_execution_task(schedule_id: int):
+    """
+    What it does: Execute one scheduled bulk test run in an isolated DB session, persist per-case results, update execution stats, and fire alerts on completion.
+    Notes:
+        - Runs as a fire-and-forget asyncio task; alerts are dispatched in the finally block regardless of success or failure.
+    """
     async with SessionLocal() as db:  # NEW session for this task
         schedule = await db.get(BulkTestSchedule, schedule_id)
         if not schedule:
@@ -216,16 +250,29 @@ async def run_execution_task(schedule_id: int):
             _accumulate_execution_stats(exec_obj, flat_cases)
             exec_obj.finished_at = datetime.now()
             await db.commit()
+            await refresh_monitor_rollup(db, schedule_id)
+            await db.commit()
 
         except Exception as e:
             exec_obj.status = "failed"
             exec_obj.error_message = str(e)
             exec_obj.finished_at = datetime.now()
             await db.commit()
+            await refresh_monitor_rollup(db, schedule_id)
+            await db.commit()
+
+        finally:
+            # Fire-and-forget alerts regardless of success/failure
+            await dispatch_alerts(db=db, schedule_id=schedule_id, execution=exec_obj)
 
 
 # ------------- engine tick (separate session) -------------
 async def run_engine_once():
+    """
+    What it does: Query all due enabled schedules in a single DB session, advance their next_run, then launch a background task for each that was due.
+    Notes:
+        - Disables ``"once"`` schedules after firing. Tasks are launched outside the session to avoid holding a DB connection during HTTP execution.
+    """
     async with SessionLocal() as db:
         now = datetime.now()
         schedules = (
@@ -264,8 +311,14 @@ async def run_engine_once():
 
 # ------------- engine loop -------------
 async def run_engine():
+    """What it does: Run the scheduler engine indefinitely, calling run_engine_once every CHECK_INTERVAL seconds and logging errors without stopping the loop."""
     while True:
-        logs("scheduler tick")
-        await run_engine_once()
-        logs(f"scheduler tick done, waiting {CHECK_INTERVAL}s")
+        try:
+            logs("scheduler tick")
+            await run_engine_once()
+            logs(f"scheduler tick done, waiting {CHECK_INTERVAL}s")
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logs(f"scheduler tick failed: {e}", type="error")
         await asyncio.sleep(CHECK_INTERVAL)

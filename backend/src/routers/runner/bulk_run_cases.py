@@ -1,41 +1,52 @@
+"""
+What this file does: Exposes POST /bulk_run_cases for concurrently executing test cases across multiple APIs, returning results mapped into the workspace node tree.
+"""
+
 from datetime import datetime
-from operator import and_
 import asyncio
 from typing import Union, List, Optional
 from fastapi import APIRouter, Depends, Header
 from pydantic import BaseModel
 
 class BulkRunnerApi(BaseModel):
+    """Run all test cases for a list of file IDs.
+    Attributes:
+        type: Must be ``"api"``.
+        apis: List of file node IDs whose APIs to run.
+    """
     type: str  # should be 'api'
     apis: List[int]
 
 class BulkRunnerSelectedApi(BaseModel):
+    """Per-file selection of test cases for bulk run.
+    Attributes:
+        file_id: File node ID to target.
+        cases: Optional list of ApiCase IDs to run; None runs all cases for the file.
+    """
     file_id: int
     cases: Optional[List[int]] = None
 
 class BulkRunnerSelected(BaseModel):
+    """Run selected test cases across multiple files.
+    Attributes:
+        type: Must be ``"selected"``.
+        apis: List of per-file selections specifying which cases to run.
+    """
     type: str  # should be 'selected'
     apis: List[BulkRunnerSelectedApi]
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
-from models import Api, Workspace, Node
-from routers.runner.runner import run_from_list_api
+from models import Api, Workspace
+from routers.runner.runner import run_from_list_api, verify_nodes
+from schema import BulkRunCasesResponse
 from utils import create_response, ExceptionHandler, value_correction, resolve_variables
-from common_querys import get_user_by_username, get_workspace_variables, get_headers
+from common_querys import can_access_workspace, get_user_by_username, get_headers, resolve_auth, build_scope_chain
+from auth_strategies import apply_auth
 from config import get_db
 
 router = APIRouter()
-
-
-async def verify_nodes(db: AsyncSession, node_id: list[int], user_id: int):
-    result = await db.execute(
-        select(Node)
-        .join(Workspace, Node.workspace_id == Workspace.id)
-        .where(and_(Node.id.in_(node_id), Workspace.user_id == user_id))
-    )
-    return result.scalars().all()
 
 
 @router.post("/bulk_run_cases")
@@ -45,11 +56,18 @@ async def bulk_run_cases(
     workspace_id: int = Header(...),
     db: AsyncSession = Depends(get_db),
 ):
+    """POST /bulk_run_cases — run test cases across multiple APIs concurrently and return results mapped into the workspace node tree."""
     try:
         # ---- Verify User ----
         user = await get_user_by_username(db, username)
         if not user:
             return create_response(400, error_message="User not found")
+
+        # ---- Verify workspace access (the tree built below is keyed off this workspace_id
+        # header, not off file_ids, so an unchecked id would leak another workspace's node
+        # names/structure even though the run results stay scoped to the caller's own files) ----
+        if not await can_access_workspace(db, workspace_id, user.id, min_role="viewer"):
+            return create_response(403, error_message="Access denied to this workspace")
 
         # ---- Collect File IDs ----
         file_ids, api_requests = [], {}
@@ -62,7 +80,7 @@ async def bulk_run_cases(
 
         file_nodes = await verify_nodes(db, file_ids, user.id)
         if not file_nodes:
-            return create_response(206, error_message="File not found or access denied")
+            return create_response(404, error_message="File not found or access denied")
 
         # ---- Batch Query APIs for all files ----
         query = select(Api).where(Api.file_id.in_(file_ids)).options(selectinload(Api.cases))
@@ -83,10 +101,23 @@ async def bulk_run_cases(
             if not folder_path:
                 continue
 
-            workspace_variables = await get_workspace_variables(db, file.workspace_id)
+            workspace_variables = await build_scope_chain(db, file_id=file.id, username=username, workspace_id=file.workspace_id)
             resolved_endpoint = resolve_variables(api.endpoint, workspace_variables)
-            resolved_headers = merge_result.get("merged_headers", {})
+            resolved_headers = dict(merge_result.get("merged_headers", {}))
             resolved_extra_meta = resolve_variables(api.extra_meta or {}, workspace_variables)
+
+            # Inject per-API auth into API-level headers so every case inherits it.
+            auth_config = await resolve_auth(db, api.file_id)
+            if auth_config:
+                auth_headers, _ = apply_auth(
+                    auth_config,
+                    method=api.method.upper(),
+                    url=resolved_endpoint,
+                    existing_headers=resolved_headers,
+                )
+                for k, v in auth_headers.items():
+                    if k not in resolved_headers:
+                        resolved_headers[k] = v
 
             cases_data = []
             selected_cases = api_requests.get(file.id)
@@ -133,7 +164,7 @@ async def bulk_run_cases(
         )
         workspace = result.scalar_one_or_none()
         if not workspace:
-            return create_response(206, error_message="Workspace not found")
+            return create_response(404, error_message="Workspace not found")
 
         node_dict = {
             node.id: {
@@ -171,7 +202,7 @@ async def bulk_run_cases(
             "file_tree": root_nodes,
             "total_nodes": len(workspace.nodes) if workspace.nodes else 0,
         }
-        return create_response(200, value_correction(data))
+        return create_response(200, value_correction(data), schema=BulkRunCasesResponse)
 
     except Exception as e:
-        ExceptionHandler(e)
+        return ExceptionHandler(e)

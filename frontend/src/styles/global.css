@@ -1,3 +1,179 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Source+Sans+3:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap");
+@import url("https://fonts.cdnfonts.com/css/cascadia-code");
+
+/* Commercial code fonts — cannot be bundled. To enable, drop the licensed .woff2 files
+   under frontend/public/fonts/ and uncomment the matching @font-face block:
+   @font-face { font-family: "Berkeley Mono"; src: url("/fonts/BerkeleyMono.woff2") format("woff2"); font-display: swap; }
+   @font-face { font-family: "MonoLisa";      src: url("/fonts/MonoLisa.woff2")      format("woff2"); font-display: swap; }
+   Until then the Berkeley Mono / MonoLisa code-font presets fall back to JetBrains Mono. */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* === CSS VARIABLE FALLBACKS (Mid Dark — default) ===
+   JS (themes/index.js) owns the real values at runtime.
+   These :root values are fallbacks only — if JS hasn't run yet.
+   Do NOT add [data-theme="x"] blocks here; add theme values to themes/presets/themes.js instead.
+*/
+:root {
+  /* Colors — JS sets these via applyPreset() */
+  --bg: #16181d;
+  --surface-1: #1a1d24;
+  --surface-2: #20242d;
+  --surface-3: #2a303a;
+  --border: #353c49;
+  --border-subtle: #4b5260;
+
+  --text: #e6edf3;
+  --text-subtle: #9ba3af;
+  --text-muted: #6b7280;
+
+  --accent: #6c72ff;
+  --accent-hover: #5a5ee6;
+  --accent-dim: rgba(108, 114, 255, 0.1);
+  --accent-text: #ffffff;
+
+  --success: #4ac26b;
+  --success-dim: rgba(74, 194, 107, 0.1);
+  --warning: #d8a441;
+  --warning-dim: rgba(216, 164, 65, 0.1);
+  --error: #f05d56;
+  --error-dim: rgba(240, 93, 86, 0.1);
+  --info: #6c72ff;
+  --info-dim: rgba(108, 114, 255, 0.1);
+
+  --scrollbar-thumb: #3f3f46;
+  --scrollbar-thumb-hover: #52525b;
+
+  /* Semantic overlay / dim vars */
+  --overlay-bg: rgba(0, 0, 0, 0.55);
+  --error-bg-subtle: rgba(240, 93, 86, 0.05);
+  --error-bg-dim: rgba(240, 93, 86, 0.1);
+  --error-bg-strong: rgba(240, 93, 86, 0.2);
+  --error-border-dim: rgba(240, 93, 86, 0.4);
+  --success-bg-dim: rgba(74, 194, 107, 0.1);
+  --success-bg-strong: rgba(74, 194, 107, 0.2);
+  --success-border-dim: rgba(74, 194, 107, 0.4);
+  --warning-bg-dim: rgba(216, 164, 65, 0.1);
+
+  /* Badge semantic tokens */
+  --badge-error-bg: #3b1010;
+  --badge-error-text: #fc8181;
+  --badge-error-border: #742a2a;
+  --badge-info-bg: #1a2e42;
+  --badge-info-text: #90cdf4;
+  --badge-info-border: #2a4a6b;
+  --badge-success-bg: #1c3a2a;
+  --badge-success-text: #68d391;
+  --badge-success-border: #276749;
+  --badge-special-bg: #2d1b4e;
+  --badge-special-text: #d6bcfa;
+  --badge-special-border: #6b46c1;
+
+  /* JsonEditor */
+  --json-editor-bg: #1a1a1a;
+  --json-editor-bg-deeper: #0f0f0f;
+  --json-editor-border: #353c49;
+
+  /* Data viz — HTTP methods (FOUC fallback; JS themes these via THEME_PRESETS) */
+  --viz-method-get: #3fb950;
+  --viz-method-post: #58a6ff;
+  --viz-method-put: #d29922;
+  --viz-method-patch: #a371f7;
+  --viz-method-delete: #f85149;
+  --viz-method-head: #58a6ff;
+  --viz-method-options: #a371f7;
+
+  /* Data viz — JSON syntax (FOUC fallback; JS themes these via EDITOR_PRESETS) */
+  --viz-json-key: #79c0ff;
+  --viz-json-string: #a5d6a7;
+  --viz-json-number: #d29922;
+  --viz-json-boolean: #a371f7;
+  --viz-json-null: #f85149;
+
+  /* Component tokens (FOUC fallback; JS sets the real per-theme values) */
+  --btn-primary-bg: var(--accent);
+  --btn-primary-text: #fff;
+  --btn-primary-hover: var(--accent-hover);
+  --btn-secondary-bg: var(--surface-2);
+  --btn-secondary-border: var(--border);
+  --btn-danger-bg: var(--error);
+  --btn-danger-hover: var(--error);
+  --btn-ghost-hover: var(--surface-3);
+  --input-bg: var(--surface-2);
+  --input-border: var(--border);
+  --input-focus-border: var(--accent);
+  --input-text: var(--text);
+  --input-placeholder: var(--text-muted);
+  --sidebar-bg: var(--surface-1);
+  --sidebar-border: var(--border);
+  --sidebar-icon: var(--text-subtle);
+  --sidebar-icon-active: var(--accent);
+  --sidebar-active-bg: var(--accent-dim);
+  --panel-bg: var(--bg);
+  --panel-border: var(--border);
+  --panel-header-bg: var(--surface-1);
+  --code-bg: var(--surface-1);
+  --code-bg-deeper: var(--bg);
+  --code-border: var(--border);
+  --code-gutter-bg: var(--bg);
+  --code-active-line: rgba(116, 143, 252, 0.06);
+  --code-selection: rgba(116, 143, 252, 0.15);
+
+  /* Typography — JS sets these too */
+  --font-ui: "Inter", "Geist", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: "Roboto Mono", "JetBrains Mono", monospace;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 13px;
+  --text-md: 14px;
+  --text-lg: 16px;
+
+  /* Spacing — static */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+
+  /* Shape — FOUC fallback (JS sets via RADIUS_PRESETS, 'default') */
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 16px;
+
+  /* Layout dimensions — static */
+  --sidebar-width: 48px;
+  --header-height: 44px;
+  --tab-bar-height: 36px;
+  --panel-min-width: 200px;
+
+  /* Shadows — FOUC fallback (JS sets via SHADOW_PRESETS, 'flat') */
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+
+  /* Motion — FOUC fallback (JS sets via MOTION_PRESETS, 'subtle') */
+  --duration-fast: 80ms;
+  --duration-base: 120ms;
+  --duration-slow: 180ms;
+  --easing-default: cubic-bezier(0.16, 1, 0.3, 1);
+  --easing-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* Accessibility — JS may override via A11Y_PRESETS */
+  --border-strong: #4b5260;
+  --focus-ring: 2px solid var(--accent);
+
+  /* Scrollbar — static */
+  --scrollbar-width: 4px;
+  --scrollbar-track: transparent;
+}
+
 /* Button Styles */
 .btn {
   display: inline-flex;
@@ -5,113 +181,52 @@
   justify-content: center;
   border: 0;
   padding: 10px 16px;
-  border-radius: 12px;
+  border-radius: var(--radius);
   font-weight: 600;
-  font-size: 14px;
+  font-size: var(--text-sm);
   transition:
-    background 0.2s ease,
-    opacity 0.2s ease;
+    background var(--duration-base) var(--easing-default),
+    opacity var(--duration-base) var(--easing-default);
 }
 
-/* Primary */
 .btn-primary {
-  background: var(--primary);
-  color: var(--primary-text);
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
 }
 .btn-primary:hover {
-  background: var(--primary-dark);
+  background: var(--btn-primary-hover);
 }
 
-/* Secondary */
 .btn-secondary {
-  background: var(--background-lighter);
+  background: var(--btn-secondary-bg);
   color: var(--text);
-  border: 1px solid var(--border);
+  border: 1px solid var(--btn-secondary-border);
 }
 .btn-secondary:hover {
-  background: var(--hover-background);
+  background: var(--btn-ghost-hover);
 }
 
-/* Danger */
 .btn-danger {
-  background: #dc2626; /* red-600 */
+  background: var(--btn-danger-bg);
   color: #fff;
 }
 .btn-danger:hover {
-  background: #b91c1c; /* red-700 */
+  background: var(--btn-danger-hover);
 }
 
-/* Disabled state */
 .btn:disabled,
 .btn[disabled] {
-  background: var(--disabled);
-  color: var(--text-muted);
+  background: var(--surface-3);
+  color: var(--text-subtle);
   cursor: not-allowed;
   opacity: 0.7;
 }
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
 
-:root {
-  /* Base theme - dark mode by default */
-  --background: #0f172a;
-  --background-lighter: #1e293b;
-  --primary-background: #0f172a;
-  --sidebar-background: #0f172a;
-  --input-background: #1e293b;
-  --text: #e5e7eb;
-  --text-muted: #9aa0a6;
-  --text-warn: #dc2626;
-  --border: rgba(255, 255, 255, 0.1);
-  --primary: #3b82f6;
-  --primary-dark: #2563eb;
-  --hover-background: rgba(255, 255, 255, 0.05);
-  --selected-item-background: rgba(59, 130, 246, 0.1);
-  --disabled: #475569;
-
-  /* Legacy variables for backward compatibility */
-  --bg: #0b0c10;
-  --text-color: #e5e7eb;
-  --muted: #9aa0a6;
-  --card-bg: #161a22;
-  --primary-text: #ffffff;
-  --input: #222734;
-  --header-bg: rgba(22, 26, 34, 0.8);
-  --border-color: rgba(255, 255, 255, 0.1);
-}
-
-[data-theme="light"] {
-  /* Light mode theme */
-  --background: #ffffff;
-  --background-lighter: #f8fafc;
-  --primary-background: #ffffff;
-  --sidebar-background: #f8fafc;
-  --input-background: #f1f5f9;
-  --text: #0f172a;
-  --text-muted: #64748b;
-  --text-warn: #dc2626;
-  --border: #e2e8f0;
-  --primary: #3b82f6;
-  --primary-dark: #2563eb;
-  --hover-background: rgba(0, 0, 0, 0.03);
-  --selected-item-background: rgba(59, 130, 246, 0.1);
-  --disabled: #cbd5e1;
-
-  /* Legacy variables for backward compatibility */
-  --bg: #f8fafc;
-  --text-color: #0b0c10;
-  --muted: #6b7280;
-  --card-bg: #ffffff;
-  --primary-text: #ffffff;
-  --input: #e5e7eb;
-  --header-bg: rgba(255, 255, 255, 0.8);
-  --border-color: #eaeaea;
-}
-* {
-  box-sizing: border-box;
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+  }
 }
 
 @keyframes fadeIn {
@@ -131,16 +246,11 @@ body,
 }
 body {
   margin: 0;
-  font-family:
-    ui-sans-serif,
-    system-ui,
-    -apple-system,
-    Segoe UI,
-    Roboto,
-    Helvetica,
-    Arial;
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  line-height: 1rem;
   background: var(--bg);
-  color: var(--text-color);
+  color: var(--text);
 }
 a {
   text-decoration: none;
@@ -156,35 +266,21 @@ button {
   padding: 24px;
 }
 .card {
-  background: var(--card-bg);
-  color: var(--text-color);
-  border-radius: 16px;
+  background: var(--surface-2);
+  color: var(--text);
+  border-radius: var(--radius-lg);
   padding: 24px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border);
 }
 .input {
   width: 100%;
-  border: 1px solid var(--input);
-  background: transparent;
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
   padding: 12px 14px;
-  border-radius: 12px;
-  color: var(--text-color);
+  border-radius: var(--radius);
+  color: var(--input-text);
   outline: none;
-}
-.input::placeholder {
-  color: var(--muted);
-}
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--primary);
-  color: var(--primary-text);
-  border: 0;
-  padding: 10px 14px;
-  border-radius: 12px;
-  font-weight: 600;
 }
 .row {
   display: flex;
@@ -196,8 +292,12 @@ button {
   gap: 8px;
 }
 .hint {
-  color: var(--muted);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.input::placeholder {
   font-size: 12px;
+  color: var(--input-placeholder);
 }
 .title {
   font-size: 22px;
@@ -205,29 +305,16 @@ button {
   margin: 0 0 8px;
 }
 .subtitle {
-  color: var(--muted);
+  color: var(--text-muted);
   margin: 0 0 16px;
 }
 
-/*
- * Global Custom Scrollbar Styling
- * -------------------------------
- * All scrollbar styling is centralized here.
- * To use, simply add the "scrollable" class to any element that needs scrolling.
- * Don't add custom scrollbar styling in component CSS files.
- */
-:root {
-  --scrollbar-width: 8px;
-  --scrollbar-track-color: var(--background-lighter);
-  --scrollbar-thumb-color: var(--primary);
-  --scrollbar-thumb-hover-color: var(--primary-dark);
-  --scrollbar-border-radius: 4px;
-}
+/* Global scrollbar — vars defined in :root above */
 
 /* Universal scrollbar styling for all elements */
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--scrollbar-thumb-color) var(--scrollbar-track-color);
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 }
 
 /* Webkit browsers (Chrome, Safari, Edge) */
@@ -237,34 +324,180 @@ button {
 }
 
 *::-webkit-scrollbar-track {
-  background: var(--scrollbar-track-color);
-  border-radius: var(--scrollbar-border-radius);
+  background: var(--scrollbar-track);
+  border-radius: var(--radius-sm);
 }
 
 *::-webkit-scrollbar-thumb {
-  background-color: var(--scrollbar-thumb-color);
-  border-radius: var(--scrollbar-border-radius);
-  border: 1px solid var(--scrollbar-track-color);
+  background-color: var(--scrollbar-thumb);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--scrollbar-track);
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background-color: var(--scrollbar-thumb-hover-color);
+  background-color: var(--scrollbar-thumb-hover);
 }
 
 *::-webkit-scrollbar-corner {
-  background-color: var(--scrollbar-track-color);
+  background-color: var(--scrollbar-track);
 }
 
 /* Utility class for scrollable areas */
 .scrollable {
   overflow: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--scrollbar-thumb-color) var(--scrollbar-track-color);
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 }
 
-/* Light theme overrides */
-[data-theme="light"] {
-  --scrollbar-track-color: #f1f5f9;
-  --scrollbar-thumb-color: #94a3b8;
-  --scrollbar-thumb-hover-color: #64748b;
+
+/* Key-value table for form-data / url-encoded body (used in RequestPanel) */
+.kvTable {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.kvRow {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.kvInput {
+  flex: 1;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  color: var(--input-text);
+  border-radius: var(--radius-sm);
+  padding: 5px 8px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
+
+.kvInput:focus {
+  border-color: var(--input-focus-border);
+}
+
+.kvRemove {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0 4px;
+  border-radius: var(--radius-sm);
+  line-height: 1;
+}
+
+.kvRemove:hover {
+  color: var(--error);
+  background: var(--surface-3);
+}
+
+.kvAdd {
+  background: none;
+  border: 1px dashed var(--border);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-ui);
+  margin-top: 2px;
+  width: fit-content;
+}
+
+.kvAdd:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* CodeMirror Global Custom Theme Override */
+.cm-editor {
+  background-color: var(--code-bg) !important;
+  color: var(--text) !important;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--code-border);
+}
+
+.cm-editor.cm-focused {
+  outline: none !important;
+  border-color: var(--accent) !important;
+}
+
+.cm-gutters {
+  background-color: var(--code-gutter-bg) !important;
+  color: var(--text-muted) !important;
+  border-right: 1px solid var(--code-border) !important;
+}
+
+.cm-activeLine,
+.cm-activeLineGutter {
+  background-color: var(--code-active-line) !important;
+}
+
+.cm-selectionBackground {
+  background-color: var(--code-selection) !important;
+}
+
+/* Syntax Highlighting */
+.cm-property,
+.tok-propertyName {
+  color: var(--viz-json-key) !important;
+}
+
+.cm-string,
+.cm-string-2,
+.tok-string {
+  color: var(--viz-json-string) !important;
+}
+
+.cm-number,
+.tok-number {
+  color: var(--viz-json-number) !important;
+}
+
+.cm-boolean,
+.cm-keyword,
+.tok-keyword,
+.tok-bool {
+  color: var(--viz-json-boolean) !important;
+}
+
+.cm-atom,
+.tok-null {
+  color: var(--viz-json-null) !important;
+}
+
+.input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: var(--input-focus-border);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+tr {
+  transition: background-color var(--duration-base) var(--easing-default);
+}
+
+tr:hover {
+  background-color: var(--surface-3);
+}
+
+.tableRow:hover,
+.listRow:hover,
+.kvRow:hover {
+  background-color: var(--surface-3);
+  border-radius: var(--radius-sm);
+}
+
+kbd {
+  background-color: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
 }

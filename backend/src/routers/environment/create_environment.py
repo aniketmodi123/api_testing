@@ -1,11 +1,14 @@
-# Create Environment endpoint
+"""
+What this file does: Exposes POST /environment/workspace/{workspace_id}/environments for creating a new environment within a workspace.
+"""
+
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from models import Environment, Workspace
-from schema import EnvironmentCreate
+from schema import EnvironmentCreate, EnvironmentResponse
 from config import get_db
-from common_querys import get_user_by_username
+from common_querys import get_user_by_username, can_access_workspace, write_audit
 from utils import ExceptionHandler, create_response, value_correction
 
 router = APIRouter()
@@ -18,23 +21,21 @@ async def create_environment(
     username: str = Header(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Create a new environment in a workspace"""
+    """POST /environment/workspace/{workspace_id}/environments — create a new environment; deactivate others when is_active is True."""
     try:
         # Get user
         user = await get_user_by_username(db, username)
         if not user:
             return create_response(400, error_message="User not found")
 
-        # Verify workspace exists and user has access
-        workspace_query = select(Workspace).where(
-            Workspace.id == workspace_id,
-            Workspace.user_id == user.id
-        )
+        # Verify workspace exists and user has at least editor access
+        workspace_query = select(Workspace.id).where(Workspace.id == workspace_id)
         workspace_result = await db.execute(workspace_query)
-        workspace = workspace_result.scalar_one_or_none()
+        if workspace_result.scalar_one_or_none() is None:
+            return create_response(404, error_message="Workspace not found")
 
-        if not workspace:
-            return create_response(206, error_message="Workspace not found or access denied")
+        if not await can_access_workspace(db, workspace_id, user.id, min_role="editor"):
+            return create_response(403, error_message="Editor access or higher required")
 
         # Check if environment name already exists in this workspace
         existing_env_query = select(Environment).where(
@@ -72,6 +73,9 @@ async def create_environment(
         )
 
         db.add(new_environment)
+        await db.flush()
+
+        await write_audit(db, username=user.username, action="environment.create", entity_type="environment", entity_id=new_environment.id, workspace_id=workspace_id, metadata={"name": new_environment.name})
         await db.commit()
         await db.refresh(new_environment)
 
@@ -87,7 +91,7 @@ async def create_environment(
             "updated_at": str(new_environment.updated_at)
         }
 
-        return create_response(201, value_correction(data))
+        return create_response(201, value_correction(data), EnvironmentResponse)
     except Exception as e:
         await db.rollback()
-        ExceptionHandler(e)
+        return ExceptionHandler(e)

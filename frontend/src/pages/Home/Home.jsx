@@ -5,9 +5,12 @@ import CollectionTree from '../../components/CollectionTree/CollectionTree';
 import { EnvironmentManager } from '../../components/EnvironmentManager';
 import EnvironmentDetail from '../../components/EnvironmentManager/EnvironmentDetail';
 import EnvironmentForm from '../../components/EnvironmentManager/EnvironmentForm';
-import VariableModal from '../../components/EnvironmentManager/VariableModal';
+import GlobalVariablesPanel from '../../components/EnvironmentManager/GlobalVariablesPanel';
+import HistoryPanel from '../../components/HistoryPanel/HistoryPanel';
+import IconSidebar from '../../components/IconSidebar';
+import NodeDetailPanel from '../../components/NodeDetailPanel/NodeDetailPanel';
 import RequestPanel from '../../components/RequestPanel/RequestPanel';
-import Sidebar from '../../components/Sidebar/Sidebar';
+import TabBar, { useTabBar, isScratchTab } from '../../components/TabBar';
 import { useEnvironment } from '../../store/environment';
 import { useNode } from '../../store/node';
 import { useWorkspace } from '../../store/workspace';
@@ -17,23 +20,14 @@ export default function Home() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // State for collection, and request
   const [activeTab, setActiveTab] = useState('collections');
-  const [activeRequest, setActiveRequest] = useState(null);
-
-  // Variable modal states
-  const [showVariableModal, setShowVariableModal] = useState(false);
-  const [editingVariable, setEditingVariable] = useState(null);
 
   // Environment form states
   const [showEnvironmentForm, setShowEnvironmentForm] = useState(false);
   const [editingEnvironment, setEditingEnvironment] = useState(null);
+  const [showGlobalPanel, setShowGlobalPanel] = useState(false);
+  const [nodeDetailNode, setNodeDetailNode] = useState(null);
 
-  // Resize functionality
-  const [sidePanelWidth, setSidePanelWidth] = useState(250);
-  const [isResizing, setIsResizing] = useState(false);
-
-  // Initial loading state
   const {
     activeWorkspace,
     workspaceTree,
@@ -41,86 +35,115 @@ export default function Home() {
     loading: workspaceLoading,
     error: workspaceError,
     refreshWorkspaces,
-  } = useWorkspace(); // Use node context for managing nodes/folders
-  const { selectedNode, setSelectedNode, loading: nodeLoading } = useNode();
+  } = useWorkspace();
 
-  // Use environment context for environment management
+  const { selectedNode, setSelectedNode, nodes: nodeList } = useNode();
+
   const {
     variables,
     activeEnvironment,
     selectedEnvironment,
-    setSelectedEnvironment,
+    selectEnvironment,
     createEnvironment,
     updateEnvironment,
-    createEnvironmentFromTemplate,
     createEnvironmentWithDefaults,
   } = useEnvironment();
+
+  // file_tree is only present after CollectionTree mutations; initial load uses a different shape.
+  // Fall back to flat nodeList from useNode() which is always populated after workspace loads.
+  const fileTree = workspaceTree?.file_tree ?? nodeList ?? null;
+
+  const { tabs, activeTabId, openTab, openScratchTab, closeTab, setActiveTabId, updateTabMethod, reorderTab } = useTabBar(fileTree);
+
+  // activeTabId is the single source of truth for which request RequestPanel shows.
+  // Sync selectedNode whenever the active tab changes (open / switch / close / restore).
+  // Skip while a folder detail panel is open so it isn't clobbered when the tree reloads.
+  useEffect(() => {
+    if (nodeDetailNode) return;
+    if (!activeTabId || isScratchTab(activeTabId)) {
+      setSelectedNode(null);
+      return;
+    }
+    const node = findNodeById(fileTree, activeTabId);
+    if (node) setSelectedNode({ ...node });
+  }, [activeTabId, fileTree, nodeDetailNode]);
 
   // Derive tab from URL on mount and when URL changes
   useEffect(() => {
     const path = location.pathname || '/';
-    // Support both root and explicit section routes
     if (path === '/' || path === '') {
       setActiveTab('collections');
-      // Normalize URL so refresh/paste shows explicit section
       navigate('/collections', { replace: true });
       return;
     }
-    if (path.startsWith('/collections')) {
-      setActiveTab('collections');
-    } else if (path.startsWith('/environments')) {
-      setActiveTab('environments');
-    } else if (path.startsWith('/bulk-test')) {
-      setActiveTab('bulkTest');
-    } else {
-      // default fallback
-      setActiveTab('collections');
-    }
+    if (path.startsWith('/collections')) setActiveTab('collections');
+    else if (path.startsWith('/environments')) setActiveTab('environments');
+    else if (path.startsWith('/bulk-test')) setActiveTab('bulkTest');
+    else if (path.startsWith('/history')) setActiveTab('history');
+    else setActiveTab('collections');
   }, [location.pathname]);
 
-  // Enable workspace loading immediately when Home component mounts
   useEffect(() => {
-    console.log('[Home] Enabling workspace loading on mount');
     setShouldLoadWorkspaces(true);
-
-    // Don't disable on unmount to avoid issues when navigating between authenticated pages
-    return () => {
-      // Keep workspaces enabled for other authenticated pages
-      // setShouldLoadWorkspaces(false);
-    };
   }, [setShouldLoadWorkspaces]);
 
   const handleTabChange = tab => {
     setActiveTab(tab);
-    // Push to corresponding route so refresh preserves section
+    setNodeDetailNode(null);
     if (tab === 'collections') navigate('/collections');
     else if (tab === 'environments') navigate('/environments');
     else if (tab === 'bulkTest') navigate('/bulk-test');
+    else if (tab === 'history') navigate('/history');
   };
 
-  const handleSelectRequest = request => {
-    setActiveRequest(request);
-    // Also update selected node in the node context
-    setSelectedNode(request);
+  const handleSelectRequest = node => {
+    setSelectedNode(node);
+    if (node.type === 'folder') {
+      setNodeDetailNode(node);
+    } else {
+      setNodeDetailNode(null);
+      openTab(node);
+    }
+  };
+
+  const handleTabSelect = fileId => {
+    setActiveTabId(fileId);
+    setNodeDetailNode(null);
+    const node = findNodeById(fileTree, fileId);
+    if (node) {
+      // Spread to new object so useEffect([selectedNode]) fires even when switching back to same node
+      setSelectedNode({ ...node });
+    } else {
+      // Scratch tab — clear selectedNode so RequestPanel enters ephemeral mode
+      setSelectedNode(null);
+    }
+  };
+
+  const handleNewScratchTab = () => {
+    openScratchTab();
+    setNodeDetailNode(null);
+    setSelectedNode(null);
+  };
+
+  const handleGlobalSelect = () => {
+    setShowGlobalPanel(true);
+    setShowEnvironmentForm(false);
+    setEditingEnvironment(null);
+    selectEnvironment(null);
   };
 
   const handleEnvironmentSelect = environment => {
-    setSelectedEnvironment(environment);
-    // Hide form when selecting an environment
+    selectEnvironment(environment);
     setShowEnvironmentForm(false);
     setEditingEnvironment(null);
+    setShowGlobalPanel(false);
   };
 
   const handleCreateEnvironment = () => {
     setShowEnvironmentForm(true);
     setEditingEnvironment(null);
-    setSelectedEnvironment(null);
-  };
-
-  const handleEditEnvironment = environment => {
-    setShowEnvironmentForm(true);
-    setEditingEnvironment(environment);
-    setSelectedEnvironment(null);
+    selectEnvironment(null);
+    setShowGlobalPanel(false);
   };
 
   const handleCancelEnvironmentForm = () => {
@@ -132,17 +155,9 @@ export default function Home() {
     try {
       let result;
       if (editingEnvironment) {
-        // Update existing environment
-        result = await updateEnvironment(
-          editingEnvironment.id,
-          environmentData
-        );
+        result = await updateEnvironment(editingEnvironment.id, environmentData);
       } else {
-        // Create new environment
         if (environmentData.includeDefaults) {
-          // Dev log removed
-
-          // Create environment with user's custom name and description but template variables
           result = await createEnvironmentWithDefaults(
             environmentData.name,
             environmentData.description,
@@ -152,83 +167,24 @@ export default function Home() {
           result = await createEnvironment(environmentData);
         }
       }
-
       if (result) {
-        // Success - hide form and optionally select the environment
         setShowEnvironmentForm(false);
         setEditingEnvironment(null);
-        if (!editingEnvironment) {
-          // For new environments, select them
-          setSelectedEnvironment(result);
-        }
+        if (!editingEnvironment) selectEnvironment(result);
         return result;
-      } else {
-        // Error handled by the environment context
-        return false;
       }
+      return false;
     } catch (error) {
       console.error('Failed to save environment:', error);
-      if (setModalError) {
-        setModalError('Failed to save environment. Please try again.');
-      }
+      if (setModalError) setModalError('Failed to save environment. Please try again.');
       return false;
     }
   };
 
-  const handleCreateVariable = () => {
-    setEditingVariable(null);
-    setShowVariableModal(true);
-  };
-
-  const handleEditVariable = variable => {
-    setEditingVariable(variable);
-    setShowVariableModal(true);
-  };
-
-  const handleCloseVariableModal = () => {
-    setShowVariableModal(false);
-    setEditingVariable(null);
-  };
-
-  // Resize handlers
-  const handleMouseDown = e => {
-    setIsResizing(true);
-    e.preventDefault();
-  };
-
-  const handleMouseMove = e => {
-    if (!isResizing) return;
-
-    const newWidth = e.clientX;
-    if (newWidth >= 200 && newWidth <= 500) {
-      setSidePanelWidth(newWidth);
-    }
-  };
-
-  const handleMouseUp = () => {
-    setIsResizing(false);
-  };
-
-  // Add mouse event listeners for resize
-  useEffect(() => {
-    if (isResizing) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = 'col-resize';
-      document.body.style.userSelect = 'none';
-    }
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-  }, [isResizing]);
+  const showSidePanel = activeTab !== 'bulkTest';
 
   return (
     <div className={styles.homeContainer}>
-      {/* Show loading state while workspaces are being loaded */}
       {workspaceLoading && !activeWorkspace && (
         <div className={styles.loadingOverlay}>
           <div className={styles.loadingContent}>
@@ -237,10 +193,7 @@ export default function Home() {
             {workspaceError && (
               <div className={styles.errorMessage}>
                 <p>Error: {workspaceError}</p>
-                <button
-                  className={styles.retryButton}
-                  onClick={() => refreshWorkspaces()}
-                >
+                <button className={styles.retryButton} onClick={() => refreshWorkspaces()}>
                   Retry
                 </button>
               </div>
@@ -250,92 +203,116 @@ export default function Home() {
       )}
 
       <div className={styles.mainContent}>
-        {/* Left Sidebar */}
-        <Sidebar onTabChange={handleTabChange} />
-
-        {/* Collection or Environment Panel based on active tab */}
-        {activeTab !== 'bulkTest' && (
-          <div
-            className={styles.sidePanel}
-            style={{ width: `${sidePanelWidth}px` }}
-          >
-            {activeTab === 'collections' ? (
-              <CollectionTree onSelectRequest={handleSelectRequest} />
-            ) : (
-              <EnvironmentManager
-                onEnvironmentSelect={handleEnvironmentSelect}
-                onCreateEnvironment={handleCreateEnvironment}
-                onEditEnvironment={handleEditEnvironment}
-              />
-            )}
-          </div>
-        )}
-
-        {/* Resize Handle */}
-        {activeTab !== 'bulkTest' && (
-          <div
-            className={styles.resizeHandle}
-            onMouseDown={handleMouseDown}
-          ></div>
-        )}
-
-        {/* Main Content Area */}
-        <div className={styles.contentPanel}>
-          {activeTab === 'collections' ? (
-            <RequestPanel activeRequest={activeRequest} />
-          ) : activeTab === 'environments' ? (
-            /* Show variable management or environment form when in environments tab */
-            <div className={styles.variableManagementPanel}>
-              {showEnvironmentForm ? (
-                <EnvironmentForm
-                  onCancel={handleCancelEnvironmentForm}
-                  onSave={handleSaveEnvironment}
-                  initialData={editingEnvironment}
-                  isEdit={!!editingEnvironment}
+        {/* Left sidebar: nav tabs on top, tree content below — always visible */}
+        <div className={styles.leftSidebar}>
+          <IconSidebar onTabChange={handleTabChange} />
+          {showSidePanel && (
+            <div className={styles.treeContent}>
+              {activeTab === 'collections' && (
+                <CollectionTree
+                  onSelectRequest={handleSelectRequest}
                 />
-              ) : selectedEnvironment ? (
-                <EnvironmentDetail
-                  environment={selectedEnvironment}
-                  variables={variables}
-                  isActive={activeEnvironment?.id === selectedEnvironment.id}
-                  onCreateVariable={handleCreateVariable}
-                  onEditVariable={handleEditVariable}
-                  onEditEnvironment={handleEditEnvironment}
+              )}
+              {activeTab === 'environments' && (
+                <EnvironmentManager
+                  onEnvironmentSelect={handleEnvironmentSelect}
+                  onCreateEnvironment={handleCreateEnvironment}
+                  onGlobalSelect={handleGlobalSelect}
+                  selectedGlobal={showGlobalPanel}
                 />
-              ) : (
-                <div className={styles.noEnvironmentSelected}>
-                  <div className={styles.noSelectionIcon}>🌍</div>
-                  <h3>Select an environment</h3>
-                  <p>
-                    Choose an environment from the left panel to view and manage
-                    its variables, or create a new environment.
-                  </p>
-                  <div className={styles.emptyActions}>
-                    <button
-                      className={styles.createButton}
-                      onClick={handleCreateEnvironment}
-                    >
-                      Create Environment
-                    </button>
-                  </div>
-                </div>
+              )}
+              {activeTab === 'history' && (
+                <HistoryPanel onSelectRequest={handleSelectRequest} />
               )}
             </div>
-          ) : (
-            // Bulk Test tab: render new BulkTestPanel
-            <BulkTestPanel onSelectRequest={handleSelectRequest} />
           )}
         </div>
+
+        {/* Right content area */}
+        {showSidePanel ? (
+          <div className={styles.contentPanel}>
+            {activeTab === 'collections' || activeTab === 'history' ? (
+              nodeDetailNode ? (
+                <NodeDetailPanel
+                  node={nodeDetailNode}
+                  onClose={() => setNodeDetailNode(null)}
+                />
+              ) : (
+                <div className={styles.requestArea}>
+                  <TabBar
+                    tabs={tabs}
+                    activeTabId={activeTabId}
+                    onSelect={handleTabSelect}
+                    onClose={closeTab}
+                    onNewTab={handleNewScratchTab}
+                    onReorder={reorderTab}
+                  />
+                  <RequestPanel
+                    activeRequest={selectedNode}
+                    onMethodChange={(fileId, method) => updateTabMethod(fileId, method)}
+                  />
+                </div>
+              )
+            ) : activeTab === 'environments' ? (
+              <div className={styles.variableManagementPanel}>
+                {showGlobalPanel ? (
+                  <GlobalVariablesPanel />
+                ) : showEnvironmentForm ? (
+                  <EnvironmentForm
+                    onCancel={handleCancelEnvironmentForm}
+                    onSave={handleSaveEnvironment}
+                    initialData={editingEnvironment}
+                    isEdit={!!editingEnvironment}
+                  />
+                ) : selectedEnvironment ? (
+                  <EnvironmentDetail
+                    environment={selectedEnvironment}
+                    variables={variables}
+                    isActive={activeEnvironment?.id === selectedEnvironment.id}
+                  />
+                ) : (
+                  <div className={styles.noEnvironmentSelected}>
+                    <div className={styles.noSelectionIcon}>🌍</div>
+                    <h3>Select an environment</h3>
+                    <p>
+                      Choose an environment from the left panel to view and manage its
+                      variables, or create a new environment.
+                    </p>
+                    <div className={styles.emptyActions}>
+                      <button className={styles.createButton} onClick={handleCreateEnvironment}>
+                        Create Environment
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <div className={styles.contentPanel}>
+            <BulkTestPanel onSelectRequest={handleSelectRequest} />
+          </div>
+        )}
       </div>
 
-      {/* Variable Modal */}
-      {showVariableModal && selectedEnvironment && (
-        <VariableModal
-          environment={selectedEnvironment}
-          editingVariable={editingVariable}
-          onClose={handleCloseVariableModal}
-        />
-      )}
     </div>
   );
+}
+
+function findNodeById(tree, id) {
+  if (!Array.isArray(tree)) return null;
+  return searchChildren(tree, id);
+}
+
+function searchChildren(children, id) {
+  if (!children) return null;
+  // Use == to handle string/number mismatch from localStorage serialization
+  for (const node of children) {
+    if (node.id == id) return node;
+    if (node.children) {
+      const found = searchChildren(node.children, id);
+      if (found) return found;
+    }
+  }
+  return null;
 }

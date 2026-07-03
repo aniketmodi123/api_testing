@@ -1,3 +1,7 @@
+"""
+What this file does: Exposes the POST /send-otp route for generating and emailing a password-reset OTP.
+"""
+
 from datetime import datetime
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
@@ -27,9 +31,7 @@ async def generate_otp_req(
     request: ForgetPasswordRequest,
     db: AsyncSession = Depends(get_db)
 ):
-    """
-    Initiate password reset by sending OTP to user's email.
-    """
+    """POST /send-otp — generate a time-limited OTP, upsert it in OTPAttempt, and send it to the user's email."""
     try:
         # Check if user exists
         stmt = select(User).where(User.email == request.email)
@@ -40,7 +42,8 @@ async def generate_otp_req(
             # For security reasons, don't reveal if email exists or not
             return create_response(
                 200,
-                data={"message": "If the email exists, an OTP has been sent to reset your password."}
+                data={"message": "If the email exists, an OTP has been sent to reset your password."},
+                schema=MessageResponse
             )
 
         # Check if user is active
@@ -102,5 +105,5 @@ async def generate_otp_req(
     except Exception as e:
         logs(f"Error in forget password: {e}", type="error")
         await db.rollback()
-        ExceptionHandler(e)
+        return ExceptionHandler(e)
 

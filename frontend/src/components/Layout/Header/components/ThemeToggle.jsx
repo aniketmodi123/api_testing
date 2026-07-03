@@ -1,26 +1,28 @@
+import { useState } from 'react';
 import { FiMoon, FiSun } from 'react-icons/fi';
-import { useTheme } from '../../../ThemeProvider.jsx';
+import ThemePanel from '../../../ThemePanel/ThemePanel.jsx';
+import { useTheme } from '../../../ThemeContext.jsx';
+import { LIGHT_THEME_IDS } from '../../../../themes/index.js';
 import styles from './HeaderComponents.module.css';
 
 const ThemeToggle = () => {
-  const { theme, setTheme } = useTheme();
+  const { preferences } = useTheme();
+  const [isOpen, setIsOpen] = useState(false);
 
-  const toggleTheme = () => {
-    setTheme(theme === 'light' ? 'dark' : 'light');
-  };
+  const CurrentIcon = LIGHT_THEME_IDS.includes(preferences.theme) ? FiSun : FiMoon;
 
   return (
-    <button
-      className={styles.button}
-      onClick={toggleTheme}
-      title={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
-    >
-      {theme === 'light' ? (
-        <FiMoon className={styles.icon} />
-      ) : (
-        <FiSun className={styles.icon} />
-      )}
-    </button>
+    <div className={styles.buttonContainer}>
+      <button
+        className={styles.button}
+        onClick={() => setIsOpen((o) => !o)}
+        title="Appearance"
+      >
+        <CurrentIcon className={styles.icon} />
+      </button>
+
+      {isOpen && <ThemePanel onClose={() => setIsOpen(false)} />}
+    </div>
   );
 };
 

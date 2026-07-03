@@ -1,5 +1,5 @@
 
-### 📊 **API Testing & Execution** (Advanced Features)
+### 📊 **ApiPilot & Execution** (Advanced Features)
 - POST `/workspace/api/{api_id}/test` - Execute API test
 - POST `/workspace/case/{case_id}/run` - Run specific test case
 - POST `/workspace/api/{api_id}/validate` - Validate API structure
@@ -15,7 +15,7 @@
 
 ### **Phase 2 (Core Features):**
 4. Search & Discovery APIs
-5. API Testing & Execution
+5. ApiPilot & Execution
 6. Basic Import/Export (Postman)
 
 ### **Phase 3 (Advanced Features):**

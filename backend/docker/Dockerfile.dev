@@ -19,8 +19,9 @@ RUN pip install debugpy
 # RUN apt update && apt install -y cron && apt install -y supervisor && apt install -y curl
 RUN apt update && apt install -y supervisor && apt install -y curl
 
-# Copy the Supervisor configuration file
-COPY ./src/extras/supervisord.local /etc/supervisor/conf.d/supervisord.conf
+# Copy the Supervisor configuration files
+COPY ./src/extras/supervisord.local /etc/supervisor/api-supervisord.conf
+COPY ./src/extras/supervisord.scheduler /etc/supervisor/scheduler-supervisord.conf
 
 # Start supervisor service
 # CMD python -m debugpy --wait-for-client --listen 0.0.0.0:5000 -m uvicorn main:app --reload --host 0.0.0.0

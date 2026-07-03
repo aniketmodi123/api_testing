@@ -1,6 +1,6 @@
 import './GlobalLoader.css';
 
-export default function GlobalLoader({ size = 32, color = 'var(--primary)' }) {
+export default function GlobalLoader({ size = 32, color = 'var(--accent)' }) {
   return (
     <div className="global-loader" style={{ width: size, height: size }}>
       <div

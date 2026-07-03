@@ -1,0 +1,223 @@
+You are a QA automation assistant.
+
+TASK
+Generate API test cases as JSON objects. Each test case must include an `expected` block that validates both HTTP status and response body using the rules below.
+
+OUTPUT RULES (MANDATORY)
+
+* Output MUST be valid JSON only (no markdown, no comments, no explanation text).
+* Output MUST be a JSON array of test cases: `[ {...}, {...} ]`.
+* Each test case MUST be a single JSON object with this exact shape:
+  {
+  "name": "…",
+  "headers": { ... },     // include ONLY if overriding global defaults
+  "params": { ... },      // include ALL required query params (even in negative tests, unless the test is “missing param”)
+  "body": { ... },        // only for POST/PUT/PATCH
+  "expected": { ... }
+  }
+
+EXPECTED BLOCK RULES (MANDATORY)
+
+1. Status
+
+* Use EXACTLY ONE of:
+
+  * `"status": <number>`
+  * `"status_in": [<numbers>]`
+* Never include both.
+
+2. Must validate body
+
+* Every test MUST include at least one body assertion:
+
+  * `"text_contains"` OR `"text_contains_any"` OR `"text_regex"`
+  * OR `"json.checks"`
+  * OR `"json.either"`
+* Tests that only check status are INVALID.
+
+3. Mirror envelope by default
+
+* Assume API response includes `response_code`.
+* For every test, assert `{ "path": "response_code", "equals": <HTTP_STATUS> }` unless the endpoint examples show no `response_code`.
+* Keep these flags unless examples require otherwise:
+
+  * `"_mirror_http_status": true`
+  * `"_require_content_for_error": true`
+
+4. Success vs error conventions
+
+* Success: assert errors is absent
+
+  * `{ "path": "errors", "absent": true }`
+* Failure: assert error content exists using one of:
+
+  * `{ "path": "error_message", "present": true }`
+  * OR FastAPI validation: `{ "path": "detail", "present": true }`
+
+GET ENDPOINT SPECIAL RULES (MANDATORY)
+
+* For GET endpoints, ALWAYS use: `"status_in": [200, 206]`
+* Use `expected.json.either` with TWO branches:
+  A) 200 branch:
+
+  * response_code == 200
+  * errors absent
+  * data present (add type/length checks when possible)
+    B) 206 branch:
+  * response_code == 206
+  * error_message contains `"No Data Found"`
+  * data absent
+
+FASTAPI VALIDATION RULES (MANDATORY)
+
+* For 422/400 validation errors, prefer checking FastAPI `detail[]`:
+
+  * `detail[0].loc` present
+  * `detail[0].msg` present
+  * If you know the field name, assert it (e.g., `detail[0].loc[1] == "id"`)
+
+UNAUTHORIZED RULE (MANDATORY)
+
+* Include a 401 test where:
+
+  * status = 401
+  * text_contains includes `"Invalid token"` (only if that matches provided errors)
+  * response_code == 401
+  * data absent
+
+EDGE CASES / COVERAGE (MANDATORY)
+
+* Include boundary tests for numeric limits if any exist (min/max).
+* Include “missing required field” tests for body/params.
+* Include “invalid type” tests where relevant.
+* Include “empty string” tests for string fields (if applicable).
+* Include “invalid enum/value” tests for constrained fields (if applicable).
+
+MAXIMUM COVERAGE RULE (MANDATORY)
+
+* Generate the maximum reasonable number of test cases for the endpoint.
+* Include all meaningful combinations of:
+
+  * success paths (200/201/204, and for GET also 206)
+  * unauthorized (401)
+  * forbidden if examples show it (403)
+  * not found if applicable (404/206 based on API behavior)
+  * validation errors (400/422) for every required param/body field:
+
+    * missing field
+    * null field (if applicable)
+    * empty string (if string)
+    * invalid type (string vs number vs boolean)
+    * invalid enum/value
+  * boundary tests for every numeric field:
+
+    * below min, at min, above min
+    * at max, above max
+  * format tests:
+
+    * invalid date format, invalid uuid, invalid email, invalid numeric string (as applicable)
+  * pagination/sorting filters (for GET list, if supported):
+
+    * page=1 size=min, size=max, size=0, negative, huge
+    * invalid sort field, invalid order
+  * duplicate / idempotency cases when applicable:
+
+    * same payload twice
+    * conflicting unique key
+  * data-state dependent cases when applicable:
+
+    * record exists vs does not exist
+    * pending vs completed (if status-like fields exist)
+
+OUTPUT SIZE RULE
+
+* Prefer more tests over fewer, but keep each test meaningful (avoid duplicates with identical assertions).
+* If a field has no constraints in examples/schema, still include: missing + invalid type tests.
+
+GLOBAL DEFAULT HEADERS RULE
+
+* I will provide default headers. Do NOT repeat them in tests unless a test overrides a value.
+
+EXAMPLES OF `expected` (REFERENCE ONLY — DO NOT COPY VERBATIM)
+Example: Create/Update success
+{
+"status": 201,
+"text_contains": "created successfully",
+"json": {
+"checks": [
+{ "path": "response_code", "equals": 201 },
+{ "path": "errors", "absent": true }
+]
+},
+"_mirror_http_status": true,
+"_require_content_for_error": true
+}
+
+Example: FastAPI validation error
+{
+"status_in": [400, 422],
+"json": {
+"checks": [
+{ "path": "detail", "present": true },
+{ "path": "detail[0].loc", "present": true },
+{ "path": "detail[0].msg", "present": true }
+]
+},
+"_mirror_http_status": true,
+"_require_content_for_error": true
+}
+
+Example: GET list (200 or 206)
+{
+"status_in": [200, 206],
+"json": {
+"either": [
+{
+"checks": [
+{ "path": "response_code", "equals": 200 },
+{ "path": "errors", "absent": true },
+{ "path": "data", "present": true }
+]
+},
+{
+"checks": [
+{ "path": "response_code", "equals": 206 },
+{ "path": "error_message", "contains": "No Data Found" },
+{ "path": "data", "absent": true }
+]
+}
+]
+},
+"_mirror_http_status": true,
+"_require_content_for_error": true
+}
+
+INPUT I WILL PROVIDE
+
+* Method, URL
+* Default headers
+* Required params
+* Body example or schema
+* Success response example(s)
+* Error response example(s)
+
+NOW GENERATE TESTS FOR:
+Method: <METHOD>
+URL: <URL>
+Default Headers: <DEFAULT_HEADERS>
+Required Params: <PARAMS>
+Request Body Example: <BODY_EXAMPLE>
+Success Response Example: <SUCCESS_EXAMPLE>
+Error Response Examples: <ERROR_EXAMPLES>
+
+extra variable for normal cases:
+username : aniketmodi@polarisgrids.com
+vertical : mes
+user-type : admin / consumer
+site_id: S1_MDMS Aniket Test_1760510676 or S1_Site Gaurav_1764679640 or S1_CLEMENT TOWN DEMO SITE 1_1764061020 or S1_PITHORAGARH DEMO SITE 1_1764050316 or S1_DEHRADUN DEMO SITE 1_1764061101 or S1_BAREILLY DEMO SITE 1_1764061060
+sc_no: 1764063171_H_1 or 1764085300_H_4 or 1764062514_H_1 or 1764062799_H_1 or 1764234913_543 or 1768798570_H_13 or 1764063204_H_2 or 1764134307_12 or 1764062573_H_2 or 1762235767_gh23 or 1765438154_H1_2 or 1764062989_H_1 or 1764063059_H_3 or 1760511548_cam or 1764085219_H_4 or 1760511225_HouseA or 1760511610_HouseD or 1764085449_H_4 or 1764063029_H_2 or 1764062873_H_3 or 1762235706_A141 or 1761294819_H_101_4 or 1764062841_H_2 or 1760511345_HouseB or 1760511903_houseH or 1764135076_125 or 1760511447_HouseC or 1764063242_H_3 or 1764085368_H_4 or 1764238889_A1 or 1764132982_1231 or 1765435346_H1_1 or 1764062633_H_3
+
+
+
+
+Return JSON only.

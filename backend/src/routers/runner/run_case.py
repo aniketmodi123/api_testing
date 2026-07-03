@@ -1,8 +1,13 @@
+"""
+What this file does: Exposes POST /run for executing all (or selected) test cases for a file's API with resolved variables and inherited folder headers.
+"""
+
 from typing import Optional
 from fastapi import APIRouter, Depends, Header
 from pydantic import BaseModel
 
 from routers.runner.runner import run_from_list_api
+from schema import CaseRunResult
 from utils import (
     ExceptionHandler,
     create_response,
@@ -16,7 +21,8 @@ from config import (
     get_db
 )
 
-from common_querys import verify_node_ownership, get_user_by_username, get_workspace_variables, get_headers
+from common_querys import resolve_file_access, get_headers, resolve_auth, build_scope_chain
+from auth_strategies import apply_auth
 from models import Api
 
 
@@ -24,6 +30,11 @@ router = APIRouter()
 
 
 class RunnerReq(BaseModel):
+    """Request body for POST /run.
+    Attributes:
+        file_id: ID of the file node whose API to run.
+        case_id: Optional list of ApiCase IDs to run; None runs all cases for the API.
+    """
     file_id: int
     case_id: Optional[list[int]] = None
 
@@ -34,14 +45,17 @@ async def get_file_api(
     username: str = Header(...),
     db: AsyncSession = Depends(get_db)
 ):
+    """POST /run — resolve workspace variables and folder headers, then execute the specified (or all) test cases for a file's API."""
     try:
-        user = await get_user_by_username(db, username)
-        if not user:
+        access = await resolve_file_access(db, username, req.file_id)
+        if not access.user:
             return create_response(400, error_message="User not found")
+        if not access.node:
+            return create_response(404, error_message="File not found")
+        if not access.can_access:
+            return create_response(403, error_message="Access denied")
 
-        file_node = await verify_node_ownership(db, req.file_id, user.id)
-        if not file_node:
-            return create_response(206, error_message="File not found or access denied")
+        file_node = access.node
 
         if file_node.type != "file":
             return create_response(400, error_message="Can only get API from files, not folders")
@@ -50,16 +64,29 @@ async def get_file_api(
         result = await db.execute(query)
         api = result.scalar_one_or_none()
         if not api:
-            return create_response(206, error_message="No API found in this file")
+            return create_response(404, error_message="No API found in this file")
 
         folder_path, folder_ids, headers_map, merge_result = await get_headers(db, api.file_id)
         if not folder_path:
-            return create_response(206, error_message="Folder not found")
+            return create_response(404, error_message="Folder not found")
 
-        workspace_variables = await get_workspace_variables(db, file_node.workspace_id)
+        workspace_variables = await build_scope_chain(db, file_id=req.file_id, username=username, workspace_id=file_node.workspace_id)
 
         resolved_endpoint = resolve_variables(api.endpoint, workspace_variables)
         resolved_headers = resolve_variables(merge_result.get("merged_headers", {}), workspace_variables)
+
+        # Inject per-API auth into API-level headers so every case inherits it.
+        auth_config = await resolve_auth(db, api.file_id)
+        if auth_config:
+            auth_headers, _ = apply_auth(
+                auth_config,
+                method=api.method.upper(),
+                url=resolved_endpoint,
+                existing_headers=resolved_headers,
+            )
+            for k, v in auth_headers.items():
+                if k not in resolved_headers:
+                    resolved_headers[k] = v
 
         data = {
             "id": api.id,
@@ -96,13 +123,14 @@ async def get_file_api(
             })
 
         if not cases_data:
-            return create_response(206, error_message="No test cases found")
+            return create_response(404, error_message="No test cases found")
 
         data["test_cases"] = cases_data
         data["total_cases"] = len(cases_data)
 
         results = await run_from_list_api(data)
-        return results["flat"]
+
+        return create_response(200, data=results["flat"], schema=CaseRunResult)
 
     except Exception as e:
-        ExceptionHandler(e)
+        return ExceptionHandler(e)

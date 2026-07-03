@@ -1,0 +1,9 @@
+# Graphify — auto-generated, never commit
+graphify-out/
+research/codebase_graph.json
+research/codebase_graph.md
+
+
+.DS_Store
+# MCP client config — holds real credentials, never commit
+.mcp.json

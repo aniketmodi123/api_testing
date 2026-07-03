@@ -1,62 +1,34 @@
 import { useAuth } from '../../../store/session.jsx';
-import EnvironmentSwitcher from '../../EnvironmentSwitcher';
 import WorkspaceSelector from '../../WorkspaceSelector/WorkspaceSelector.jsx';
+import styles from './components/HeaderComponents.module.css';
 import Logo from './components/Logo.jsx';
-import LogoutButton from './components/LogoutButton.jsx';
 import ThemeToggle from './components/ThemeToggle.jsx';
 import UserProfile from './components/UserProfile.jsx';
 
 export default function Header() {
   const { user, logout } = useAuth();
 
-  const styles = {
-    header: {
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      padding: '3px 16px',
-      backgroundColor: 'var(--header-bg, transparent)',
-      borderBottom: '1px solid var(--border-color, #eaeaea)',
-    },
-    leftSection: {
-      display: 'flex',
-      alignItems: 'center',
-      gap: '20px',
-    },
-    actionsContainer: {
-      display: 'flex',
-      alignItems: 'center',
-      gap: '0.5rem',
-    },
-    userContainer: {
-      display: 'flex',
-      alignItems: 'center',
-    },
-  };
-
   const handleLogout = () => {
     logout();
-    // AuthGuard will handle navigation after logout
   };
 
   return (
-    <header style={styles.header}>
-      <div style={styles.leftSection}>
+    <header className={styles.header}>
+      <div className={styles.headerLeft}>
         <Logo />
+      </div>
+      <div className={styles.headerCenter}>
         {user && (
-          <>
-            <WorkspaceSelector />
-            <EnvironmentSwitcher />
-          </>
+          <WorkspaceSelector />
         )}
       </div>
-      <div style={styles.actionsContainer}>
+      <div className={styles.headerRight}>
         <ThemeToggle />
         {user && (
-          <div style={styles.userContainer}>
-            <UserProfile username={user.email || user.username} />
-            <LogoutButton onLogout={handleLogout} />
-          </div>
+          <UserProfile
+            username={user.email || user.username}
+            onLogout={handleLogout}
+          />
         )}
       </div>
     </header>

@@ -12,26 +12,26 @@ export class BackendApiCallService {
    * @returns {Promise} - API response from backend
    */
   static async executeApiCall({
-    fileId,
-    environmentId,
+    fileId = null,
+    environmentId = null,
     method = 'GET',
     url,
     headers = {},
     params = {},
     body = null,
+    bodyType = null,
     options = {},
   }) {
     try {
-      // dev log removed
-
       const requestPayload = {
-        file_id: fileId,
-        environment_id: environmentId,
+        file_id: fileId ?? null,
+        environment_id: environmentId ?? null,
         method: method,
         url: url,
         headers: headers,
         params: params,
         body: body,
+        body_type: bodyType,
         options: {
           include_folder_headers: true,
           resolve_variables: true,

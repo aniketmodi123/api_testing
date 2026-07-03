@@ -410,7 +410,7 @@ export default function MoveCopyPanel({
               ) : Array.isArray(localFolders) && localFolders.length > 0 ? (
                 renderFolderTree(localFolders)
               ) : (
-                <div style={{ color: '#888', marginLeft: 20 }}>
+                <div style={{ color: 'var(--text-muted)', marginLeft: 20 }}>
                   No folders found. Create a folder in your workspace first.
                 </div>
               )}

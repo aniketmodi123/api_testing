@@ -1,7 +1,7 @@
 .testRunner {
-  background-color: var(--background-lighter);
+  background-color: var(--surface-2);
   padding: 20px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   width: 100%;
 }
 
@@ -25,17 +25,17 @@
 }
 
 .runButton {
-  background-color: var(--primary);
+  background-color: var(--accent);
   color: white;
   border: none;
   padding: 8px 16px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 0.9rem;
   cursor: pointer;
 }
 
 .runButton:hover:not(:disabled) {
-  background-color: var(--primary-dark);
+  background-color: var(--accent-hover);
 }
 
 .runButton:disabled {
@@ -48,20 +48,20 @@
   color: var(--text);
   border: 1px solid var(--border);
   padding: 8px 16px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 0.9rem;
   cursor: pointer;
 }
 
 .selectAllButton:hover {
-  background-color: var(--hover-background);
+  background-color: var(--surface-3);
 }
 
 .error {
-  background-color: rgba(244, 67, 54, 0.1);
-  color: #f44336;
+  background-color: var(--error-bg-dim);
+  color: var(--error);
   padding: 10px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   margin-bottom: 20px;
 }
 
@@ -74,8 +74,8 @@
   text-align: center;
   color: var(--text-muted);
   font-style: italic;
-  background-color: var(--background);
-  border-radius: 4px;
+  background-color: var(--bg);
+  border-radius: var(--radius-sm);
 }
 
 .testCaseItem {
@@ -120,7 +120,7 @@
 
 .resultsList {
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   overflow: hidden;
 }
 
@@ -140,7 +140,7 @@
 }
 
 .resultHeader:hover {
-  background-color: var(--hover-background);
+  background-color: var(--surface-3);
 }
 
 .resultName {
@@ -156,11 +156,11 @@
 }
 
 .success .statusDot {
-  background-color: #4caf50;
+  background-color: var(--success);
 }
 
 .failure .statusDot {
-  background-color: #f44336;
+  background-color: var(--error);
 }
 
 .resultStatus {
@@ -168,16 +168,16 @@
 }
 
 .success .resultStatus {
-  color: #4caf50;
+  color: var(--success);
 }
 
 .failure .resultStatus {
-  color: #f44336;
+  color: var(--error);
 }
 
 .resultDetails {
   padding: 15px;
-  background-color: var(--background);
+  background-color: var(--bg);
   border-top: 1px solid var(--border);
 }
 
@@ -196,8 +196,8 @@
 }
 
 .detailedInfoSection {
-  background-color: var(--background-lighter);
-  border-radius: 4px;
+  background-color: var(--surface-2);
+  border-radius: var(--radius-sm);
   padding: 15px;
   margin-bottom: 20px;
 }
@@ -291,9 +291,9 @@
 
 .jsonResponse,
 .diffContent {
-  background-color: var(--input-background);
+  background-color: var(--input-bg);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 10px;
   max-height: 300px;
   font-family: monospace;
@@ -308,10 +308,10 @@
   position: absolute;
   top: 8px;
   right: 8px;
-  background-color: var(--primary);
+  background-color: var(--accent);
   color: white;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 6px;
   display: flex;
   align-items: center;
@@ -319,8 +319,8 @@
   cursor: pointer;
   opacity: 0.7;
   transition:
-    opacity 0.2s ease,
-    transform 0.2s ease;
+    opacity var(--duration-base) var(--easing-default),
+    transform var(--duration-base) var(--easing-default);
   width: 28px;
   height: 28px;
   z-index: 10;
@@ -332,10 +332,10 @@
 }
 
 .errorMessage {
-  color: #f44336;
+  color: var(--error);
   padding: 10px;
-  border-radius: 4px;
-  background-color: rgba(244, 67, 54, 0.05);
+  border-radius: var(--radius-sm);
+  background-color: var(--error-bg-subtle);
   font-family: monospace;
   white-space: pre-wrap;
 }

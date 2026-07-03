@@ -2,7 +2,7 @@
 .backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.75);
+  background: var(--overlay-bg);
   z-index: 999;
   display: none;
   backdrop-filter: blur(4px);
@@ -13,14 +13,15 @@
   inset: 20px;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: 16px;
+  border-radius: var(--radius-xl);
   z-index: 1000;
   display: none;
   flex-direction: column;
-  padding: 20px;
+  padding: 0;
   overflow: hidden;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  box-shadow: none;
   max-width: 1400px;
+  max-height: calc(100vh - 40px);
   margin: 20px auto;
 }
 
@@ -38,9 +39,10 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 12px;
-  padding-bottom: 12px;
+  padding: 20px 20px 12px 20px;
+  margin-bottom: 0;
   border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
 }
 
 .titleSection {
@@ -68,7 +70,7 @@
 .status {
   display: inline-block;
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
@@ -76,24 +78,24 @@
 }
 
 .status.pass {
-  background: rgba(34, 197, 94, 0.1);
-  color: #22c55e;
-  border: 1px solid rgba(34, 197, 94, 0.2);
+  background: var(--success-dim);
+  color: var(--success);
+  border: 1px solid color-mix(in srgb, var(--success) 20%, transparent);
 }
 
 .status.fail {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
-  border: 1px solid rgba(239, 68, 68, 0.2);
+  background: var(--error-dim);
+  color: var(--error);
+  border: 1px solid color-mix(in srgb, var(--error) 20%, transparent);
 }
 
 .statusOk {
-  color: #22c55e;
+  color: var(--success);
   font-weight: 600;
 }
 
 .statusBad {
-  color: #ef4444;
+  color: var(--error);
   font-weight: 600;
 }
 
@@ -108,10 +110,10 @@
   border: 1px solid var(--color-border);
   color: var(--color-text);
   padding: 8px 12px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   font-size: 14px;
-  transition: all 0.2s ease;
+  transition: all var(--duration-base) var(--easing-default);
 }
 
 .closeBtn:hover {
@@ -121,41 +123,41 @@
 }
 
 .runBtn {
-  background: #22c55e;
-  border: 1px solid #16a34a;
+  background: var(--success);
+  border: 1px solid color-mix(in srgb, var(--success) 70%, black);
   color: white;
   padding: 8px 12px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   font-size: 14px;
   font-weight: 500;
-  transition: all 0.2s ease;
+  transition: all var(--duration-base) var(--easing-default);
 }
 
 .runBtn:hover {
-  background: #16a34a;
-  border-color: #15803d;
+  background: color-mix(in srgb, var(--success) 80%, black);
+  border-color: color-mix(in srgb, var(--success) 60%, black);
 }
 
 .editBtn {
-  background: #3b82f6;
-  border: 1px solid #2563eb;
+  background: var(--accent);
+  border: 1px solid var(--accent-hover);
   color: white;
   padding: 8px 12px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   font-size: 14px;
   font-weight: 500;
-  transition: all 0.2s ease;
+  transition: all var(--duration-base) var(--easing-default);
 }
 
 .editBtn:hover {
-  background: #2563eb;
-  border-color: #1d4ed8;
+  background: var(--accent-hover);
+  border-color: color-mix(in srgb, var(--accent-hover) 70%, black);
 }
 
 .editIndicator {
-  color: #3b82f6;
+  color: var(--accent);
   font-size: 12px;
   font-weight: 500;
 }
@@ -164,7 +166,7 @@
   width: 100%;
   background: var(--color-surface-alt);
   border: 1px solid var(--color-border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 12px;
   font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
   font-size: 14px;
@@ -177,21 +179,52 @@
 .editableJson:focus {
   outline: none;
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+  box-shadow: none;
 }
 
 /* Failures Section */
 .failures {
   white-space: pre-wrap;
-  color: #ef4444;
-  background: rgba(239, 68, 68, 0.05);
+  color: var(--error);
+  background: var(--error-bg-subtle);
   padding: 12px;
-  border-radius: 8px;
-  border: 1px solid rgba(239, 68, 68, 0.1);
-  margin-bottom: 20px;
+  border-radius: 0;
+  border: none;
+  border-bottom: 1px solid var(--error-bg-dim);
+  margin: 0;
   font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
   font-size: 14px;
   line-height: 1.5;
+  flex-shrink: 0;
+}
+
+/* Scrollable Container for Modal Content */
+.modalScrollContainer {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 20px;
+  min-height: 0;
+}
+
+/* Custom scrollbar for modal scroll container */
+.modalScrollContainer::-webkit-scrollbar {
+  width: 12px;
+}
+
+.modalScrollContainer::-webkit-scrollbar-track {
+  background: var(--color-background-light);
+  border-radius: 0;
+}
+
+.modalScrollContainer::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: var(--radius);
+  border: 2px solid var(--color-surface);
+}
+
+.modalScrollContainer::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
 }
 
 /* Content Layout */
@@ -199,8 +232,6 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
-  flex: 1;
-  min-height: 0;
   margin-bottom: 16px;
 }
 
@@ -217,6 +248,7 @@
   gap: 8px;
   border-top: 1px solid var(--color-border);
   padding-top: 16px;
+  margin-bottom: 0;
 }
 
 .sectionTitle {
@@ -240,7 +272,7 @@
   font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
   background: var(--color-background-dark);
   padding: 12px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--color-border);
   color: var(--color-text);
   line-height: 1.5;
@@ -254,12 +286,12 @@
 
 .json::-webkit-scrollbar-track {
   background: var(--color-background-light);
-  border-radius: 6px;
+  border-radius: var(--radius);
 }
 
 .json::-webkit-scrollbar-thumb {
   background: var(--color-border);
-  border-radius: 6px;
+  border-radius: var(--radius);
   border: 2px solid var(--color-background-dark);
 }
 

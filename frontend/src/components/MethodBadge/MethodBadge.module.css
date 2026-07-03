@@ -1,0 +1,63 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  border-radius: var(--radius-sm);
+  text-transform: uppercase;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.sm {
+  font-size: 9px;
+  padding: 2px 5px;
+  min-width: 42px;
+}
+
+.md {
+  font-size: 11px;
+  padding: 2px 7px;
+  min-width: 52px;
+}
+
+.lg {
+  font-size: 13px;
+  padding: 3px 10px;
+  min-width: 64px;
+}
+
+.GET {
+  color: var(--viz-method-get);
+  background: color-mix(in srgb, var(--viz-method-get) 12%, transparent);
+}
+.POST {
+  color: var(--viz-method-post);
+  background: color-mix(in srgb, var(--viz-method-post) 12%, transparent);
+}
+.PUT {
+  color: var(--viz-method-put);
+  background: color-mix(in srgb, var(--viz-method-put) 12%, transparent);
+}
+.PATCH {
+  color: var(--viz-method-patch);
+  background: color-mix(in srgb, var(--viz-method-patch) 12%, transparent);
+}
+.DELETE {
+  color: var(--viz-method-delete);
+  background: color-mix(in srgb, var(--viz-method-delete) 12%, transparent);
+}
+.HEAD {
+  color: var(--viz-method-head);
+  background: color-mix(in srgb, var(--viz-method-head) 12%, transparent);
+}
+.OPTIONS {
+  color: var(--viz-method-options);
+  background: color-mix(in srgb, var(--viz-method-options) 12%, transparent);
+}
+.DEFAULT {
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--text-muted) 12%, transparent);
+}

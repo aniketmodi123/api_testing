@@ -1,18 +1,18 @@
 version: '3.8'
 
 networks:
-    api_testing_network:
+    apipilot_network:
         external: true
 
 services:
-    api-testing:
+    apipilot:
         build:
             context: .
             dockerfile: ./docker/Dockerfile.dev
             args:
                 - PYTHON_VERSION=tiangolo/uvicorn-gunicorn-fastapi:python3.10-slim
-        image: api_testing
-        container_name: api_testing
+        image: apipilot
+        container_name: apipilot
         ports:
             - 7005:8000  # API accessible at localhost:7005
             - 7006:5000  # Debugger accessible at localhost:7006
@@ -20,8 +20,25 @@ services:
         - .env
         volumes:
             - ./src:/app
+        command: supervisord -n -c /etc/supervisor/api-supervisord.conf
         networks:
-            - api_testing_network
+            - apipilot_network
+
+    scheduler:
+        build:
+            context: .
+            dockerfile: ./docker/Dockerfile.dev
+            args:
+                - PYTHON_VERSION=tiangolo/uvicorn-gunicorn-fastapi:python3.10-slim
+        image: apipilot
+        container_name: apipilot_scheduler
+        env_file:
+        - .env
+        volumes:
+            - ./src:/app
+        command: supervisord -n -c /etc/supervisor/scheduler-supervisord.conf
+        networks:
+            - apipilot_network
 
     # postgres:
     #     image: postgres:15
@@ -35,7 +52,7 @@ services:
     #     volumes:
     #         - postgres_data:/var/lib/postgresql/data  # Using named volume for data persistence
     #     networks:
-    #         - api_testing_network
+    #         - apipilot_network
 
 
     # ngrok:
@@ -46,7 +63,7 @@ services:
     #         - 4040:4040
     #     command: http --domain=sharply-integral-sturgeon.ngrok-free.app 192.168.100.54:8014
     #     networks:
-    #         - api_testing_network
+    #         - apipilot_network
     #     restart: unless-stopped
 
 # volumes:

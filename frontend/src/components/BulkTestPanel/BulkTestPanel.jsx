@@ -12,6 +12,8 @@ import BulkControls from './BulkControls.jsx';
 import BulkResults from './BulkResults.jsx';
 import BulkScheduler from './BulkScheduler.jsx';
 import BulkSelection from './BulkSelection.jsx';
+import AlertsPanel from './AlertsPanel.jsx';
+import LatencySparkline from './LatencySparkline.jsx';
 import styles from './BulkTestPanel.module.css';
 
 export default function BulkTestPanel({ onSelectRequest }) {
@@ -36,6 +38,7 @@ export default function BulkTestPanel({ onSelectRequest }) {
   const [loadingExecution, setLoadingExecution] = useState(false);
   const [loadingDelete, setLoadingDelete] = useState(false);
   const [loadingScheduleCreate, setLoadingScheduleCreate] = useState(false);
+  const [expandedAlertScheduleId, setExpandedAlertScheduleId] = useState(null);
 
   // Hooks for auth and workspace (moved up to be available early)
   const auth = useAuth();
@@ -1201,6 +1204,9 @@ export default function BulkTestPanel({ onSelectRequest }) {
                           <span className={styles.historyType}>
                             {schedule.type}
                           </span>
+                          {schedule.executions && schedule.executions.length > 0 && (
+                            <LatencySparkline executions={schedule.executions} />
+                          )}
                         </div>
                         <div className={styles.historyMeta}>
                           <span>
@@ -1247,6 +1253,16 @@ export default function BulkTestPanel({ onSelectRequest }) {
                           />
                         </button>
                         <button
+                          className={`${styles.editButton}`}
+                          onClick={() => setExpandedAlertScheduleId(
+                            expandedAlertScheduleId === schedule.id ? null : schedule.id
+                          )}
+                          title="Manage alerts"
+                          disabled={loadingExecution || loadingDelete}
+                        >
+                          🔔
+                        </button>
+                        <button
                           className={styles.deleteButton}
                           onClick={() => handleDeleteSchedule(schedule.id)}
                           title="Delete this test history and all its results"
@@ -1260,6 +1276,11 @@ export default function BulkTestPanel({ onSelectRequest }) {
                           />
                         </button>
                       </div>
+                      {expandedAlertScheduleId === schedule.id && (
+                        <div style={{ gridColumn: '1 / -1', marginTop: 6 }}>
+                          <AlertsPanel scheduleId={schedule.id} />
+                        </div>
+                      )}
                     </div>
                   ))
                 )}

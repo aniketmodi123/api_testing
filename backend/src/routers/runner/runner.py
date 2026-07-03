@@ -1,27 +1,55 @@
-﻿import httpx, time, asyncio
+﻿"""
+What this file does: Core runner engine — provides run_from_list_api for executing test cases concurrently against an API definition, and bulk_run_cases for scheduler-driven bulk execution.
+"""
+
+import httpx, time, asyncio
 from typing import Dict, Any, List
 from routers.runner.validator import evaluate_expect
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, or_
 from sqlalchemy.orm import selectinload
 from config import get_db
-from models import Api, Workspace, Node
+from models import Api, Workspace, Node, WorkspaceMember
 from utils import ExceptionHandler, resolve_variables
-from common_querys import get_user_by_username, get_workspace_variables, get_headers
+from common_querys import get_user_by_username, get_headers, resolve_auth, build_scope_chain
+from auth_strategies import apply_auth
 
 
 
 async def verify_nodes(db: AsyncSession, node_id: list[int], user_id: int):
+    """
+    What it does: Return the Node rows for the given IDs whose workspace the user can access
+    (owner or joined member — running tests is a viewer-level action).
+    Returns:
+        list[Node]: Nodes whose workspace the user owns or is a joined member of; excludes
+                    any IDs belonging to workspaces the user has no access to.
+    """
+    if not node_id:
+        return []
     result = await db.execute(
         select(Node)
         .join(Workspace, Node.workspace_id == Workspace.id)
-        .where(and_(Node.id.in_(node_id), Workspace.user_id == user_id))
+        .outerjoin(
+            WorkspaceMember,
+            and_(
+                WorkspaceMember.workspace_id == Workspace.id,
+                WorkspaceMember.user_id == user_id,
+                WorkspaceMember.joined_at.isnot(None),
+            ),
+        )
+        .where(
+            and_(
+                Node.id.in_(node_id),
+                or_(Workspace.user_id == user_id, WorkspaceMember.user_id.isnot(None)),
+            )
+        )
     )
     return result.scalars().all()
 
 
 def resolve_docker_url(url: str) -> str:
+    """What it does: Replace 'localhost' with 'host.docker.internal' so the container can reach the host machine."""
     return url.replace("localhost", "host.docker.internal") if "localhost" in url else url
 
 
@@ -33,6 +61,7 @@ async def _run_case(
     sem: asyncio.Semaphore,
     retries: int = 3,
 ) -> Dict[str, Any]:
+    """What it does: Execute a single test case with exponential-backoff retry on 429/5xx, evaluate expectations, and return a structured result dict."""
     attempt = 0
     backoff = 1
 
@@ -54,7 +83,7 @@ async def _run_case(
                     resolved_url,
                     headers=merged_headers,
                     params=params,
-                    json=body if method in ("POST", "PUT", "PATCH") else None,
+                    json=body,
                     timeout=timeout,
                 )
                 duration_ms = round((time.perf_counter() - t0) * 1000, 2)
@@ -141,6 +170,20 @@ async def _run_case(
 
 # ---------- Run from API definition (list of cases) ----------
 async def run_from_list_api(data: dict, concurrency: int = 5) -> Dict[str, Any]:
+    """
+    What it does: Execute all test cases in data concurrently against the API and return a flat result list with per-case pass/fail details.
+    Args:
+        data: API definition dict containing method, endpoint, headers, extra_meta, test_cases, and optional workspace_variables.
+        concurrency: Maximum number of cases running simultaneously; defaults to 5.
+    Returns:
+        dict[str, Any]: Contains ``"meta"`` (API-level info and case count) and ``"flat"`` (list of per-case result dicts).
+    Steps:
+        - Step 1: Extract method, endpoint, and merge API-level headers with extra_meta headers
+        - Step 2: Build a resolved case list, substituting workspace_variables into endpoint/headers/params/body/expected for each case
+        - Step 3: Create a Semaphore limited to concurrency to cap parallel HTTP requests
+        - Step 4: Run all cases with asyncio.gather via _run_case against a shared httpx client
+        - Step 5: Return meta dict and flat results list
+    """
     method = (data.get("method") or "GET").upper()
     endpoint = data.get("endpoint") or "/"
     api_hdrs = data.get("headers") or {}
@@ -182,6 +225,12 @@ async def bulk_run_cases(
     data,
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    What it does: Run bulk test cases from a scheduler payload — resolve headers/variables, execute APIs concurrently, and return a results dict keyed by file_id.
+    Notes:
+        - Used by the scheduler, not a route handler; accepts a structured payload object instead of HTTP request parameters.
+        - Returns a plain dict (not a JSONResponse) so the scheduler can post-process results before persisting.
+    """
     try:
         req = data.payload
         username = data.username
@@ -231,10 +280,23 @@ async def bulk_run_cases(
             if not folder_path:
                 continue
 
-            workspace_variables = await get_workspace_variables(db, file.workspace_id)
+            workspace_variables = await build_scope_chain(db, file_id=file.id, username=username, workspace_id=file.workspace_id)
             resolved_endpoint = resolve_variables(api.endpoint, workspace_variables)
-            resolved_headers = merge_result.get("merged_headers", {})
+            resolved_headers = dict(merge_result.get("merged_headers", {}))
             resolved_extra_meta = resolve_variables(api.extra_meta or {}, workspace_variables)
+
+            # Inject per-API auth into API-level headers so every case inherits it.
+            auth_config = await resolve_auth(db, api.file_id)
+            if auth_config:
+                auth_headers, _ = apply_auth(
+                    auth_config,
+                    method=api.method.upper(),
+                    url=resolved_endpoint,
+                    existing_headers=resolved_headers,
+                )
+                for k, v in auth_headers.items():
+                    if k not in resolved_headers:
+                        resolved_headers[k] = v
 
             cases_data = []
             selected_cases = api_requests.get(file.id)

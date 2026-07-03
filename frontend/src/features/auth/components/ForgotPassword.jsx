@@ -89,13 +89,13 @@ const ForgotPassword = () => {
       maxWidth: '400px',
       margin: '20px auto',
       padding: '20px',
-      backgroundColor: 'var(--card-bg)',
+      backgroundColor: 'var(--surface-2)',
       borderRadius: '8px',
       boxShadow: '0 2px 10px rgba(0, 0, 0, 0.1)',
     },
     title: {
       textAlign: 'center',
-      color: 'var(--text-color)',
+      color: 'var(--text)',
       marginBottom: '20px',
     },
     form: {
@@ -109,15 +109,15 @@ const ForgotPassword = () => {
       gap: '5px',
     },
     label: {
-      color: 'var(--text-color)',
+      color: 'var(--text)',
       fontSize: '0.9rem',
     },
     input: {
       padding: '10px',
       borderRadius: '4px',
-      border: '1px solid var(--border-color)',
+      border: '1px solid var(--border)',
       backgroundColor: 'var(--input-bg)',
-      color: 'var(--text-color)',
+      color: 'var(--text)',
     },
     button: {
       padding: '10px',
@@ -160,8 +160,8 @@ const ForgotPassword = () => {
       alignItems: 'center',
       justifyContent: 'center',
       margin: '0 5px',
-      border: '1px solid var(--border-color)',
-      color: 'var(--text-color)',
+      border: '1px solid var(--border)',
+      color: 'var(--text)',
     },
     activeStep: {
       backgroundColor: 'var(--primary-color)',

@@ -1,6 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { headerService } from '../../services/headerService';
-import { useApi } from '../../store/api';
+import {
+  useCreateApiMutation,
+  useGetApiQuery,
+  useUpdateApiMutation,
+} from '../../store/apiSlice';
 import { Button, JsonEditor } from '../common';
 import styles from './ApiForm.module.css';
 
@@ -87,6 +91,38 @@ const CopyButton = ({ textToCopy }) => {
   );
 };
 
+const getInitialFormData = () => ({
+  name: '',
+  method: 'GET',
+  endpoint: '',
+  description: '',
+  is_active: true,
+  authorization: {
+    type: 'none', // none, basic, bearer, oauth2, api-key
+    username: '',
+    password: '',
+    token: '',
+    key: '',
+    value: '',
+    addTo: 'header', // header, query
+  },
+  headers: {},
+  params: {},
+  request_body: {},
+  validation: {
+    requestSchema: {},
+    responseSchema: {},
+    rules: [],
+  },
+  expected: {
+    status: 200,
+    headers: {},
+    body: {},
+  },
+  tests: [],
+  extra_meta: {},
+});
+
 /**
  * Component for directly creating and editing APIs in the tester view
  */
@@ -97,89 +133,83 @@ const ApiForm = ({
   onCancel = () => {},
 }) => {
   const [activeTab, setActiveTab] = useState('basic'); // basic, headers, params, body, authorization, validation, tests
-  const [formData, setFormData] = useState({
-    name: '',
-    method: 'GET',
-    endpoint: '',
-    description: '',
-    is_active: true,
-    authorization: {
-      type: 'none', // none, basic, bearer, oauth2, api-key
-      username: '',
-      password: '',
-      token: '',
-      key: '',
-      value: '',
-      addTo: 'header', // header, query
-    },
-    headers: {},
-    params: {},
-    request_body: {},
-    validation: {
-      requestSchema: {},
-      responseSchema: {},
-      rules: [],
-    },
-    expected: {
-      status: 200,
-      headers: {},
-      body: {},
-    },
-    tests: [],
-    extra_meta: {},
-  });
+  const [formData, setFormData] = useState(getInitialFormData);
 
   // For JSON validation
   const [validationResult, setValidationResult] = useState(null);
+  // Track API test state
+  const [responseData, setResponseData] = useState(null);
+  const [isTestRunning, setIsTestRunning] = useState(false);
 
-  const { createApi, getApi, updateApi, isLoading, error, activeApi } =
-    useApi();
+  // Editing reads the file's api record from the single RTK Query cache
+  // (apiId is the file id in this context — see loader note below).
+  const { data: activeApi } = useGetApiQuery(
+    { fileId: apiId, includeCases: true },
+    { skip: !apiId }
+  );
+  const [createApi, { isLoading: isCreating, error: createError }] =
+    useCreateApiMutation();
+  const [updateApi, { isLoading: isUpdating, error: updateError }] =
+    useUpdateApiMutation();
 
-  // Load API data if editing an existing API
+  const isLoading = isCreating || isUpdating;
+  const error =
+    createError || updateError
+      ? (createError || updateError)?.data?.error_message ||
+        'Failed to save API'
+      : null;
+
+  const resetFormState = useCallback(() => {
+    setFormData(getInitialFormData());
+    setActiveTab('basic');
+    setValidationResult(null);
+    setResponseData(null);
+    setIsTestRunning(false);
+  }, []);
+
   useEffect(() => {
-    const loadApi = async () => {
-      if (apiId) {
-        try {
-          // For existing APIs, we need to use fileId which is actually the same as apiId in this context
-          // The getApi function expects a fileId, not an apiId
-          await getApi(apiId, true); // Include cases for comprehensive data
-        } catch (err) {
-          console.error('Failed to load API:', err);
-        }
-      }
-    };
-
-    loadApi();
-  }, [apiId, getApi]);
+    resetFormState();
+  }, [apiId, fileId, resetFormState]);
 
   // Update form when activeApi changes
   useEffect(() => {
-    if (activeApi && apiId) {
-      // Extract validation data if available
-      const validationData = activeApi.validation || {
-        requestSchema: {},
-        responseSchema: {},
-        rules: [],
-      };
+    if (!activeApi || !apiId) return;
 
-      setFormData({
-        name: activeApi.name || '',
-        method: activeApi.method || 'GET',
-        endpoint: activeApi.endpoint || '',
-        description: activeApi.description || '',
-        is_active: activeApi.is_active ?? true,
-        headers: activeApi.headers || {},
-        params: activeApi.params || {},
-        request_body: activeApi.request_body || {},
-        validation: validationData,
-        expected: {
-          status: activeApi.expected?.status || 200,
-          headers: activeApi.expected?.headers || {},
-          body: activeApi.expected?.body || {},
-        },
-        extra_meta: activeApi.extra_meta || {},
-      });
+    const selectedId = String(apiId);
+    const activeIdentifiers = ['id', 'file_id', 'api_id']
+      .map(key => activeApi?.[key])
+      .filter(value => value !== undefined && value !== null)
+      .map(value => String(value));
+
+    if (!activeIdentifiers.includes(selectedId)) {
+      // Ignore stale activeApi values belonging to other selections
+      return;
     }
+
+    // Extract validation data if available
+    const validationData = activeApi.validation || {
+      requestSchema: {},
+      responseSchema: {},
+      rules: [],
+    };
+
+    setFormData({
+      name: activeApi.name || '',
+      method: activeApi.method || 'GET',
+      endpoint: activeApi.endpoint || '',
+      description: activeApi.description || '',
+      is_active: activeApi.is_active ?? true,
+      headers: activeApi.headers || {},
+      params: activeApi.params || {},
+      request_body: activeApi.request_body || {},
+      validation: validationData,
+      expected: {
+        status: activeApi.expected?.status || 200,
+        headers: activeApi.expected?.headers || {},
+        body: activeApi.expected?.body || {},
+      },
+      extra_meta: activeApi.extra_meta || {},
+    });
   }, [activeApi, apiId]);
 
   // Auto-detect ngrok URLs and suggest adding headers
@@ -276,10 +306,6 @@ const ApiForm = ({
   const handleMetaChange = e => {
     handleJsonChange('extra_meta', e);
   };
-
-  // Track response data from API tests
-  const [responseData, setResponseData] = useState(null);
-  const [isTestRunning, setIsTestRunning] = useState(false);
 
   // Handle API test/submission
   const handleSubmit = async e => {
@@ -491,13 +517,13 @@ const ApiForm = ({
 
       if (apiId) {
         // Update existing API
-        result = await updateApi(apiId, enhancedFormData);
+        result = await updateApi({ apiId, ...enhancedFormData }).unwrap();
       } else {
         // Create new API
-        result = await createApi(fileId, enhancedFormData);
+        result = await createApi({ fileId, ...enhancedFormData }).unwrap();
       }
 
-      onSave(result?.data);
+      onSave(result);
     } catch (err) {
       console.error('Error saving API definition:', err);
     }
@@ -518,7 +544,7 @@ const ApiForm = ({
           authorization: formData.authorization,
         };
 
-        await updateApi(apiId, configOnlyData);
+        await updateApi({ apiId, ...configOnlyData }).unwrap();
       } else {
         // If no API ID, we need to create a new API
         await saveApiDefinition();
@@ -602,11 +628,11 @@ const ApiForm = ({
             <div
               style={{
                 padding: '4px 8px',
-                backgroundColor: '#e3f2fd',
-                border: '1px solid #2196f3',
+                backgroundColor: 'var(--info-dim)',
+                border: '1px solid var(--info)',
                 borderRadius: '4px',
                 fontSize: '12px',
-                color: '#1976d2',
+                color: 'var(--info)',
                 marginLeft: '8px',
                 whiteSpace: 'nowrap',
               }}

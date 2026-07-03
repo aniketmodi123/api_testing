@@ -1,3 +1,8 @@
+"""
+What this file does: Provides a unified FastAPI exception handler that maps Python and
+SQLAlchemy exceptions to structured JSON error responses with human-readable messages.
+"""
+
 import traceback
 from fastapi import status, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -15,10 +20,25 @@ from psycopg2.errors import UndefinedTable
 
 
 def parse_integrity_error(exc: IntegrityError) -> str:
+    """Extract a human-readable message from a PostgreSQL IntegrityError.
+
+    Args:
+        exc: The SQLAlchemy IntegrityError wrapping a psycopg2 exception.
+
+    Returns:
+        str: Caller-friendly error message describing the constraint violation.
+
+    Steps:
+        - Step 1: Extract pgcode and diagnostic info from the original psycopg2 exception
+        - Step 2: Map known pgcodes (23505, 23503, 23502, 23514, 23P01, 42703, 42P01) to descriptive messages
+        - Step 3: Return a generic fallback message for unknown constraint codes
+    """
+    # Step 1: Extract diagnostic info
     orig = getattr(exc, "orig", None)
     pgcode = getattr(orig, "pgcode", None)
     diag = getattr(orig, "diag", None)
 
+    # Step 2: Map pgcodes to messages
     if pgcode == "23505":  # unique_violation
         col = getattr(diag, "constraint_name", None)
         detail = getattr(diag, "message_detail", str(orig))
@@ -59,21 +79,41 @@ def parse_integrity_error(exc: IntegrityError) -> str:
     elif pgcode == "42P01":  # undefined_table
         return "Undefined table referenced in query."
 
+    # Step 3: Generic fallback
     return "Integrity constraint violated."
 
 
 def handle_exception(exc: Exception) -> JSONResponse:
-    """Core exception handler that can be used anywhere (middleware or try/except)."""
+    """Map any exception to a structured JSON error response.
 
-    # print full traceback for debugging
+    Args:
+        exc: The exception to classify and convert.
+
+    Returns:
+        JSONResponse: Structured response with ``response_code`` and ``error_message``
+                      keys; Pydantic validation errors also include an ``errors`` list.
+
+    Steps:
+        - Step 1: Print full traceback for debugging; set default 409 / generic message
+        - Step 2: Map HTTPException to its own status code and detail
+        - Step 3: Map Python built-in errors (ValueError, AttributeError, TypeError, KeyError, etc.) to 400/404/403
+        - Step 4: Map SQLAlchemy errors (IntegrityError, OperationalError, ProgrammingError, etc.) to appropriate codes
+        - Step 5: Map Python runtime errors (SyntaxError, ZeroDivisionError, MemoryError, etc.)
+        - Step 6: Handle Pydantic ValidationError and RequestValidationError — return 422 with errors list
+        - Step 7: Return the final JSONResponse
+    """
+    # Step 1: Log and set defaults
     print("Exception occurred:", traceback.format_exc())
 
     response_code = status.HTTP_409_CONFLICT
     error_message = "Something went wrong"
 
+    # Step 2: HTTPException
     if isinstance(exc, HTTPException):
         response_code = exc.status_code
         error_message = exc.detail
+
+    # Step 3: Python built-in errors
     elif isinstance(exc, ValueError):
         response_code = 400
         error_message = f"Invalid value provided: {str(exc)}"
@@ -81,9 +121,7 @@ def handle_exception(exc: Exception) -> JSONResponse:
         response_code = 400
         error_message = f"Missing attribute: {str(exc)}"
 
-        # Special case: SQLAlchemy row
         if hasattr(exc, "name") and "Row" in str(type(exc)):
-            # Extract keys if possible
             try:
                 available = list(getattr(exc, "keys", lambda: [])())
                 if available:
@@ -91,7 +129,6 @@ def handle_exception(exc: Exception) -> JSONResponse:
             except Exception:
                 pass
 
-        # Special case: generic object
         elif hasattr(exc, "__dict__"):
             error_message += f". Available attributes: {list(exc.__dict__.keys())}"
 
@@ -121,7 +158,7 @@ def handle_exception(exc: Exception) -> JSONResponse:
         response_code = 403
         error_message = f"Permission denied: {str(exc)}"
 
-    # Database errors
+    # Step 4: SQLAlchemy / DB errors
     elif isinstance(exc, IntegrityError):
         response_code = 409
         error_message = parse_integrity_error(exc)
@@ -145,7 +182,7 @@ def handle_exception(exc: Exception) -> JSONResponse:
         response_code = 409
         error_message = f"Database error: {str(exc)}"
 
-    # Python runtime
+    # Step 5: Python runtime errors
     elif isinstance(exc, SyntaxError):
         response_code = 400
         error_message = f"Syntax error: {str(exc)}"
@@ -171,7 +208,7 @@ def handle_exception(exc: Exception) -> JSONResponse:
         response_code = 409
         error_message = "Connection was broken during the operation."
 
-    # Validation
+    # Step 6: Pydantic validation errors
     elif isinstance(exc, ValidationError):
         return JSONResponse(
             content={
@@ -195,6 +232,7 @@ def handle_exception(exc: Exception) -> JSONResponse:
             status_code=422,
         )
 
+    # Step 7: Return final response
     return JSONResponse(
         status_code=response_code,
         content={"response_code": response_code, "error_message": error_message},
@@ -202,5 +240,5 @@ def handle_exception(exc: Exception) -> JSONResponse:
 
 
 async def unified_exception_handler(request: Request, exc: Exception):
-    """FastAPI middleware entrypoint."""
+    """Serve as the FastAPI global exception handler entrypoint."""
     return handle_exception(exc)

@@ -1,4 +1,7 @@
-# Variable Resolution for API Testing
+"""
+What this file does: Exposes routes for resolving {{variable}} placeholders in text using active or specified environment variables.
+"""
+
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -7,8 +10,8 @@ import re
 
 from models import Environment, Workspace
 from routers.runner.runner import resolve_variables
-from schema import VariableResolutionRequest
-from common_querys import get_user_by_username
+from schema import VariableResolutionRequest, ResolvedVariables, VariableResolutionResponse
+from common_querys import get_user_by_username, can_access_workspace
 from config import get_db
 from utils import ExceptionHandler, create_response, value_correction
 
@@ -16,7 +19,13 @@ router = APIRouter()
 
 
 def extract_variables_from_text(text: str) -> Set[str]:
-    """Extract variable names from text using {{variable_name}} pattern"""
+    """
+    What it does: Return all unique {{variable_name}} placeholders found in the text.
+    Args:
+        text: Input string to scan; empty string returns an empty set.
+    Returns:
+        set[str]: Variable names without the surrounding braces; empty set when none are found.
+    """
     # Pattern to match {{variable_name}} - handles letters, numbers, underscores, hyphens
     pattern = r'\{\{([a-zA-Z_][a-zA-Z0-9_\-]*)\}\}'
     matches = re.findall(pattern, text)
@@ -29,23 +38,21 @@ async def get_active_environment_variables(
     username: str = Header(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Get variables from the active environment in a workspace"""
+    """GET /environment/workspace/{workspace_id}/environments/active/variables — return variables from the currently active environment; returns empty dict when none is active."""
     try:
         # Get user
         user = await get_user_by_username(db, username)
         if not user:
             return create_response(400, error_message="User not found")
 
-        # Verify workspace exists and user has access
-        workspace_query = select(Workspace).where(
-            Workspace.id == workspace_id,
-            Workspace.user_id == user.id
-        )
+        # Verify workspace exists and user has at least viewer access
+        workspace_query = select(Workspace.id).where(Workspace.id == workspace_id)
         workspace_result = await db.execute(workspace_query)
-        workspace = workspace_result.scalar_one_or_none()
+        if workspace_result.scalar_one_or_none() is None:
+            return create_response(404, error_message="Workspace not found")
 
-        if not workspace:
-            return create_response(206, error_message="Workspace not found or access denied")
+        if not await can_access_workspace(db, workspace_id, user.id, min_role="viewer"):
+            return create_response(403, error_message="Access denied")
 
         # Get active environment
         active_env_query = select(Environment).where(
@@ -62,7 +69,7 @@ async def get_active_environment_variables(
                 "environment_id": None,
                 "resolved_count": 0
             }
-            return create_response(200, value_correction(data))
+            return create_response(200, value_correction(data), ResolvedVariables)
 
         # Get all enabled variables from active environment
         variables_dict = {}
@@ -77,10 +84,10 @@ async def get_active_environment_variables(
             "resolved_count": len(variables_dict)
         }
 
-        return create_response(200, value_correction(data))
+        return create_response(200, value_correction(data), ResolvedVariables)
 
     except Exception as e:
-        ExceptionHandler(e)
+        return ExceptionHandler(e)
 
 
 @router.get("/workspace/{workspace_id}/environments/{environment_id}/variables/resolved")
@@ -90,23 +97,21 @@ async def get_environment_variables_resolved(
     username: str = Header(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Get variables from a specific environment"""
+    """GET /environment/workspace/{workspace_id}/environments/{environment_id}/variables/resolved — return the key-value variables for a specific environment."""
     try:
         # Get user
         user = await get_user_by_username(db, username)
         if not user:
             return create_response(400, error_message="User not found")
 
-        # Verify workspace exists and user has access
-        workspace_query = select(Workspace).where(
-            Workspace.id == workspace_id,
-            Workspace.user_id == user.id
-        )
+        # Verify workspace exists and user has at least viewer access
+        workspace_query = select(Workspace.id).where(Workspace.id == workspace_id)
         workspace_result = await db.execute(workspace_query)
-        workspace = workspace_result.scalar_one_or_none()
+        if workspace_result.scalar_one_or_none() is None:
+            return create_response(404, error_message="Workspace not found")
 
-        if not workspace:
-            return create_response(206, error_message="Workspace not found or access denied")
+        if not await can_access_workspace(db, workspace_id, user.id, min_role="viewer"):
+            return create_response(403, error_message="Access denied")
 
         # Get specific environment
         environment_query = select(Environment).where(
@@ -117,7 +122,7 @@ async def get_environment_variables_resolved(
         environment = environment_result.scalar_one_or_none()
 
         if not environment:
-            return create_response(206, error_message="Environment not found")
+            return create_response(404, error_message="Environment not found")
 
         # Get all enabled variables from environment
         variables_dict = {}
@@ -132,10 +137,10 @@ async def get_environment_variables_resolved(
             "resolved_count": len(variables_dict)
         }
 
-        return create_response(200, value_correction(data))
+        return create_response(200, value_correction(data), ResolvedVariables)
 
     except Exception as e:
-        ExceptionHandler(e)
+        return ExceptionHandler(e)
 
 
 @router.post("/workspace/{workspace_id}/environments/resolve")
@@ -145,23 +150,21 @@ async def resolve_variables_in_request(
     username: str = Header(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Resolve variables in text using active environment or specified environment"""
+    """POST /environment/workspace/{workspace_id}/environments/resolve — substitute {{variable}} placeholders in text using the specified or active environment."""
     try:
         # Get user
         user = await get_user_by_username(db, username)
         if not user:
             return create_response(400, error_message="User not found")
 
-        # Verify workspace exists and user has access
-        workspace_query = select(Workspace).where(
-            Workspace.id == workspace_id,
-            Workspace.user_id == user.id
-        )
+        # Verify workspace exists and user has at least viewer access
+        workspace_query = select(Workspace.id).where(Workspace.id == workspace_id)
         workspace_result = await db.execute(workspace_query)
-        workspace = workspace_result.scalar_one_or_none()
+        if workspace_result.scalar_one_or_none() is None:
+            return create_response(404, error_message="Workspace not found")
 
-        if not workspace:
-            return create_response(206, error_message="Workspace not found or access denied")
+        if not await can_access_workspace(db, workspace_id, user.id, min_role="viewer"):
+            return create_response(403, error_message="Access denied")
 
         # Determine which environment to use
         environment = None
@@ -175,7 +178,7 @@ async def resolve_variables_in_request(
             environment = environment_result.scalar_one_or_none()
 
             if not environment:
-                return create_response(206, error_message="Specified environment not found")
+                return create_response(404, error_message="Specified environment not found")
         else:
             # Use active environment
             active_env_query = select(Environment).where(
@@ -198,7 +201,7 @@ async def resolve_variables_in_request(
                 "variables_missing": variables_found,
                 "environment_used": None
             }
-            return create_response(200, value_correction(data))
+            return create_response(200, value_correction(data), VariableResolutionResponse)
 
         # Get environment variables
         variables_dict = {}
@@ -228,10 +231,10 @@ async def resolve_variables_in_request(
             "environment_used": environment.name
         }
 
-        return create_response(200, value_correction(data))
+        return create_response(200, value_correction(data), VariableResolutionResponse)
 
     except Exception as e:
-        return create_response(500, error_message=f"Failed to resolve variables: {str(e)}")
+        return ExceptionHandler(e)
 
 
 @router.post("/workspace/{workspace_id}/environments/{environment_id}/resolve")
@@ -242,7 +245,7 @@ async def resolve_variables_with_specific_environment(
     username: str = Header(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Resolve variables in text using a specific environment"""
+    """POST /environment/workspace/{workspace_id}/environments/{environment_id}/resolve — resolve {{variable}} placeholders using the specified environment by delegating to resolve_variables_in_request."""
     try:
         # Override the environment_id in the request
         resolution_request.environment_id = environment_id
@@ -255,4 +258,4 @@ async def resolve_variables_with_specific_environment(
         )
 
     except Exception as e:
-        ExceptionHandler(e)
+        return ExceptionHandler(e)

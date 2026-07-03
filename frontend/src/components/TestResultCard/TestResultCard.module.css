@@ -1,32 +1,86 @@
+/* Pass/fail summary bar */
+.summaryBar {
+  position: relative;
+  height: 6px;
+  background: var(--border);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  overflow: hidden;
+  margin: -12px -12px 8px -12px;
+}
+
+.summaryFill {
+  height: 100%;
+  transition: width var(--duration-slow) var(--easing-default);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+}
+
+.summaryLabel {
+  display: block;
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+  padding: 0 2px;
+  margin-top: 2px;
+}
+
+/* Diff section */
+.diffSection {
+  margin-top: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.diffBtn {
+  padding: 4px 10px;
+  font-size: var(--text-sm);
+  border-radius: var(--radius);
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.diffBtn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.failureItem {
+  font-size: var(--text-sm);
+  color: var(--error);
+  padding: 2px 0;
+  font-family: var(--font-mono, monospace);
+}
+
 /* Test Result Card Component */
 .card {
   background: var(--color-surface-light);
   border: 1px solid var(--color-border);
-  border-radius: 12px;
-  padding: 12px;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
+  transition: all var(--duration-base) var(--easing-default);
+  box-shadow: none;
 }
 
 .card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  border-color: var(--color-primary-light);
+  box-shadow: none;
+  border-color: var(--accent-dim-border);
 }
 
 .card.expanded {
   background: var(--color-surface);
-  border: 2px solid var(--color-primary-light);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  border: 2px solid var(--accent-dim-border);
+  box-shadow: none;
 }
 
 .card.collapsed {
   background: var(--color-surface-light);
   border: 1px solid var(--color-border);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  box-shadow: none;
 }
 
 .card.collapsed:hover {
-  border-color: var(--color-primary-light);
+  border-color: var(--accent-dim-border);
   cursor: pointer;
 }
 
@@ -47,7 +101,7 @@
 
 .title {
   margin: 0 0 4px 0;
-  font-size: 15px;
+  font-size: var(--text-base);
   font-weight: 600;
   display: flex;
   align-items: center;
@@ -55,48 +109,52 @@
   flex-wrap: wrap;
   cursor: pointer;
   color: var(--color-text);
-  transition: color 0.2s ease;
+  transition: color var(--duration-base) var(--easing-default);
 }
 
 .title:hover {
-  color: var(--color-primary);
+  color: var(--accent);
 }
 
 .status {
   display: inline-block;
   padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 12px;
+  border-radius: var(--radius);
+  font-size: var(--text-sm);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
 .status.pass {
-  background: rgba(34, 197, 94, 0.1);
-  color: #22c55e;
-  border: 1px solid rgba(34, 197, 94, 0.2);
+  background: var(--success-dim);
+  color: var(--success);
+  padding: 2px 6px;
+  font-size: 9px;
+  font-weight: 700;
 }
 
 .status.fail {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
-  border: 1px solid rgba(239, 68, 68, 0.2);
+  background: var(--error-dim);
+  color: var(--error);
+  padding: 2px 6px;
+  font-size: 9px;
+  font-weight: 700;
 }
 
 .meta {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--color-text-muted);
   margin-top: 4px;
 }
 
 .statusOk {
-  color: #22c55e;
+  color: var(--success);
   font-weight: 600;
 }
 
 .statusBad {
-  color: #ef4444;
+  color: var(--error);
   font-weight: 600;
 }
 
@@ -108,16 +166,16 @@
 
 .expandIndicator {
   color: var(--color-text-secondary);
-  font-size: 14px;
+  font-size: var(--text-base);
   font-weight: 600;
   display: flex;
   align-items: center;
   padding: 6px 8px;
-  transition: color 0.2s ease;
+  transition: color var(--duration-base) var(--easing-default);
 }
 
 .header:hover .expandIndicator {
-  color: var(--color-primary);
+  color: var(--accent);
 }
 
 .focusBtn,
@@ -126,42 +184,42 @@
 .runBtn,
 .viewBtn {
   padding: 6px 12px;
-  font-size: 12px;
-  border-radius: 6px;
+  font-size: var(--text-sm);
+  border-radius: var(--radius);
   background: transparent;
   border: 1px solid var(--color-border);
   color: var(--color-text);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all var(--duration-base) var(--easing-default);
   white-space: nowrap;
 }
 
 .runBtn {
-  background: var(--color-success-light);
+  background: var(--success-dim);
   border-color: var(--color-success);
   color: var(--color-success);
 }
 
 .runBtn:hover {
   background: var(--color-success);
-  color: white;
+  color: var(--text-inverse);
 }
 
 .viewBtn {
-  background: var(--color-primary-light);
-  border-color: var(--color-primary);
-  color: var(--color-primary);
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .viewBtn:hover {
-  background: var(--color-primary);
-  color: white;
+  background: var(--accent);
+  color: var(--text-inverse);
 }
 
 .focusBtn:hover {
-  background: var(--color-primary-light);
-  border-color: var(--color-primary);
-  color: var(--color-primary);
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .saveBtn {
@@ -187,14 +245,14 @@
 /* Failures Section */
 .failures {
   white-space: pre-wrap;
-  color: #ef4444;
-  background: rgba(239, 68, 68, 0.05);
+  color: var(--error);
+  background: var(--error-dim);
   padding: 8px;
-  border-radius: 6px;
-  border: 1px solid rgba(239, 68, 68, 0.1);
+  border-radius: var(--radius);
+  border: 1px solid var(--error-dim-border);
   margin-bottom: 8px;
   font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
-  font-size: 13px;
+  font-size: var(--text-sm);
   line-height: 1.4;
 }
 
@@ -207,36 +265,36 @@
 
 .section {
   border: 1px solid var(--color-border);
-  border-radius: 6px;
+  border-radius: var(--radius);
   overflow: hidden;
 }
 
 .section[open] {
-  border-color: var(--color-primary-light);
+  border-color: var(--accent-dim-border);
 }
 
 .sectionTitle {
   background: var(--color-background-light);
   padding: 8px 10px;
   margin: 0;
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--color-text);
   cursor: pointer;
   list-style: none;
-  transition: all 0.2s ease;
+  transition: all var(--duration-base) var(--easing-default);
   border-bottom: 1px solid var(--color-border);
 }
 
 .sectionTitle:hover {
-  background: var(--color-primary-light);
-  color: var(--color-primary);
+  background: var(--accent-dim);
+  color: var(--accent);
 }
 
 .section[open] .sectionTitle {
-  background: var(--color-primary-light);
-  color: var(--color-primary);
-  border-bottom-color: var(--color-primary-light);
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-bottom-color: var(--accent-dim-border);
 }
 
 /* Hide default details marker */
@@ -248,7 +306,7 @@
   content: "▶";
   display: inline-block;
   margin-right: 8px;
-  transition: transform 0.2s ease;
+  transition: transform var(--duration-base) var(--easing-default);
   font-size: 10px;
 }
 
@@ -267,7 +325,7 @@
   padding: 8px;
   margin: 0;
   font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
-  font-size: 13px;
+  font-size: var(--text-sm);
   line-height: 1.4;
   color: var(--color-text);
   border: none;
@@ -280,12 +338,12 @@
 
 .json::-webkit-scrollbar-track {
   background: var(--color-background-light);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 
 .json::-webkit-scrollbar-thumb {
   background: var(--color-border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   border: 2px solid var(--color-background-dark);
 }
 
@@ -302,7 +360,7 @@
   }
 
   .title {
-    font-size: 14px;
+    font-size: var(--text-base);
   }
 
   .focusBtn {
@@ -312,7 +370,7 @@
 
 /* Animation for expand/collapse */
 .section {
-  transition: all 0.2s ease;
+  transition: all var(--duration-base) var(--easing-default);
 }
 
 .section:not([open]) .json {
@@ -339,7 +397,7 @@
   margin-top: 16px;
   padding: 16px;
   background: var(--color-background);
-  border-radius: 8px;
+  border-radius: var(--radius);
   border: 1px solid var(--color-border);
 }
 
@@ -355,7 +413,7 @@
   display: flex;
   flex-direction: column;
   border: 1px solid var(--color-border);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--color-surface-light);
   overflow: hidden;
 }
@@ -368,7 +426,7 @@
 
 .sectionHeader h4 {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--text-base);
   font-weight: 600;
   color: var(--color-text);
   text-transform: uppercase;
@@ -397,14 +455,14 @@
 }
 
 .failureItem {
-  background: rgba(239, 68, 68, 0.05);
-  border: 1px solid rgba(239, 68, 68, 0.1);
-  border-left: 4px solid #ef4444;
-  border-radius: 4px;
+  background: var(--error-dim);
+  border: 1px solid var(--error-dim-border);
+  border-left: 4px solid var(--error);
+  border-radius: var(--radius);
   padding: 12px;
   font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
-  font-size: 13px;
-  color: #ef4444;
+  font-size: var(--text-sm);
+  color: var(--error);
   white-space: pre-wrap;
   word-break: break-word;
 }

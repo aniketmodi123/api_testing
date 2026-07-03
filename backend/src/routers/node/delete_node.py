@@ -1,9 +1,13 @@
+"""
+What this file does: Exposes DELETE /node/{node_id} for recursively deleting a node and all its children, APIs, and test cases.
+"""
+
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_db
-from common_querys import get_user_by_username, verify_node_ownership,get_workspace_tree_response
+from common_querys import get_user_by_username, can_access_workspace, get_workspace_tree_response, write_audit
 from models import Node, Api, ApiCase
 from utils import (
     ExceptionHandler,
@@ -20,17 +24,20 @@ async def delete_node(
     username: str = Header(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Delete a node and all its children, and return the updated workspace tree."""
+    """DELETE /node/{node_id} — recursively delete a node plus all child nodes, associated APIs, and test cases; return updated workspace tree."""
     try:
         # Get user
         user = await get_user_by_username(db, username)
         if not user:
             return create_response(400, error_message="User not found")
 
-        # Verify node ownership
-        node = await verify_node_ownership(db, node_id, user.id)
+        # Fetch node, then require editor access (delete is a write)
+        node_result = await db.execute(select(Node).where(Node.id == node_id))
+        node = node_result.scalar_one_or_none()
         if not node:
-            return create_response(206, error_message="Node not found or access denied")
+            return create_response(404, error_message="Node not found")
+        if not await can_access_workspace(db, node.workspace_id, user.id, min_role="editor"):
+            return create_response(403, error_message="Access denied")
 
 
         # Recursive delete function
@@ -61,6 +68,7 @@ async def delete_node(
 
         # Start recursive deletion
         children_count, api_count, case_count = await recursive_delete_node(node)
+        await write_audit(db, username=user.username, action="node.delete", entity_type="node", entity_id=node_id, workspace_id=node.workspace_id)
         await db.commit()
 
         message = f"{node.type.title()} deleted successfully"
@@ -74,10 +82,10 @@ async def delete_node(
         # Use shared workspace tree response function
         data, err = await get_workspace_tree_response(db, node.workspace_id, include_apis=True)
         if not data:
-            return create_response(206, error_message=err or "Workspace not found after delete.")
+            return create_response(404, error_message=err or "Workspace not found after delete.")
         return create_response(200, value_correction(data), message=message)
 
     except Exception as e:
         await db.rollback()
-        ExceptionHandler(e)
+        return ExceptionHandler(e)
 

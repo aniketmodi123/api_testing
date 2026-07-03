@@ -86,8 +86,38 @@ export const JsonEditor = ({
   const containerRef = useRef(null);
   const textareaRef = useRef(null);
   const resizeHandleRef = useRef(null);
+  const overlayRef = useRef(null);
 
   const isJson = language === 'json';
+
+  // Build the colored overlay HTML: {{variable}} tokens get the accent token class,
+  // everything else is HTML-escaped so body content (e.g. XML) renders literally.
+  const escapeHtml = str =>
+    str.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+
+  const getHighlightedHTML = () => {
+    const text = value ?? '';
+    const re = /\{\{\s*[a-zA-Z_][a-zA-Z0-9_-]*\s*\}\}/g;
+    let out = '';
+    let last = 0;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      out += escapeHtml(text.slice(last, m.index));
+      out += `<span class="${styles.varToken}">${escapeHtml(m[0])}</span>`;
+      last = m.index + m[0].length;
+    }
+    out += escapeHtml(text.slice(last));
+    // Trailing newline keeps the overlay's last line aligned with the textarea.
+    return out + '\n';
+  };
+
+  // Mirror the textarea's scroll position so colored tokens stay aligned.
+  const syncScroll = () => {
+    if (textareaRef.current && overlayRef.current) {
+      overlayRef.current.scrollTop = textareaRef.current.scrollTop;
+      overlayRef.current.scrollLeft = textareaRef.current.scrollLeft;
+    }
+  };
 
   // Update history when value changes from outside
   useEffect(() => {
@@ -351,10 +381,17 @@ export const JsonEditor = ({
           value={value}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
+          onScroll={syncScroll}
           placeholder={placeholder}
           disabled={disabled}
           rows={rows}
           spellCheck={false}
+        />
+        <div
+          ref={overlayRef}
+          className={styles.highlightOverlay}
+          aria-hidden="true"
+          dangerouslySetInnerHTML={{ __html: getHighlightedHTML() }}
         />
       </div>
 

@@ -1,3 +1,8 @@
+"""
+What this file does: Configures the async PostgreSQL engine, session factory, ORM base, and shared DB utilities;
+all connection parameters are read from environment variables.
+"""
+
 from pathlib import Path
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.engine.row import Row
@@ -20,6 +25,10 @@ base_dir = Path.cwd()
 JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'your-secret-key-here')
 JWT_ALGORITHM = os.environ.get('JWT_ALGORITHM', 'HS256')
 
+SECRET_ENC_KEY = os.environ.get('SECRET_ENC_KEY', '')
+OUTBOUND_VERIFY_TLS = os.environ.get('OUTBOUND_VERIFY_TLS', 'true').lower() != 'false'
+CORS_ORIGINS = os.environ.get('CORS_ORIGINS', '*')
+
 # Check if all required environment variables are set
 if not all([PROD_HOST, PROD_USER, PROD_PASSWORD, PROD_DB]):
     raise RuntimeError(
@@ -41,7 +50,7 @@ try:
         connect_args={
             "ssl": ssl_context,
             "server_settings": {
-                "application_name": "api_testing"
+                "application_name": "apipilot"
             }
         }
     )
@@ -56,11 +65,13 @@ except Exception as e:
 
 
 async def get_db():
+    """Yield an AsyncSession for use as a FastAPI dependency."""
     async with SessionLocal() as session:
         yield session
 
-# Database Health Check
+
 async def check_db_connection():
+    """Verify the PostgreSQL connection is reachable by running a test query."""
     try:
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
@@ -70,6 +81,19 @@ async def check_db_connection():
 
 
 async def db_query_data(db: AsyncSession, query: str, variables=None, fetch_one: bool = False):
+    """Execute a raw SQL query and return results as dicts.
+
+    Args:
+        query: Raw SQL string; may contain named bind parameters.
+        variables: Dict of bind parameter values; defaults to empty dict when ``None``.
+        fetch_one: ``False`` (default) returns all rows as a list; ``True`` → returns the
+                   first row as a single dict.
+
+    Returns:
+        dict: Single row when ``fetch_one=True`` and a row exists.
+        list[dict]: All rows when ``fetch_one=False`` and rows exist.
+        None: Returned when no rows match or an exception occurs.
+    """
     try:
         stmt = text(query)
         result = await db.execute(stmt, variables or {})
@@ -93,26 +117,51 @@ async def db_query_data(db: AsyncSession, query: str, variables=None, fetch_one:
 
 
 def serialize_data(data, strict=False):
+    """Convert SQLAlchemy query results into plain Python dicts or lists.
+
+    Args:
+        data: Row, list of Rows, ORM instance, list of ORM instances, or list of tuples.
+              Returns ``{}`` when falsy (None, empty list, etc.).
+        strict: Unused reserved parameter; has no effect on current behaviour.
+
+    Returns:
+        dict: Single ORM instance or single Row converted to a flat dict.
+        list: List of dicts for multi-row results; list of scalars for single-column tuples.
+        Any: Original ``data`` unchanged when none of the known shapes match.
+
+    Raises:
+        ValueError: When an ORM object cannot be inspected or tuple handling fails.
+
+    Steps:
+        - Step 1: Return ``{}`` immediately when data is falsy
+        - Step 2: Convert a single SQLAlchemy Row to dict via its column mapping
+        - Step 3: Convert a list of Rows to a list of dicts
+        - Step 4: Convert a list of ORM objects by iterating mapped column attributes
+        - Step 5: Convert a single ORM object using SQLAlchemy inspect mapper
+        - Step 6: Flatten a list of single-element tuples to a plain list of scalars
+        - Step 7: Convert multi-column tuples — namedtuples via ``_asdict()``, plain tuples to lists
+        - Step 8: Return data unchanged when no shape matches
+    """
     try:
         if not data:
             return {}
 
-        # Case 1: If it's a single Row object, convert it to a dictionary
+        # Step 2: single Row object
         if isinstance(data, Row):
             return dict(data._mapping)
 
-        # Case 2: If it's a list of Row objects, convert each Row to a dictionary
+        # Step 3: list of Row objects
         if isinstance(data, list) and isinstance(data[0], Row):
             return [dict(row._mapping) for row in data]
 
-        # Case 3: If it's a list of ORM objects, convert to a dictionary
+        # Step 4: list of ORM objects
         if isinstance(data, list) and hasattr(data[0], '__table__'):
             return [
                 {column.key: getattr(instance, column.key) for column in inspect(instance).mapper.column_attrs}
                 for instance in data
             ]
 
-        # Case 4: If it's a single ORM object, convert to a dictionary
+        # Step 5: single ORM object
         if hasattr(data, '__table__'):
             try:
                 mapper = inspect(data)
@@ -121,11 +170,11 @@ def serialize_data(data, strict=False):
             except Exception as e:
                 raise ValueError(f"Error inspecting ORM object: {e}")
 
-        # Case 5: If it's a list of tuples (single column), flatten the list
+        # Step 6: list of single-element tuples — flatten to scalar list
         if isinstance(data, list) and isinstance(data[0], tuple) and len(data[0]) == 1:
             return [item[0] for item in data]
 
-        # Case 6: If it's a list of tuples (multiple columns), convert to dictionaries
+        # Step 7: list of multi-column tuples
         if isinstance(data, list) and isinstance(data[0], tuple):
             try:
                 if hasattr(data[0], '_fields'):  # namedtuple
@@ -135,7 +184,6 @@ def serialize_data(data, strict=False):
             except Exception as e:
                 raise ValueError(f"Error handling tuple data: {e}")
 
-        return data  # Return as-is if none of the above cases match
+        return data  # Step 8: return as-is if none of the above cases match
     except Exception as e:
         raise ValueError(f"Error during serialization: {e}")
-

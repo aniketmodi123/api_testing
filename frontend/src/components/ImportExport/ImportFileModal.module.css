@@ -1,0 +1,112 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(2px);
+}
+
+.modal {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  width: 480px;
+  max-width: 95vw;
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  box-shadow: var(--shadow-lg);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.dropzone {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-6) var(--space-4);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color var(--duration-base);
+}
+
+.dropzone:hover,
+.dropzone.active {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.dropzone input {
+  display: none;
+}
+
+.dropLabel {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.fileName {
+  font-size: var(--text-xs);
+  color: var(--accent);
+  margin-top: var(--space-2);
+}
+
+.info {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  background: var(--surface-1);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+}
+
+.error {
+  color: var(--error);
+  font-size: var(--text-sm);
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+.cancelBtn {
+  padding: var(--space-2) var(--space-3);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.cancelBtn:hover {
+  background: var(--surface-3);
+}
+
+.importBtn {
+  padding: var(--space-2) var(--space-3);
+  background: var(--accent);
+  color: var(--text);
+  border: none;
+  border-radius: var(--radius);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.importBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.importBtn:hover:not(:disabled) {
+  opacity: 0.9;
+}

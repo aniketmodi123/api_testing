@@ -1,15 +1,46 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { parseCurl } from '../../utils/importExport';
+import { variableHighlight } from '../../utils/cmVariableHighlight';
+import { makeVariableCompletion } from '../../utils/cmVariableComplete';
+import { useVariableSuggestions } from '../../hooks/useVariableSuggestions';
+import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from 'react-resizable-panels';
+import CodeMirror from '@uiw/react-codemirror';
+import { json as jsonLang } from '@codemirror/lang-json';
+import { oneDark } from '@codemirror/theme-one-dark';
 import thinkingGif from '../../assets/think_emoji.gif';
 import { BackendApiCallService } from '../../services/backendApiCallService';
-import { useApi } from '../../store/api';
+import {
+  useBulkDeleteTestCasesMutation,
+  useDeleteTestCaseMutation,
+  useGetApiQuery,
+  useRunTestMutation,
+  useSaveApiMutation,
+  useSaveTestCaseMutation,
+} from '../../store/apiSlice';
 import { useEnvironment } from '../../store/environment';
 import { useNode } from '../../store/node';
+import { useWorkspace } from '../../store/workspace';
+import { useTheme } from '../ThemeContext.jsx';
 import { TestCaseForm } from '../TestCaseForm';
 import TestResultsGrid from '../TestResultsGrid';
-import { Button, JsonEditor, VariableInput } from '../common';
+import { Button, JsonEditor, VariableInput, VariableAwareInput } from '../common';
+import WebSocketPanel from '../WebSocketPanel/WebSocketPanel';
+import EnvironmentSwitcher from '../EnvironmentSwitcher';
+import AuthBuilder from './AuthBuilder';
+import CollectionVarEditor from '../CollectionVarEditor/CollectionVarEditor';
+import { api as backendApi } from '../../api';
 import styles from './RequestPanel.module.css';
 import './buttonStyles.css';
 import './dropdown.css';
+
+async function saveHistory(payload) {
+  try {
+    await backendApi.post('/history', payload);
+  } catch (err) {
+    // History save failure is non-critical
+    console.warn('Failed to save history:', err);
+  }
+}
 
 // Utility function to check if URL is an ngrok URL and add required headers
 const addNgrokHeadersIfNeeded = (url, existingHeaders = {}) => {
@@ -40,9 +71,145 @@ const copyToClipboard = async text => {
     return false;
   }
 };
+function mapStatusToText(status) {
+  if (!status) return 'N/A';
+  const code = Number(status);
+  const statusMap = {
+    200: '200 OK',
+    201: '201 Created',
+    204: '204 No Content',
+    400: '400 Bad Request',
+    401: '401 Unauthorized',
+    403: '403 Forbidden',
+    404: '404 Not Found',
+    406: '406 Not Acceptable',
+    409: '409 Conflict',
+    422: '422 Unprocessable Entity',
+    500: '500 Internal Server Error',
+    502: '502 Bad Gateway',
+    503: '503 Service Unavailable',
+    206: '206 No Data Found',
+  };
+  return statusMap[code] || code.toString();
+}
+
+// 🔹 Build cURL command from request
+function buildCurlCommand(req) {
+  if (!req || !req.url) return 'N/A';
+
+  const method = req.method?.toUpperCase() || 'GET';
+  const headers = req.headers
+    ? Object.entries(req.headers)
+        .map(([k, v]) => `-H "${k}: ${v}"`)
+        .join(' \\\n  ')
+    : '';
+
+  const body =
+    req.body && Object.keys(req.body).length
+      ? `-H "Content-Type: application/json" \\\n  -d '${JSON.stringify(req.body)}'`
+      : '';
+
+  return `curl -X ${method} "${req.url}" \\\n  ${headers}${body ? ' \\\n  ' + body : ''}`;
+}
+
+// 🔹 Transform test results into simplified table
+const transformTestResultsToExcel = testResults => {
+  let resultsArray = [];
+
+  if (Array.isArray(testResults)) {
+    resultsArray = testResults;
+  } else if (testResults?.test_cases) {
+    resultsArray = testResults.test_cases;
+  } else if (testResults?.data) {
+    resultsArray = Array.isArray(testResults.data)
+      ? testResults.data
+      : [testResults.data];
+  } else if (testResults) {
+    resultsArray = [testResults];
+  }
+
+  return resultsArray.map((item, index) => {
+    const testCaseName = item.case || item.name || `Test Case ${index + 1}`;
+    const result = (item.ok ?? item.passed ?? item.success) ? 'Pass' : 'Fail';
+
+    // --- Request as cURL ---
+    const requestCurl = buildCurlCommand(item.request);
+
+    // --- Expected ---
+    const expected = item.request?.expected || item.expected || {};
+    const expectedStatus = expected.status_in
+      ? expected.status_in.map(s => mapStatusToText(s)).join(' or ')
+      : expected.status
+        ? mapStatusToText(expected.status)
+        : 'N/A';
+
+    // --- Response (formatted JSON) ---
+    const response = item.response?.json
+      ? JSON.stringify(item.response.json, null, 2)
+      : item.response || 'N/A';
+
+    return {
+      'Test case name': testCaseName,
+      Request: requestCurl,
+      Expected: expectedStatus,
+      Response: response,
+      Result: result,
+    };
+  });
+};
+
+// 🔹 Copy structured table to clipboard (Confluence / Docs compatible)
+async function copyTableToClipboard(excelData) {
+  const headers = [
+    'Test case name',
+    'Request',
+    'Expected',
+    'Response',
+    'Result',
+  ];
+
+  // Colors below are intentionally hardcoded — this HTML is copied to the OS
+  // clipboard for pasting into Confluence/Docs, which has no access to our CSS vars.
+  const htmlTable = `
+  <table border="1" cellspacing="0" cellpadding="6" style="border-collapse: collapse; width: 100%; border: 1px solid #ccc;">
+    <thead style="background-color: #f3f3f3; font-weight: bold;">
+      <tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>
+    </thead>
+    <tbody>
+      ${excelData
+        .map(row => {
+          const color = row.Result === 'Pass' ? '#09ee09ff' : '#fbeaea';
+          return `<tr style="background-color: ${color}; vertical-align: top;">
+            ${headers
+              .map(h => {
+                let value = row[h] || '';
+                if (h === 'Response') {
+                  // Preserve indentation & line breaks
+                  value = `<pre style="white-space: pre-wrap; font-family: monospace;">${value}</pre>`;
+                }
+                return `<td style="vertical-align: top;">${value}</td>`;
+              })
+              .join('')}
+          </tr>`;
+        })
+        .join('')}
+    </tbody>
+  </table>`;
+
+  await navigator.clipboard.write([
+    new ClipboardItem({
+      'text/html': new Blob([htmlTable], { type: 'text/html' }),
+      'text/plain': new Blob([htmlTable], { type: 'text/plain' }),
+    }),
+  ]);
+
+  console.log(
+    '✅ Table copied with pretty JSON + cURL! Paste directly into Confluence or Docs.'
+  );
+}
 
 // Reusable copy button component
-const CopyButton = ({ textToCopy, className }) => {
+const CopyButton = ({ textToCopy, className, label }) => {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -59,33 +226,17 @@ const CopyButton = ({ textToCopy, className }) => {
       size="small"
       className={className || ''}
       onClick={handleCopy}
-      title="Copy to clipboard"
+      title={label || 'Copy to clipboard'}
     >
-      {copied ? (
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <path
-            d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"
-            fill="currentColor"
-          />
+      {label ? (
+        copied ? '✓ Copied' : label
+      ) : copied ? (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z" fill="currentColor" />
         </svg>
       ) : (
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <path
-            d="M16 1H4C2.9 1 2 1.9 2 3V17H4V3H16V1ZM19 5H8C6.9 5 6 5.9 6 7V21C6 22.1 6.9 23 8 23H19C20.1 23 21 22.1 21 21V7C21 5.9 20.1 5 19 5ZM19 21H8V7H19V21Z"
-            fill="currentColor"
-          />
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M16 1H4C2.9 1 2 1.9 2 3V17H4V3H16V1ZM19 5H8C6.9 5 6 5.9 6 7V21C6 22.1 6.9 23 8 23H19C20.1 23 21 22.1 21 21V7C21 5.9 20.1 5 19 5ZM19 21H8V7H19V21Z" fill="currentColor" />
         </svg>
       )}
     </Button>
@@ -158,38 +309,124 @@ const extractValue = (obj, key, defaultValue = '') => {
   }
 };
 
-function normalizeBody(bodyContent, bodyType) {
+function normalizeBody(bodyContent, bodyType, gqlOpts = null) {
   if (bodyType === 'none') return null;
-  if (bodyType === 'JSON') {
-    try {
-      // For API /save endpoint, we should keep it as a string
-      // This helps with the body serialization when sending to backend
-      return bodyContent;
-    } catch {
-      return bodyContent; // Already a string
-    }
+  if (bodyType === 'graphql' && gqlOpts) {
+    let variables = {};
+    try { variables = JSON.parse(gqlOpts.variables || '{}'); } catch {}
+    return JSON.stringify({ query: gqlOpts.query || '', variables });
   }
-  return bodyContent; // Keep as string for all body types
+  return bodyContent;
 }
 
-export default function RequestPanel({ activeRequest }) {
-  const { selectedNode, getNodeById } = useNode();
+// Reusable key-value table for form-data and url-encoded bodies
+function KeyValueBodyTable({ rows, setRows, onSerialize }) {
+  const serialize = updatedRows => {
+    const params = new URLSearchParams();
+    updatedRows.forEach(r => { if (r.key) params.append(r.key, r.value); });
+    onSerialize(params.toString());
+  };
+
+  const updateRow = (idx, field, val) => {
+    const next = rows.map((r, i) => i === idx ? { ...r, [field]: val } : r);
+    setRows(next);
+    serialize(next);
+  };
+
+  const addRow = () => {
+    const next = [...rows, { key: '', value: '' }];
+    setRows(next);
+  };
+
+  const removeRow = idx => {
+    const next = rows.filter((_, i) => i !== idx);
+    setRows(next.length ? next : [{ key: '', value: '' }]);
+    serialize(next);
+  };
+
+  return (
+    <div className="kvTable">
+      {rows.map((row, idx) => (
+        <div key={idx} className="kvRow">
+          <input
+            type="text"
+            value={row.key}
+            onChange={e => updateRow(idx, 'key', e.target.value)}
+            placeholder="Key"
+            className="kvInput"
+          />
+          <input
+            type="text"
+            value={row.value}
+            onChange={e => updateRow(idx, 'value', e.target.value)}
+            placeholder="Value"
+            className="kvInput"
+          />
+          <button className="kvRemove" onClick={() => removeRow(idx)}>×</button>
+        </div>
+      ))}
+      <button className="kvAdd" onClick={addRow}>+ Add row</button>
+    </div>
+  );
+}
+
+export default function RequestPanel({ activeRequest, onMethodChange }) {
+  const { selectedNode, getNodeById, nodes } = useNode();
   const { variables, activeEnvironment } = useEnvironment();
-  const {
-    getApi,
-    getTestCases,
-    testCases,
-    activeApi,
-    runTest,
-    testResults,
-    clearTestResults,
-    createTestCase,
-    isLoading,
-    updateApi,
-    saveApi,
-    saveTestCase,
-    deleteTestCase,
-  } = useApi();
+  const variableSuggestionItems = useVariableSuggestions();
+  const variableCompletion = useMemo(
+    () => makeVariableCompletion(variableSuggestionItems),
+    [variableSuggestionItems]
+  );
+  const { isDarkMode } = useTheme();
+  const { activeWorkspace, workspaceTree } = useWorkspace();
+  // Single RTK Query cache owns the file's api record + its test cases.
+  const fileNodeId =
+    selectedNode?.type === 'file' && selectedNode?.id ? selectedNode.id : null;
+  const { data: activeApi, isLoading } = useGetApiQuery(
+    { fileId: fileNodeId, includeCases: true },
+    { skip: !fileNodeId }
+  );
+  const testCases = activeApi?.test_cases ?? [];
+
+  // Breadcrumb shows the full folder path to the selected node, not just its name.
+  const breadcrumbPath = useMemo(() => {
+    const fallback =
+      selectedNode?.name ||
+      extractValue(activeApi, 'name', 'Untitled Request');
+    const targetId = selectedNode?.id;
+    if (!targetId) return fallback;
+
+    // Both sources hold the same nested file_tree; use whichever is populated.
+    const treeFromWorkspace = workspaceTree?.file_tree;
+    const roots =
+      Array.isArray(treeFromWorkspace) && treeFromWorkspace.length > 0
+        ? treeFromWorkspace
+        : nodes;
+    if (!Array.isArray(roots) || roots.length === 0) return fallback;
+
+    // DFS collects ancestor names from root down to the selected node.
+    const trail = [];
+    const dfs = nodeList => {
+      for (const node of nodeList) {
+        trail.push(node.name);
+        if (node.id === targetId) return true;
+        if (Array.isArray(node.children) && dfs(node.children)) return true;
+        trail.pop();
+      }
+      return false;
+    };
+
+    return dfs(roots) ? trail.join(' / ') : fallback;
+  }, [workspaceTree, nodes, selectedNode, activeApi]);
+
+  // runTest result persists on the mutation; reset() clears it on file switch.
+  const [runTest, { data: testResults, reset: clearTestResults }] =
+    useRunTestMutation();
+  const [saveApi] = useSaveApiMutation();
+  const [saveTestCase] = useSaveTestCaseMutation();
+  const [deleteTestCase] = useDeleteTestCaseMutation();
+  const [bulkDeleteTestCases] = useBulkDeleteTestCasesMutation();
 
   const [method, setMethod] = useState(
     activeRequest?.method || selectedNode?.method || 'GET'
@@ -197,19 +434,39 @@ export default function RequestPanel({ activeRequest }) {
   const [url, setUrl] = useState(
     activeRequest?.url || selectedNode?.url || selectedNode?.endpoint || ''
   );
+
+  // Wrap setters to mark panel dirty when user edits anything
+  const setMethodDirty = v => { setMethod(v); setIsDirty(true); };
+  const setUrlDirty = v => { setUrl(v); setIsDirty(true); };
+  const setHeadersDirty = v => { setHeaders(v); setIsDirty(true); };
+  const setParamsDirty = v => { setParams(v); setIsDirty(true); };
+  const setBodyContentDirty = v => { setBodyContent(v); setIsDirty(true); };
+  const setBodyTypeDirty = v => { setBodyType(v); setIsDirty(true); };
   const [isUpdatingConfig, setIsUpdatingConfig] = useState(false);
+  const [isSending, setIsSending] = useState(false);
   const [showTestCaseForm, setShowTestCaseForm] = useState(false);
   const [editingTestCaseId, setEditingTestCaseId] = useState(null);
   const [bodyContent, setBodyContent] = useState('');
   const [bodyType, setBodyType] = useState('JSON');
   const [validationSchema, setValidationSchema] = useState('');
-  const [requestHeight, setRequestHeight] = useState(200); // Default height for request section
+  // Form-data and url-encoded rows for Phase 1 key-value table UI
+  const [formDataRows, setFormDataRows] = useState([{ key: '', value: '' }]);
+  const [urlEncodedRows, setUrlEncodedRows] = useState([{ key: '', value: '' }]);
+  // GraphQL state (Phase 7a)
+  const [gqlQuery, setGqlQuery] = useState('');
+  const [gqlVariables, setGqlVariables] = useState('{}');
+  const [gqlSchemaLoading, setGqlSchemaLoading] = useState(false);
+  const [gqlSchemaError, setGqlSchemaError] = useState(null);
+  // requestHeight removed — vertical resize handled by react-resizable-panels in Home layout
 
   // Local cache for folder headers to avoid repeated backend calls
   const [folderHeadersCache, setFolderHeadersCache] = useState(new Map());
 
   // State for parameters
   const [params, setParams] = useState([]);
+
+  // State for headers
+  const [headers, setHeaders] = useState([]);
 
   // Function to get folder headers with caching
   const getFolderHeaders = async headerNodeId => {
@@ -242,31 +499,7 @@ export default function RequestPanel({ activeRequest }) {
   const [editingApiInModal, setEditingApiInModal] = useState(false);
   const [modalApiData, setModalApiData] = useState(null);
 
-  // Handle resizing between request and response sections
-  const startResize = useCallback(
-    e => {
-      e.preventDefault();
-      const startY = e.clientY;
-      const startHeight = requestHeight;
-
-      const doDrag = e => {
-        const newHeight = startHeight + (e.clientY - startY);
-        // Set min and max height constraints
-        if (newHeight >= 100 && newHeight <= window.innerHeight - 200) {
-          setRequestHeight(newHeight);
-        }
-      };
-
-      const stopDrag = () => {
-        document.removeEventListener('mousemove', doDrag);
-        document.removeEventListener('mouseup', stopDrag);
-      };
-
-      document.addEventListener('mousemove', doDrag);
-      document.addEventListener('mouseup', stopDrag);
-    },
-    [requestHeight]
-  );
+  // Vertical resize is now handled by react-resizable-panels — startResize removed
 
   // Update the panel when selectedNode changes
   // Add effect for handling dropdown close on outside click
@@ -286,6 +519,14 @@ export default function RequestPanel({ activeRequest }) {
   // Initialize the body content and type when the activeApi changes
   useEffect(() => {
     if (activeApi) {
+      // Mirror the loaded api's endpoint/method onto the live request line
+      // (previously done in the getApi().then handler).
+      const apiEndpoint =
+        extractValue(activeApi, 'endpoint') || extractValue(activeApi, 'url');
+      if (apiEndpoint) setUrl(apiEndpoint);
+      const apiMethod = extractValue(activeApi, 'method');
+      if (apiMethod) setMethod(apiMethod);
+
       const requestBody =
         extractValue(activeApi, 'body') ||
         extractValue(activeApi, 'request_body') ||
@@ -370,17 +611,42 @@ export default function RequestPanel({ activeRequest }) {
       } else {
         setParams([]);
       }
+
+      // Initialize headers from activeApi
+      const apiHeaders = extractValue(activeApi, 'headers', {});
+      if (Array.isArray(apiHeaders)) {
+        setHeaders(apiHeaders);
+      } else if (typeof apiHeaders === 'object' && apiHeaders !== null) {
+        setHeaders(
+          Object.entries(apiHeaders).map(([key, value]) => ({
+            key,
+            value,
+            description: key === 'Content-Type' ? 'Content type header' : '',
+          }))
+        );
+      } else {
+        setHeaders([]);
+      }
     } else {
       // No active API, set defaults
       setBodyType('none');
       setBodyContent('');
       setValidationSchema(JSON.stringify(defaultValidationSchema, null, 2));
     }
-  }, [activeApi]);
+    // Key on api identity + version, NOT the whole object: RTK test-case cache
+    // patches replace activeApi's reference (test_cases array) on every add/delete.
+    // Re-initing only when the api record itself loads/changes preserves unsaved
+    // request-line edits, matching the pre-RTK behavior.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeApi?.id, activeApi?.updated_at]);
 
   useEffect(() => {
     if (selectedNode) {
       setMethod(selectedNode.method || 'GET');
+      setIsDirty(false);
+
+      // Clear test results when switching files
+      clearTestResults();
 
       // Set URL directly from node without modifications
       if (selectedNode.url) {
@@ -393,51 +659,20 @@ export default function RequestPanel({ activeRequest }) {
         setUrl('');
       }
 
-      // Load API details if this is a file node
+      // File-node api record + test cases load via useGetApiQuery; the
+      // [activeApi] effect mirrors endpoint/method onto the request line.
       if (selectedNode.type === 'file' && selectedNode.id) {
-        // Load the API details
-        getApi(selectedNode.id)
-          .then(apiResponse => {
-            ('API data loaded:', apiResponse);
-
-            // Check if we got a 206 status (no API data)
-            if (apiResponse.status === 206) {
-            } else {
-              // Extract the API data from the response structure
-              const apiData = apiResponse?.data || {};
-
-              if (apiData) {
-                // Use the exact endpoint or URL from the API without modifying it
-                if (apiData.endpoint) {
-                  // Use the endpoint directly without adding any base URL
-                  setUrl(apiData.endpoint);
-                } else if (apiData.url) {
-                  // Use the URL directly if available
-                  setUrl(apiData.url);
-                }
-
-                // Set the method from the API
-                if (apiData.method) {
-                  setMethod(apiData.method);
-                }
-              }
-            }
-          })
-          .catch(err => console.error('Error loading API:', err));
-
-        // Load test cases for this API and reset selected test cases
         setSelectedTestCases([]);
-        getTestCases(selectedNode.id)
-          .then(testCasesResponse => {})
-          .catch(err => console.error('Error loading test cases:', err));
       }
     }
-  }, [selectedNode, getApi, getTestCases]);
+  }, [selectedNode, clearTestResults]);
 
   const [activeTab, setActiveTab] = useState('api');
   const [responseTab, setResponseTab] = useState('body');
-  const [isSending, setIsSending] = useState(false);
   const [response, setResponse] = useState(null);
+  const [isDirty, setIsDirty] = useState(false);
+  const [requestTimeout, setRequestTimeout] = useState(30);
+  const [excelCopied, setExcelCopied] = useState(false);
   const [selectedTestCases, setSelectedTestCases] = useState([]);
   const [defaultValidationSchema, setDefaultValidationSchema] = useState({
     status: 200,
@@ -491,7 +726,7 @@ export default function RequestPanel({ activeRequest }) {
 
     setIsSending(true);
     try {
-      const result = await runTest(selectedNode.id, selectedTestCases);
+      await runTest({ fileId: selectedNode.id, caseId: selectedTestCases }).unwrap();
       setActiveTab('apiTests');
     } catch (error) {
       console.error('Error running selected tests:', error);
@@ -512,10 +747,10 @@ export default function RequestPanel({ activeRequest }) {
       // Extract test case ID from the test result
       const testCaseId = testResult.id || testResult.case_id;
       if (testCaseId) {
-        await runTest(selectedNode.id, [testCaseId]);
+        await runTest({ fileId: selectedNode.id, caseId: [testCaseId] }).unwrap();
       } else {
         // If no specific test case ID, run all tests
-        await runTest(selectedNode.id);
+        await runTest({ fileId: selectedNode.id }).unwrap();
       }
       setActiveTab('apiTests');
     } catch (error) {
@@ -525,23 +760,61 @@ export default function RequestPanel({ activeRequest }) {
     }
   };
 
+  // Function to delete all or selected test cases
+  const handleDeleteTestCases = async () => {
+    if (!selectedNode?.id || !testCases || testCases.length === 0) {
+      return;
+    }
+
+    // Determine which cases to delete
+    const casesToDelete =
+      selectedTestCases.length > 0
+        ? selectedTestCases
+        : testCases.map(tc => tc.id || tc.case_id);
+
+    const count = casesToDelete.length;
+    const message =
+      selectedTestCases.length > 0
+        ? `Are you sure you want to delete ${count} selected test case${count > 1 ? 's' : ''}?`
+        : `Are you sure you want to delete all ${count} test case${count > 1 ? 's' : ''}?`;
+
+    const confirmDelete = window.confirm(message);
+    if (!confirmDelete) return;
+
+    try {
+      await bulkDeleteTestCases({
+        caseIds: casesToDelete,
+        fileId: selectedNode.id,
+      }).unwrap();
+      // Clear selected test cases after deletion (list updates via cache patch).
+      setSelectedTestCases([]);
+    } catch (error) {
+      console.error('Error deleting test cases:', error);
+      alert(`Failed to delete test cases: ${error.message || 'Unknown error'}`);
+    }
+  };
+
   // Function to directly call the API with current parameters
-  const handleDirectApiCall = async () => {
+  const handleDirectApiCall = useCallback(async () => {
     setIsSending(true);
     try {
-      // Prepare params from state
+      // Build params and headers from live UI state — not from saved DB copy
       const paramsObj = {};
-      params.forEach(p => {
-        if (p.key) paramsObj[p.key] = p.value;
-      });
+      params.forEach(p => { if (p.key) paramsObj[p.key] = p.value; });
+
+      const headersObj = {};
+      headers.forEach(h => { if (h.key) headersObj[h.key] = h.value; });
+
       const response = await BackendApiCallService.executeApiCall({
-        fileId: selectedNode?.id,
-        environmentId: activeEnvironment?.id,
+        fileId: selectedNode?.id ?? null,
+        environmentId: activeEnvironment?.id ?? null,
         method: method,
         url: url,
-        headers: extractValue(activeApi, 'headers', {}),
+        headers: headersObj,
         params: paramsObj,
-        body: method !== 'GET' ? normalizeBody(bodyContent, bodyType) : null,
+        body: method !== 'GET' ? normalizeBody(bodyContent, bodyType, bodyType === 'graphql' ? { query: gqlQuery, variables: gqlVariables } : null) : null,
+        bodyType: bodyType,
+        options: { timeout: requestTimeout },
       });
 
       // Format response for display to match UI expectations
@@ -562,10 +835,25 @@ export default function RequestPanel({ activeRequest }) {
       };
 
       setResponse(formattedResponse);
-
-      // Switch to the response tab
-      setActiveTab('response');
       setResponseTab('body');
+
+      // Auto-save history (fire-and-forget)
+      saveHistory({
+        file_id: selectedNode?.id ?? null,
+        workspace_id: activeWorkspace?.id ?? null,
+        method,
+        url,
+        headers: extractValue(activeApi, 'headers', {}),
+        params: paramsObj,
+        body: method !== 'GET' ? normalizeBody(bodyContent, bodyType, bodyType === 'graphql' ? { query: gqlQuery, variables: gqlVariables } : null) : null,
+        response_status: formattedResponse.status,
+        response_body:
+          typeof formattedResponse.body === 'object'
+            ? JSON.stringify(formattedResponse.body)
+            : String(formattedResponse.body ?? ''),
+        response_headers: formattedResponse.headers,
+        execution_time_ms: response.data?.execution_time ?? 0,
+      });
     } catch (error) {
       console.error('❌ Error executing API via backend:', error);
 
@@ -580,13 +868,24 @@ export default function RequestPanel({ activeRequest }) {
         isError: true,
       });
 
-      // Switch to the response tab to show error
-      setActiveTab('response');
       setResponseTab('body');
     } finally {
       setIsSending(false);
     }
-  };
+  }, [selectedNode, activeEnvironment, method, url, headers, params, bodyContent, bodyType, gqlQuery, gqlVariables, requestTimeout]);
+
+  // Cmd+Enter (Mac) / Ctrl+Enter (Win) fires Send
+  useEffect(() => {
+    const onKeyDown = e => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        e.preventDefault();
+        if (!isSending && url) handleDirectApiCall();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [isSending, url, handleDirectApiCall]);
+
   // Function to validate the API using backend validation endpoint
   const handleValidateApi = async () => {
     setIsSending(true);
@@ -611,17 +910,20 @@ export default function RequestPanel({ activeRequest }) {
         extractValue(activeApi, 'validationSchema.response') ||
         defaultValidationSchema;
 
-      // Use the dedicated validation endpoint
+      const headersObj = {};
+      headers.forEach(h => { if (h.key) headersObj[h.key] = h.value; });
+
       const validationResponse =
         await BackendApiCallService.executeWithValidation({
-          fileId: selectedNode?.id,
-          environmentId: activeEnvironment?.id,
+          fileId: selectedNode?.id ?? null,
+          environmentId: activeEnvironment?.id ?? null,
           method: method,
           url: url,
-          headers: extractValue(activeApi, 'headers', {}),
+          headers: headersObj,
           params: paramsObj,
-          body: method !== 'GET' ? normalizeBody(bodyContent, bodyType) : null,
+          body: method !== 'GET' ? normalizeBody(bodyContent, bodyType, bodyType === 'graphql' ? { query: gqlQuery, variables: gqlVariables } : null) : null,
           expected: validationSchema,
+          options: { timeout: requestTimeout },
         });
 
       // Format response for display with validation results
@@ -646,14 +948,10 @@ export default function RequestPanel({ activeRequest }) {
       };
 
       setResponse(formattedResponse);
-
-      // Switch to the response tab to show validation results
-      setActiveTab('response');
       setResponseTab('body');
     } catch (error) {
       console.error('Error validating API:', error);
 
-      // Show error in response tab
       setResponse({
         status: 500,
         statusText: 'Validation Error',
@@ -667,103 +965,188 @@ export default function RequestPanel({ activeRequest }) {
         isError: true,
       });
 
-      setActiveTab('response');
       setResponseTab('body');
     } finally {
       setIsSending(false);
     }
   };
 
-  const handleSend = async () => {
-    setIsSending(true);
+  // Save the current request config as an API (create or update)
+  const handleSaveApiConfig = async () => {
+    if (!selectedNode?.id) {
+      alert('Please select a file first');
+      return;
+    }
+
+    setIsUpdatingConfig(true);
 
     try {
-      // If we have a file node selected, try to run the API test
-      if (selectedNode?.type === 'file' && selectedNode?.id) {
-        const result = await runTest(selectedNode.id);
-        setActiveTab('apiTests');
-
-        if (result) {
-          // Handle the standard response format with response_code and data structure
-          if (result.data && typeof result.data === 'object') {
-            const apiResponseData = result.data;
-            const responseCode =
-              result.status || apiResponseData.response_code || 200;
-
-            setResponse({
-              status: responseCode,
-              statusText:
-                responseCode >= 200 && responseCode < 300 ? 'OK' : 'Error',
-              time: apiResponseData.time || '0 ms',
-              size:
-                apiResponseData.size ||
-                `${JSON.stringify(apiResponseData).length} B`,
-              body: apiResponseData, // Keep the full response data for display
-              headers: apiResponseData.headers || {},
-            });
-          } else {
-            // Direct response object
-            setResponse({
-              status: result.status || 200,
-              statusText: result.statusText || 'OK',
-              time: '0 ms',
-              size: `${JSON.stringify(result).length} B`,
-              body: result,
-              headers: result.headers || {},
-            });
-          }
+      // Parse validation schema if available
+      let validationSchemaData;
+      try {
+        if (validationSchema && validationSchema.trim()) {
+          validationSchemaData = JSON.parse(validationSchema);
         } else {
-          // No result returned
-          setResponse({
-            status: 404,
-            statusText: 'No Response',
-            time: '0 ms',
-            size: '0 B',
-            body: { message: 'No response received from API' },
-            headers: {},
-          });
+          // Get schema from active API or use default
+          validationSchemaData =
+            extractValue(activeApi, 'extra_meta.expected') ||
+            extractValue(activeApi, 'expected') ||
+            extractValue(activeApi, 'validation.responseSchema') ||
+            extractValue(activeApi, 'validationSchema.response') ||
+            defaultValidationSchema;
         }
-      } else {
-        // Fallback to simulated response
-        setTimeout(() => {
-          setResponse({
-            status: 200,
-            statusText: 'OK',
-            time: '123 ms',
-            size: '532 B',
-            body: {
-              status: 'success',
-              data: [
-                { id: 1, name: 'Item 1' },
-                { id: 2, name: 'Item 2' },
-              ],
-            },
-            headers: {
-              'content-type': 'application/json',
-              'x-powered-by': 'Example Server',
-              date: new Date().toUTCString(),
-            },
-          });
-          setIsSending(false);
-        }, 800);
+      } catch (e) {
+        console.warn('Invalid validation schema JSON, using default:', e);
+        validationSchemaData = defaultValidationSchema;
       }
-    } catch (error) {
-      console.error('Error sending request:', error);
-      setResponse({
-        status: error.response?.status || 500,
-        statusText: error.response?.statusText || 'Error',
-        time: '0 ms',
-        size: '0 B',
-        body: {
-          error: error.message || 'Unknown error occurred',
-          details: error.response?.data || null,
-        },
-        headers: error.response?.headers || {},
+
+      // Prepare data for saving API (works for both create and update)
+      const paramsObj = {};
+      params.forEach(p => {
+        if (p.key) paramsObj[p.key] = p.value;
       });
+
+      // Convert headers array to object
+      const headersObj = {};
+      headers.forEach(h => {
+        if (h.key) headersObj[h.key] = h.value;
+      });
+
+      const apiData = activeApi
+        ? {
+            // Update existing API
+            ...activeApi,
+            method: method,
+            endpoint: url,
+            headers: headersObj,
+            params: paramsObj,
+            body: normalizeBody(bodyContent, bodyType, bodyType === 'graphql' ? { query: gqlQuery, variables: gqlVariables } : null),
+            bodyType: bodyType,
+            extra_meta: {
+              ...extractValue(activeApi, 'extra_meta', {}),
+              headers: headersObj,
+              params: paramsObj,
+              body: normalizeBody(bodyContent, bodyType, bodyType === 'graphql' ? { query: gqlQuery, variables: gqlVariables } : null),
+              expected: validationSchemaData,
+            },
+          }
+        : {
+            // Create new API
+            name: selectedNode.name || 'New API',
+            method: method,
+            endpoint: url,
+            description: '',
+            is_active: true,
+            headers: headersObj,
+            params: paramsObj,
+            body: normalizeBody(bodyContent, bodyType, bodyType === 'graphql' ? { query: gqlQuery, variables: gqlVariables } : null),
+            bodyType: bodyType,
+            extra_meta: {
+              headers: headersObj,
+              params: paramsObj,
+              body: normalizeBody(bodyContent, bodyType, bodyType === 'graphql' ? { query: gqlQuery, variables: gqlVariables } : null),
+              expected: validationSchemaData,
+            },
+          };
+
+      // Unified saveApi mutation for both create and update; cache-from-response
+      // (Sprint 2) patches the getApi entry, so no follow-up GET.
+      await saveApi({ fileId: selectedNode.id, ...apiData }).unwrap();
+      setIsDirty(false);
+    } catch (err) {
+      console.error('Error saving API configuration:', err);
+      alert(`Failed to save configuration: ${err.message}`);
     } finally {
-      setIsSending(false);
+      setIsUpdatingConfig(false);
     }
   };
+
+  // Record the current request/response as a saved test case
+  const handleRecordTestCase = async () => {
+    if (!response) {
+      alert('Send a request first to record as a test case');
+      return;
+    }
+
+    // Start with button in saving state
+    const button = document.querySelector('.saveActionsDropdown button');
+    const originalText = button.innerText;
+    button.innerText = 'Saving...';
+    button.disabled = true;
+
+    // Save the current request/response as a test case
+    try {
+      // Get the validation schema from the state
+      let validationSchemaData;
+      try {
+        if (validationSchema && validationSchema.trim()) {
+          validationSchemaData = JSON.parse(validationSchema);
+        } else {
+          // Get schema from active API or use default
+          validationSchemaData =
+            extractValue(activeApi, 'extra_meta.expected') ||
+            extractValue(activeApi, 'expected') ||
+            extractValue(activeApi, 'validation.responseSchema') ||
+            extractValue(activeApi, 'validationSchema.response') ||
+            defaultValidationSchema;
+        }
+      } catch (e) {
+        console.warn('Failed to parse validation schema, using default', e);
+        validationSchemaData = defaultValidationSchema;
+      }
+
+      // Ask user for a custom test case name
+      const defaultName = `Test case - ${new Date().toLocaleTimeString()}`;
+      const customName = prompt('Enter a name for this test case:', defaultName);
+
+      // Get the request headers from the current request
+      const requestHeaders = extractValue(activeApi, 'headers', {});
+
+      const testCaseData = {
+        name: customName || defaultName,
+        headers: requestHeaders,
+        body: bodyType === 'none' ? null : bodyContent,
+        expected: validationSchemaData,
+      };
+
+      if (!selectedNode?.id) {
+        console.error('Missing selectedNode.id when trying to save test case');
+        alert('Error: No API selected. Please select an API first.');
+        return;
+      }
+
+      try {
+        // Optimistic insert + cache-from-response patch the getApi entry.
+        const saved = await saveTestCase({
+          fileId: selectedNode.id,
+          ...testCaseData,
+        }).unwrap();
+
+        if (!saved) {
+          alert('Failed to save test case. Please try again.');
+        }
+
+        // Close the dropdown after action
+        document
+          .querySelector('.saveActionsDropdown')
+          .classList.remove('active');
+      } catch (saveError) {
+        console.error('Error in saveTestCase:', saveError);
+        alert(`Error saving test case: ${saveError.message || 'Unknown error'}`);
+      }
+    } catch (err) {
+      console.error('Error recording test case:', err);
+      if (err.response) {
+        console.error('Error response:', err.response.data);
+        console.error('Status:', err.response.status);
+      }
+      alert(`Error saving test case: ${err.message || 'Unknown error'}`);
+    } finally {
+      button.innerText = originalText;
+      button.disabled = false;
+    }
+  };
+
 
   // Handler functions for the detailed test result modal
   const handleOpenDetailedResult = testResult => {
@@ -801,10 +1184,8 @@ export default function RequestPanel({ activeRequest }) {
 
     try {
       setIsUpdatingConfig(true);
-      const result = await saveApi(selectedNode.id, modalApiData);
-
-      // Reload the API details
-      await getApi(selectedNode.id);
+      // Cache-from-response (Sprint 2) patches the getApi entry, no follow-up GET.
+      await saveApi({ fileId: selectedNode.id, ...modalApiData }).unwrap();
       setEditingApiInModal(false);
     } catch (err) {
       console.error('Error saving API configuration:', err);
@@ -819,11 +1200,12 @@ export default function RequestPanel({ activeRequest }) {
 
     try {
       setIsSending(true);
-      const result = await runTest(selectedNode.id);
+      const result = await runTest({ fileId: selectedNode.id }).unwrap();
 
-      // Update the selected test result with new data if available
-      if (result && result.data && Array.isArray(result.data)) {
-        const updatedResult = result.data.find(
+      // Update the selected test result with new data if available (result is
+      // the normalized { test_cases: [...] } shape).
+      if (result && Array.isArray(result.test_cases)) {
+        const updatedResult = result.test_cases.find(
           r =>
             r.case === selectedTestResult.case ||
             r.name === selectedTestResult.name
@@ -905,21 +1287,19 @@ export default function RequestPanel({ activeRequest }) {
         throw new Error('Invalid fileId for saving test case');
       }
 
-      // Use the saveTestCase function from the store. If we have a fileId use it
-      // (store-style); otherwise fall back to selectedNode.id. Keep name sensible.
-      const result = await saveTestCase(
-        resolvedFileId,
-        {
-          name:
-            updatedData.name ||
-            `Test case - ${caseId || new Date().toLocaleTimeString()}`,
-          headers: updatedData.request?.headers || {},
-          params: updatedData.request?.params || {},
-          body: updatedData.request?.body || null,
-          expected: updatedData.expected || null,
-        },
-        caseId
-      );
+      // saveTestCase mutation handles create (no caseId) + update (caseId);
+      // passing fileId fires the optimistic cache patch (Sprint 3).
+      const result = await saveTestCase({
+        fileId: resolvedFileId,
+        caseId,
+        name:
+          updatedData.name ||
+          `Test case - ${caseId || new Date().toLocaleTimeString()}`,
+        headers: updatedData.request?.headers || {},
+        params: updatedData.request?.params || {},
+        body: updatedData.request?.body || null,
+        expected: updatedData.expected || null,
+      }).unwrap();
 
       return result;
     } catch (error) {
@@ -928,14 +1308,151 @@ export default function RequestPanel({ activeRequest }) {
     }
   };
 
+  // Helper to build response body display value
+  const responseBodyValue = response
+    ? typeof response.body === 'object'
+      ? JSON.stringify(response.body, null, 2)
+      : String(response.body ?? '')
+    : '';
+
+  const handleUrlPaste = e => {
+    const text = e.clipboardData?.getData('text') || '';
+    if (!text.trimStart().toLowerCase().startsWith('curl ')) return;
+    e.preventDefault();
+    const parsed = parseCurl(text);
+    if (!parsed) return;
+
+    if (parsed.method) setMethodDirty(parsed.method);
+
+    if (parsed.url) {
+      try {
+        const urlObj = new URL(parsed.url);
+        setUrlDirty(parsed.url);
+        const queryParams = [];
+        urlObj.searchParams.forEach((value, key) => {
+          queryParams.push({ key, value, description: '' });
+        });
+        if (queryParams.length) setParamsDirty(queryParams);
+      } catch {
+        setUrlDirty(parsed.url);
+      }
+    }
+
+    const headerEntries = Object.entries(parsed.headers || {});
+    if (headerEntries.length) {
+      setHeadersDirty(headerEntries.map(([key, value]) => ({ key, value, description: '' })));
+    }
+
+    if (parsed.body != null) {
+      const isObj = typeof parsed.body === 'object';
+      const bodyStr = isObj ? JSON.stringify(parsed.body, null, 2) : parsed.body;
+      try {
+        JSON.parse(bodyStr);
+        setBodyTypeDirty('JSON');
+      } catch {
+        setBodyTypeDirty('raw');
+      }
+      setBodyContentDirty(bodyStr);
+    }
+  };
+
+  const isWebSocketUrl = url && (url.startsWith('ws://') || url.startsWith('wss://'));
+
+  if (isWebSocketUrl) {
+    return (
+      <div className={styles.requestPanel}>
+        <div className={styles.urlBar}>
+          <span className={styles.wsLabel}>WS</span>
+          <VariableAwareInput
+            className={styles.urlInput}
+            value={url}
+            onChange={setUrlDirty}
+            onPaste={handleUrlPaste}
+            variables={variables || {}}
+            placeholder="ws:// or wss://"
+          />
+        </div>
+        <WebSocketPanel url={url} />
+      </div>
+    );
+  }
+
   return (
     <div className={styles.requestPanel}>
+      {/* Breadcrumb + actions row (folder, name, environment, save) */}
+      <div className={styles.requestHeaderBar}>
+        <div className={styles.breadcrumb}>
+          <svg
+            className={styles.folderIcon}
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true"
+          >
+            <path
+              d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6z"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinejoin="round"
+            />
+          </svg>
+          <span className={styles.breadcrumbName}>{breadcrumbPath}</span>
+        </div>
+
+        <div className={styles.headerActions}>
+          <EnvironmentSwitcher />
+
+          <div className="actionsContainer">
+            <Button
+              variant="primary"
+              className="actionsButton"
+              onClick={handleSaveApiConfig}
+              disabled={isUpdatingConfig}
+              title={isDirty ? 'Unsaved changes — click to save' : 'Save API'}
+            >
+              {isUpdatingConfig ? 'Saving...' : isDirty ? '● Save' : 'Save'}
+            </Button>
+            <div className="dropdownContainer">
+              <Button
+                variant="secondary"
+                size="small"
+                className="dropdownButton"
+                onClick={e => {
+                  e.stopPropagation();
+                  const dropdowns =
+                    document.querySelectorAll('.dropdownContent');
+                  dropdowns.forEach(dd => dd.classList.remove('active'));
+                  e.currentTarget.nextElementSibling.classList.toggle('active');
+                }}
+              >
+                ▼
+              </Button>
+              <div
+                className="dropdownContent saveActionsDropdown"
+                onClick={e => e.stopPropagation()}
+              >
+                <Button
+                  variant="secondary"
+                  onClick={handleRecordTestCase}
+                  disabled={!response || !selectedNode?.id}
+                  title="Record current request/response as a test case"
+                >
+                  Record as Test Case
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Request URL Bar */}
       <div className={styles.urlBar}>
         <select
           className={styles.methodSelector}
           value={method}
-          onChange={e => setMethod(e.target.value)}
+          onChange={e => setMethodDirty(e.target.value)}
         >
           <option value="GET">GET</option>
           <option value="POST">POST</option>
@@ -946,11 +1463,13 @@ export default function RequestPanel({ activeRequest }) {
           <option value="OPTIONS">OPTIONS</option>
         </select>
 
-        <VariableInput
+        <VariableAwareInput
           className={styles.urlInput}
           value={url}
-          onChange={e => setUrl(e.target.value)}
-          placeholder="Enter request URL (use {{VARIABLE_NAME}} for variables)"
+          onChange={setUrlDirty}
+          onPaste={handleUrlPaste}
+          variables={variables || {}}
+          placeholder="Paste a URL or cURL command here"
         />
 
         <div className={styles.buttonGroup}>
@@ -958,7 +1477,7 @@ export default function RequestPanel({ activeRequest }) {
             <Button
               variant="primary"
               className={`${styles.sendButton} overrideSendButton`}
-              onClick={handleDirectApiCall} // Now uses direct call functionality instead of handleSend
+              onClick={handleDirectApiCall}
               disabled={isSending || !url}
             >
               {isSending ? 'Sending...' : 'Send'}
@@ -990,251 +1509,6 @@ export default function RequestPanel({ activeRequest }) {
                   Validate
                 </Button>
               </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="actionsContainer">
-          <Button
-            variant="primary"
-            className="actionsButton"
-            onClick={async () => {
-              if (!selectedNode?.id) {
-                alert('Please select a file first');
-                return;
-              }
-
-              setIsUpdatingConfig(true);
-
-              try {
-                // Parse validation schema if available
-                let validationSchemaData;
-                try {
-                  if (validationSchema && validationSchema.trim()) {
-                    validationSchemaData = JSON.parse(validationSchema);
-                  } else {
-                    // Get schema from active API or use default
-                    validationSchemaData =
-                      extractValue(activeApi, 'extra_meta.expected') ||
-                      extractValue(activeApi, 'expected') ||
-                      extractValue(activeApi, 'validation.responseSchema') ||
-                      extractValue(activeApi, 'validationSchema.response') ||
-                      defaultValidationSchema;
-                  }
-                } catch (e) {
-                  console.warn(
-                    'Invalid validation schema JSON, using default:',
-                    e
-                  );
-                  validationSchemaData = defaultValidationSchema;
-                }
-
-                // Prepare data for saving API (works for both create and update)
-                const paramsObj = {};
-                params.forEach(p => {
-                  if (p.key) paramsObj[p.key] = p.value;
-                });
-                const apiData = activeApi
-                  ? {
-                      // Update existing API
-                      ...activeApi,
-                      method: method,
-                      endpoint: url,
-                      headers: extractValue(activeApi, 'headers', {}),
-                      params: paramsObj,
-                      body: normalizeBody(bodyContent, bodyType),
-                      bodyType: bodyType,
-                      extra_meta: {
-                        ...extractValue(activeApi, 'extra_meta', {}),
-                        headers: extractValue(activeApi, 'headers', {}),
-                        params: paramsObj,
-                        body: normalizeBody(bodyContent, bodyType),
-                        expected: validationSchemaData, // Add validation schema to extra_meta
-                      },
-                    }
-                  : {
-                      // Create new API
-                      name: selectedNode.name || 'New API',
-                      method: method,
-                      endpoint: url,
-                      description: '',
-                      is_active: true,
-                      headers: {},
-                      params: paramsObj,
-                      body: normalizeBody(bodyContent, bodyType),
-                      bodyType: bodyType,
-                      extra_meta: {
-                        headers: {},
-                        params: paramsObj,
-                        body: normalizeBody(bodyContent, bodyType),
-                        expected: validationSchemaData, // Add validation schema to extra_meta
-                      },
-                    };
-
-                // Use the unified saveApi function for both create and update
-                const result = await saveApi(selectedNode.id, apiData);
-
-                // Reload the API details if this was a new API
-                if (!activeApi) {
-                  await getApi(selectedNode.id);
-                }
-              } catch (err) {
-                console.error('Error saving API configuration:', err);
-                alert(`Failed to save configuration: ${err.message}`);
-              } finally {
-                setIsUpdatingConfig(false);
-              }
-            }}
-            disabled={isUpdatingConfig}
-            title="Save API"
-          >
-            {isUpdatingConfig ? 'Saving...' : 'Save'}
-          </Button>
-          <div className="dropdownContainer">
-            <Button
-              variant="secondary"
-              size="small"
-              className="dropdownButton"
-              onClick={e => {
-                e.stopPropagation();
-                const dropdowns = document.querySelectorAll('.dropdownContent');
-                dropdowns.forEach(dd => dd.classList.remove('active'));
-                e.currentTarget.nextElementSibling.classList.toggle('active');
-              }}
-            >
-              ▼
-            </Button>
-            <div
-              className="dropdownContent saveActionsDropdown"
-              onClick={e => e.stopPropagation()}
-            >
-              <Button
-                variant="secondary"
-                onClick={async () => {
-                  if (!response) {
-                    alert('Send a request first to record as a test case');
-                    return;
-                  }
-
-                  // Start with button in saving state
-                  const button = document.querySelector(
-                    '.saveActionsDropdown button'
-                  );
-                  const originalText = button.innerText;
-                  button.innerText = 'Saving...';
-                  button.disabled = true;
-
-                  // Save the current request/response as a test case
-                  try {
-                    // Get the validation schema from the state
-                    let validationSchemaData;
-
-                    try {
-                      if (validationSchema && validationSchema.trim()) {
-                        validationSchemaData = JSON.parse(validationSchema);
-                      } else {
-                        // Get schema from active API or use default
-                        validationSchemaData =
-                          extractValue(activeApi, 'extra_meta.expected') ||
-                          extractValue(activeApi, 'expected') ||
-                          extractValue(
-                            activeApi,
-                            'validation.responseSchema'
-                          ) ||
-                          extractValue(
-                            activeApi,
-                            'validationSchema.response'
-                          ) ||
-                          defaultValidationSchema;
-                      }
-                    } catch (e) {
-                      console.warn(
-                        'Failed to parse validation schema, using default',
-                        e
-                      );
-                      validationSchemaData = defaultValidationSchema;
-                    }
-
-                    // Ask user for a custom test case name
-                    const defaultName = `Test case - ${new Date().toLocaleTimeString()}`;
-                    const customName = prompt(
-                      'Enter a name for this test case:',
-                      defaultName
-                    );
-
-                    // Format the test case data according to the FastAPI endpoint requirements
-                    // Get the request headers from the current request
-                    const requestHeaders = extractValue(
-                      activeApi,
-                      'headers',
-                      {}
-                    );
-
-                    const testCaseData = {
-                      name: customName || defaultName, // Use custom name or fall back to default
-                      // Pass headers directly as object
-                      headers: requestHeaders,
-                      // Pass body as string if it's JSON or other formats
-                      body: bodyType === 'none' ? null : bodyContent,
-                      // Use the validation schema from the validation tab
-                      expected: validationSchemaData,
-                    };
-
-                    // Check if required values are present
-                    if (!selectedNode?.id) {
-                      console.error(
-                        'Missing selectedNode.id when trying to save test case'
-                      );
-                      alert(
-                        'Error: No API selected. Please select an API first.'
-                      );
-                      return;
-                    }
-
-                    try {
-                      // Use our saveTestCase function
-                      const result = await saveTestCase(
-                        selectedNode.id,
-                        testCaseData
-                      );
-
-                      if (result && (result.data || result.success)) {
-                        // Refresh the test cases list
-                        await getTestCases(selectedNode.id);
-                      } else {
-                        alert('Failed to save test case. Please try again.');
-                      }
-
-                      // Close the dropdown after action
-                      document
-                        .querySelector('.saveActionsDropdown')
-                        .classList.remove('active');
-                    } catch (saveError) {
-                      console.error('Error in saveTestCase:', saveError);
-                      alert(
-                        `Error saving test case: ${saveError.message || 'Unknown error'}`
-                      );
-                    }
-                  } catch (err) {
-                    console.error('Error recording test case:', err);
-                    if (err.response) {
-                      console.error('Error response:', err.response.data);
-                      console.error('Status:', err.response.status);
-                    }
-                    alert(
-                      `Error saving test case: ${err.message || 'Unknown error'}`
-                    );
-                  } finally {
-                    // Reset button state
-                    button.innerText = originalText;
-                    button.disabled = false;
-                  }
-                }}
-                disabled={!response || !selectedNode?.id}
-                title="Record current request/response as a test case"
-              >
-                Record as Test Case
-              </Button>
             </div>
           </div>
         </div>
@@ -1271,16 +1545,16 @@ export default function RequestPanel({ activeRequest }) {
       {/* Request Configuration Tabs */}
       <div className={styles.tabs}>
         <div
-          className={`${styles.tab} ${activeTab === 'api' ? styles.active : ''}`}
-          onClick={() => setActiveTab('api')}
-        >
-          API Details
-        </div>
-        <div
           className={`${styles.tab} ${activeTab === 'params' ? styles.active : ''}`}
           onClick={() => setActiveTab('params')}
         >
           Params
+        </div>
+        <div
+          className={`${styles.tab} ${activeTab === 'auth' ? styles.active : ''}`}
+          onClick={() => setActiveTab('auth')}
+        >
+          Auth
         </div>
         <div
           className={`${styles.tab} ${activeTab === 'headers' ? styles.active : ''}`}
@@ -1295,29 +1569,25 @@ export default function RequestPanel({ activeRequest }) {
           Body
         </div>
         <div
-          className={`${styles.tab} ${activeTab === 'validation' ? styles.active : ''}`}
-          onClick={() => setActiveTab('validation')}
-        >
-          Validation
-        </div>
-        <div
           className={`${styles.tab} ${activeTab === 'apiTests' ? styles.active : ''}`}
           onClick={() => setActiveTab('apiTests')}
         >
-          API Tests
+          Tests
         </div>
         <div
-          className={`${styles.tab} ${activeTab === 'response' ? styles.active : ''}`}
-          onClick={() => setActiveTab('response')}
+          className={`${styles.tab} ${activeTab === 'api' ? styles.active : ''}`}
+          onClick={() => setActiveTab('api')}
         >
-          Response
+          Info
         </div>
       </div>
 
+      {/* Request + Response split via react-resizable-panels */}
+      <PanelGroup orientation="vertical" className={styles.panelGroup}>
+        <Panel defaultSize="45%" minSize="20%" className={styles.requestTabsPanel}>
       {/* Tab Content */}
       <div
         className={styles.tabContent}
-        style={{ height: `${requestHeight}px` }}
       >
         {activeTab === 'api' && (
           <div className={styles.apiContent}>
@@ -1441,6 +1711,17 @@ export default function RequestPanel({ activeRequest }) {
           </div>
         )}
 
+        {activeTab === 'auth' && (() => {
+          const savedAuth = activeApi?.extra_meta?.auth;
+          return (
+            <AuthBuilder
+              apiId={activeApi?.id ?? null}
+              initialType={savedAuth?.type ?? 'none'}
+              initialConfig={savedAuth?.config ?? {}}
+            />
+          );
+        })()}
+
         {activeTab === 'params' && (
           <div className={styles.paramsContent}>
             <div className={styles.paramTable}>
@@ -1456,39 +1737,39 @@ export default function RequestPanel({ activeRequest }) {
                     <input type="checkbox" defaultChecked />
                   </div>
                   <div className={styles.paramKey}>
-                    <input
-                      type="text"
+                    <VariableInput
                       value={param.key}
                       onChange={e => {
                         const newParams = [...params];
                         newParams[idx].key = e.target.value;
-                        setParams(newParams);
+                        setParamsDirty(newParams);
                       }}
                       placeholder="Key"
+                      variant="inline"
                     />
                   </div>
                   <div className={styles.paramValue}>
-                    <input
-                      type="text"
+                    <VariableInput
                       value={param.value}
                       onChange={e => {
                         const newParams = [...params];
                         newParams[idx].value = e.target.value;
-                        setParams(newParams);
+                        setParamsDirty(newParams);
                       }}
                       placeholder="Value"
+                      variant="inline"
                     />
                   </div>
                   <div className={styles.paramDescription}>
-                    <input
-                      type="text"
+                    <VariableInput
                       value={param.description}
                       onChange={e => {
                         const newParams = [...params];
                         newParams[idx].description = e.target.value;
-                        setParams(newParams);
+                        setParamsDirty(newParams);
                       }}
                       placeholder="Description"
+                      variant="inline"
                     />
                   </div>
                 </div>
@@ -1504,7 +1785,7 @@ export default function RequestPanel({ activeRequest }) {
                     defaultValue={''}
                     onBlur={e => {
                       if (e.target.value) {
-                        setParams([
+                        setParamsDirty([
                           ...params,
                           { key: e.target.value, value: '', description: '' },
                         ]);
@@ -1545,106 +1826,87 @@ export default function RequestPanel({ activeRequest }) {
                 <div className={styles.paramDescription}>DESCRIPTION</div>
               </div>
 
-              {/* Render API headers if available */}
-              {activeApi &&
-                (() => {
-                  const headers = extractValue(activeApi, 'headers', null);
-
-                  if (headers) {
-                    if (Array.isArray(headers)) {
-                      return headers.map((header, index) => (
-                        <div
-                          className={styles.paramRow}
-                          key={`header-${index}`}
-                        >
-                          <div className={styles.paramCheckbox}>
-                            <input type="checkbox" defaultChecked />
-                          </div>
-                          <div className={styles.paramKey}>
-                            <input
-                              type="text"
-                              defaultValue={header.key || header.name || ''}
-                            />
-                          </div>
-                          <div className={styles.paramValue}>
-                            <input
-                              type="text"
-                              defaultValue={header.value || ''}
-                            />
-                          </div>
-                          <div className={styles.paramDescription}>
-                            <input
-                              type="text"
-                              defaultValue={header.description || ''}
-                            />
-                          </div>
-                        </div>
-                      ));
-                    } else if (typeof headers === 'object') {
-                      return Object.entries(headers).map(
-                        ([key, value], index) => (
-                          <div
-                            className={styles.paramRow}
-                            key={`header-${index}`}
-                          >
-                            <div className={styles.paramCheckbox}>
-                              <input type="checkbox" defaultChecked />
-                            </div>
-                            <div className={styles.paramKey}>
-                              <input type="text" defaultValue={key} />
-                            </div>
-                            <div className={styles.paramValue}>
-                              <input type="text" defaultValue={value} />
-                            </div>
-                            <div className={styles.paramDescription}>
-                              <input
-                                type="text"
-                                defaultValue={
-                                  key === 'Content-Type'
-                                    ? 'Content type header'
-                                    : ''
-                                }
-                              />
-                            </div>
-                          </div>
-                        )
-                      );
-                    }
-                  }
-                  return null;
-                })()}
-
-              {/* If no headers in API, show default Content-Type */}
-              {(!activeApi || !extractValue(activeApi, 'headers')) && (
-                <div className={styles.paramRow}>
+              {/* Render headers from state */}
+              {headers.map((header, idx) => (
+                <div className={styles.paramRow} key={idx}>
                   <div className={styles.paramCheckbox}>
                     <input type="checkbox" defaultChecked />
                   </div>
                   <div className={styles.paramKey}>
-                    <input type="text" defaultValue="Content-Type" />
+                    <VariableInput
+                      value={header.key}
+                      onChange={e => {
+                        const newHeaders = [...headers];
+                        newHeaders[idx].key = e.target.value;
+                        setHeadersDirty(newHeaders);
+                      }}
+                      placeholder="Key"
+                      variant="inline"
+                    />
                   </div>
                   <div className={styles.paramValue}>
-                    <input type="text" defaultValue="application/json" />
+                    <VariableInput
+                      value={header.value}
+                      onChange={e => {
+                        const newHeaders = [...headers];
+                        newHeaders[idx].value = e.target.value;
+                        setHeadersDirty(newHeaders);
+                      }}
+                      placeholder="Value"
+                      variant="inline"
+                    />
                   </div>
                   <div className={styles.paramDescription}>
-                    <input type="text" defaultValue="Content type header" />
+                    <VariableInput
+                      value={header.description}
+                      onChange={e => {
+                        const newHeaders = [...headers];
+                        newHeaders[idx].description = e.target.value;
+                        setHeadersDirty(newHeaders);
+                      }}
+                      placeholder="Description"
+                      variant="inline"
+                    />
                   </div>
                 </div>
-              )}
+              ))}
 
-              {/* Empty row for new header */}
+              {/* Empty row for adding new header */}
               <div className={styles.paramRow}>
                 <div className={styles.paramCheckbox}>
                   <input type="checkbox" disabled />
                 </div>
                 <div className={styles.paramKey}>
-                  <input type="text" placeholder="Key" />
+                  <input
+                    type="text"
+                    defaultValue={''}
+                    onBlur={e => {
+                      if (e.target.value) {
+                        setHeadersDirty([
+                          ...headers,
+                          { key: e.target.value, value: '', description: '' },
+                        ]);
+                        e.target.value = '';
+                      }
+                    }}
+                    placeholder="Key"
+                  />
                 </div>
                 <div className={styles.paramValue}>
-                  <input type="text" placeholder="Value" />
+                  <input
+                    type="text"
+                    defaultValue={''}
+                    disabled
+                    placeholder="Value"
+                  />
                 </div>
                 <div className={styles.paramDescription}>
-                  <input type="text" placeholder="Description" />
+                  <input
+                    type="text"
+                    defaultValue={''}
+                    disabled
+                    placeholder="Description"
+                  />
                 </div>
               </div>
             </div>
@@ -1657,8 +1919,8 @@ export default function RequestPanel({ activeRequest }) {
               <div
                 className={`${styles.bodyTypeBadge} ${bodyType === 'none' ? styles.active : ''}`}
                 onClick={() => {
-                  setBodyType('none');
-                  setBodyContent('');
+                  setBodyTypeDirty('none');
+                  setBodyContentDirty('');
                 }}
               >
                 none
@@ -1666,15 +1928,12 @@ export default function RequestPanel({ activeRequest }) {
               <div
                 className={`${styles.bodyTypeBadge} ${bodyType === 'raw' ? styles.active : ''}`}
                 onClick={() => {
-                  setBodyType('raw');
-                  // If coming from JSON, try to remove formatting
+                  setBodyTypeDirty('raw');
                   if (bodyType === 'JSON') {
                     try {
                       const obj = JSON.parse(bodyContent);
-                      setBodyContent(JSON.stringify(obj));
-                    } catch (e) {
-                      // Keep content as is if not valid JSON
-                    }
+                      setBodyContentDirty(JSON.stringify(obj));
+                    } catch (e) {}
                   }
                 }}
               >
@@ -1683,24 +1942,18 @@ export default function RequestPanel({ activeRequest }) {
               <div
                 className={`${styles.bodyTypeBadge} ${bodyType === 'JSON' ? styles.active : ''}`}
                 onClick={() => {
-                  setBodyType('JSON');
-                  // If coming from raw and content might be JSON, try to format it
+                  setBodyTypeDirty('JSON');
                   if (bodyType === 'raw' && bodyContent.trim()) {
                     try {
                       const obj = JSON.parse(bodyContent);
-                      setBodyContent(JSON.stringify(obj, null, 2));
+                      setBodyContentDirty(JSON.stringify(obj, null, 2));
                     } catch (e) {
-                      // If not valid JSON, initialize with empty JSON object
-                      if (
-                        !bodyContent.includes('{') &&
-                        !bodyContent.includes('[')
-                      ) {
-                        setBodyContent('{}');
+                      if (!bodyContent.includes('{') && !bodyContent.includes('[')) {
+                        setBodyContentDirty('{}');
                       }
                     }
                   } else if (bodyType === 'none' || !bodyContent) {
-                    // Set a default JSON if coming from none
-                    setBodyContent(`{}`);
+                    setBodyContentDirty('{}');
                   }
                 }}
               >
@@ -1709,16 +1962,9 @@ export default function RequestPanel({ activeRequest }) {
               <div
                 className={`${styles.bodyTypeBadge} ${bodyType === 'XML' ? styles.active : ''}`}
                 onClick={() => {
-                  setBodyType('XML');
+                  setBodyTypeDirty('XML');
                   if (bodyType === 'none' || !bodyContent) {
-                    // Set a default XML if coming from none
-                    setBodyContent(`<root>
-  <name>Example</name>
-  <data>
-    <id>1</id>
-    <description>Sample request body</description>
-  </data>
-</root>`);
+                    setBodyContentDirty(`<root>\n  <name>Example</name>\n</root>`);
                   }
                 }}
               >
@@ -1726,36 +1972,55 @@ export default function RequestPanel({ activeRequest }) {
               </div>
               <div
                 className={`${styles.bodyTypeBadge} ${bodyType === 'form-data' ? styles.active : ''}`}
-                onClick={() => {
-                  setBodyType('form-data');
-                  // For simplicity, we'll keep the text representation of form data
-                  if (bodyType === 'none' || !bodyContent) {
-                    setBodyContent(
-                      'name=Example&id=1&description=Sample+request+body'
-                    );
-                  }
-                }}
+                onClick={() => setBodyTypeDirty('form-data')}
               >
                 form-data
               </div>
+              <div
+                className={`${styles.bodyTypeBadge} ${bodyType === 'url-encoded' ? styles.active : ''}`}
+                onClick={() => setBodyTypeDirty('url-encoded')}
+              >
+                url-encoded
+              </div>
+              <div
+                className={`${styles.bodyTypeBadge} ${bodyType === 'graphql' ? styles.active : ''}`}
+                onClick={() => setBodyTypeDirty('graphql')}
+              >
+                GraphQL
+              </div>
             </div>
 
-            {bodyType !== 'none' && (
+            {bodyType === 'JSON' && (
+              <CodeMirror
+                value={bodyContent}
+                height="100%"
+                minHeight="120px"
+                extensions={[jsonLang(), variableHighlight, variableCompletion]}
+
+                onChange={val => setBodyContentDirty(val)}
+                className={styles.bodyCodeMirror}
+                basicSetup={{ lineNumbers: true, foldGutter: true }}
+              />
+            )}
+            {(bodyType === 'form-data' || bodyType === 'url-encoded') && (
+              <KeyValueBodyTable
+                rows={bodyType === 'form-data' ? formDataRows : urlEncodedRows}
+                setRows={bodyType === 'form-data' ? setFormDataRows : setUrlEncodedRows}
+                onSerialize={serialized => setBodyContentDirty(serialized)}
+              />
+            )}
+            {bodyType !== 'none' && bodyType !== 'JSON' && bodyType !== 'form-data' && bodyType !== 'url-encoded' && (
               <JsonEditor
                 value={bodyContent}
-                onChange={setBodyContent}
+                onChange={setBodyContentDirty}
                 placeholder={
                   bodyType === 'raw'
                     ? 'Enter raw text'
-                    : bodyType === 'JSON'
-                      ? 'Enter JSON data'
-                      : bodyType === 'XML'
-                        ? 'Enter XML data'
-                        : bodyType === 'form-data'
-                          ? 'name=value&name2=value2'
-                          : ''
+                    : bodyType === 'XML'
+                      ? 'Enter XML data'
+                      : ''
                 }
-                language={bodyType === 'JSON' ? 'json' : 'text'}
+                language="text"
                 showCopyButton={true}
                 resizable={true}
                 minHeight={150}
@@ -1774,6 +2039,65 @@ export default function RequestPanel({ activeRequest }) {
                   Form data will be sent as application/x-www-form-urlencoded
                 </p>
                 <p>Format: key1=value1&key2=value2</p>
+              </div>
+            )}
+            {bodyType === 'graphql' && (
+              <div className={styles.gqlPanel}>
+                <div className={styles.gqlPanelRow}>
+                  <div className={styles.gqlLabel}>Query</div>
+                  <button
+                    className={styles.gqlSchemaBtn}
+                    disabled={gqlSchemaLoading}
+                    onClick={async () => {
+                      if (!url) return;
+                      setGqlSchemaLoading(true);
+                      setGqlSchemaError(null);
+                      try {
+                        const API_BASE = import.meta.env.VITE_API_BASE || 'https://api-testing-2vjt.onrender.com';
+                        const token = localStorage.getItem('token');
+                        const res = await fetch(`${API_BASE}/api/graphql-introspect`, {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                            Authorization: token?.startsWith('Bearer ') ? token : `Bearer ${token}`,
+                          },
+                          body: JSON.stringify({ url }),
+                        });
+                        const data = await res.json();
+                        if (data.error_message) setGqlSchemaError(data.error_message);
+                        else setGqlSchemaError(null);
+                      } catch (err) {
+                        setGqlSchemaError('Failed to load schema');
+                      } finally {
+                        setGqlSchemaLoading(false);
+                      }
+                    }}
+                  >
+                    {gqlSchemaLoading ? 'Loading…' : 'Load Schema'}
+                  </button>
+                </div>
+                {gqlSchemaError && (
+                  <div style={{ color: 'var(--error)', fontSize: 11, marginBottom: 4 }}>{gqlSchemaError}</div>
+                )}
+                <CodeMirror
+                  value={gqlQuery}
+                  height="120px"
+                  extensions={[variableHighlight, variableCompletion]}
+                  onChange={val => setGqlQuery(val)}
+                  className={styles.bodyCodeMirror}
+                  basicSetup={{ lineNumbers: true }}
+                  placeholder="{ user(id: 1) { name email } }"
+                />
+                <div className={styles.gqlLabel} style={{ marginTop: 8 }}>Variables (JSON)</div>
+                <CodeMirror
+                  value={gqlVariables}
+                  height="80px"
+                  extensions={[jsonLang(), variableHighlight, variableCompletion]}
+                  onChange={val => setGqlVariables(val)}
+                  className={styles.bodyCodeMirror}
+                  basicSetup={{ lineNumbers: false }}
+                  placeholder="{}"
+                />
               </div>
             )}
           </div>
@@ -1800,6 +2124,10 @@ export default function RequestPanel({ activeRequest }) {
           </div>
         )}
 
+        {activeTab === 'variables' && (
+          <CollectionVarEditor nodeId={selectedNode?.id} />
+        )}
+
         {activeTab === 'apiTests' && (
           <div className={styles.testsContent}>
             <div className={styles.testsHeader}>
@@ -1817,6 +2145,16 @@ export default function RequestPanel({ activeRequest }) {
                 </Button>
                 {activeApi && testCases && testCases.length > 0 && (
                   <>
+                    <Button
+                      variant="danger"
+                      className={styles.deleteAllButton}
+                      onClick={handleDeleteTestCases}
+                      disabled={isSending}
+                    >
+                      {selectedTestCases.length > 0
+                        ? `Delete Selected (${selectedTestCases.length})`
+                        : 'Delete All'}
+                    </Button>
                     <Button
                       variant="secondary"
                       className={styles.runSelectedTestsButton}
@@ -1837,7 +2175,7 @@ export default function RequestPanel({ activeRequest }) {
                           );
                           return;
                         }
-                        runTest(selectedNode.id);
+                        runTest({ fileId: selectedNode.id });
                       }}
                       disabled={isSending}
                     >
@@ -1891,10 +2229,10 @@ export default function RequestPanel({ activeRequest }) {
                                 );
                                 return;
                               }
-                              runTest(
-                                selectedNode.id,
-                                testCase.id || testCase.case_id
-                              );
+                              runTest({
+                                fileId: selectedNode.id,
+                                caseId: testCase.id || testCase.case_id,
+                              });
                             }}
                             disabled={isSending}
                           >
@@ -1924,9 +2262,11 @@ export default function RequestPanel({ activeRequest }) {
                               );
                               if (!confirmDelete) return;
                               try {
-                                await deleteTestCase(id);
-                                // Refresh list after deletion
-                                getTestCases(selectedNode.id);
+                                // Optimistic removal patches the cached list.
+                                await deleteTestCase({
+                                  caseId: id,
+                                  fileId: selectedNode.id,
+                                }).unwrap();
                               } catch (err) {
                                 console.error(
                                   'Failed to delete test case:',
@@ -1989,6 +2329,27 @@ export default function RequestPanel({ activeRequest }) {
                   <h4>Test Results</h4>
                   <div className={styles.testResultsActions}>
                     <Button
+                      variant="primary"
+                      size="small"
+                      className={styles.copyExcelButton}
+                      onClick={async () => {
+                        try {
+                          const excelData =
+                            transformTestResultsToExcel(testResults);
+                          await copyTableToClipboard(excelData);
+                          setExcelCopied(true);
+                          setTimeout(() => setExcelCopied(false), 2000);
+                        } catch (err) {
+                          console.error('Error creating Excel data:', err);
+                          alert(
+                            'Error preparing data for Excel. Please try again.'
+                          );
+                        }
+                      }}
+                    >
+                      {excelCopied ? '✓ Copied!' : '📋 Copy Excel'}
+                    </Button>
+                    <Button
                       variant="secondary"
                       size="small"
                       className={styles.clearResultsButton}
@@ -2033,19 +2394,38 @@ export default function RequestPanel({ activeRequest }) {
           </div>
         )}
 
-        {activeTab === 'response' && (
-          <div className={styles.responseContent}>
+      </div>
+        </Panel>
+        <PanelResizeHandle className={styles.verticalResizeHandle} />
+        <Panel defaultSize="45%" minSize="15%" className={styles.responsePanel}>
+          {/* Response Panel — always visible */}
+          <div className={styles.responsePanelInner}>
             {response ? (
               <>
                 <div className={styles.responseMeta}>
                   <div
                     className={`${styles.statusBadge} ${response.status < 300 ? styles.success : styles.error}`}
                   >
-                    Status: {response.status} {response.statusText}
+                    {response.status} {response.statusText}
                   </div>
                   <div className={styles.responseInfo}>
-                    <span>Time: {response.time}</span>
-                    <span>Size: {response.size}</span>
+                    <span>{response.time}</span>
+                    <span>{response.size}</span>
+                  </div>
+                  <div className={styles.responseActions}>
+                    <CopyButton textToCopy={responseBodyValue} className={styles.copyResponseBtn} />
+                    <CopyButton
+                      textToCopy={buildCurlCommand({
+                        method,
+                        url,
+                        headers: Object.fromEntries(
+                          headers.filter(h => h.key).map(h => [h.key, h.value])
+                        ),
+                        body: bodyType === 'JSON' && bodyContent ? (() => { try { return JSON.parse(bodyContent); } catch { return null; } })() : null,
+                      })}
+                      className={styles.copyResponseBtn}
+                      label="Copy cURL"
+                    />
                   </div>
                 </div>
 
@@ -2054,7 +2434,13 @@ export default function RequestPanel({ activeRequest }) {
                     className={`${styles.responseTab} ${responseTab === 'body' ? styles.active : ''}`}
                     onClick={() => setResponseTab('body')}
                   >
-                    Body
+                    Pretty
+                  </div>
+                  <div
+                    className={`${styles.responseTab} ${responseTab === 'raw' ? styles.active : ''}`}
+                    onClick={() => setResponseTab('raw')}
+                  >
+                    Raw
                   </div>
                   <div
                     className={`${styles.responseTab} ${responseTab === 'headers' ? styles.active : ''}`}
@@ -2067,37 +2453,22 @@ export default function RequestPanel({ activeRequest }) {
                 <div className={styles.responseBody}>
                   {responseTab === 'body' && (
                     <div className={`${styles.responseBodyContent} scrollable`}>
-                      {response.body &&
-                      response.body.response_code !== undefined ? (
-                        // Format for standard API response with response_code and data/error_message
-                        <div className={styles.structuredResponse}>
-                          <JsonEditor
-                            value={JSON.stringify(response.body, null, 2)}
-                            language="json"
-                            showCopyButton={true}
-                            resizable={true}
-                            minHeight={150}
-                            maxHeight={400}
-                            disabled={true}
-                            className={styles.responseJsonEditor}
-                          />
-                        </div>
-                      ) : (
-                        // For other response formats
-                        <JsonEditor
-                          value={JSON.stringify(response.body, null, 2)}
-                          language="json"
-                          showCopyButton={true}
-                          resizable={true}
-                          minHeight={150}
-                          maxHeight={400}
-                          disabled={true}
-                          className={styles.responseJsonEditor}
-                        />
-                      )}
+                      <CodeMirror
+                        value={responseBodyValue}
+                        height="100%"
+                        extensions={[jsonLang()]}
+                        
+                        readOnly
+                        className={styles.responseCodeMirror}
+                        basicSetup={{ lineNumbers: true, foldGutter: true }}
+                      />
                     </div>
                   )}
-
+                  {responseTab === 'raw' && (
+                    <div className={`${styles.responseBodyContent} scrollable`}>
+                      <pre className={styles.rawResponsePre}>{responseBodyValue}</pre>
+                    </div>
+                  )}
                   {responseTab === 'headers' && (
                     <div className={`${styles.responseHeaders} scrollable`}>
                       {Object.entries(response.headers).map(([key, value]) => (
@@ -2116,15 +2487,15 @@ export default function RequestPanel({ activeRequest }) {
                   <img
                     src={thinkingGif}
                     alt="Thinking animation"
-                    style={{ width: 120, height: 120, objectFit: 'contain' }}
+                    style={{ width: 80, height: 80, objectFit: 'contain' }}
                   />
-                  <p>Still thinking... Try making an API call!</p>
+                  <p>Send a request to see the response</p>
                 </div>
               </div>
             )}
           </div>
-        )}
-      </div>
+        </Panel>
+      </PanelGroup>
 
       {/* Test Case Form Modal */}
       {showTestCaseForm && selectedNode?.type === 'file' && (
@@ -2148,8 +2519,8 @@ export default function RequestPanel({ activeRequest }) {
                 fileId={selectedNode.id}
                 caseId={editingTestCaseId}
                 onSave={() => {
+                  // TestCaseForm's save mutation invalidates the file cache → list refreshes.
                   setShowTestCaseForm(false);
-                  getTestCases(selectedNode.id);
                 }}
                 onCancel={() => setShowTestCaseForm(false)}
               />
@@ -2181,18 +2552,7 @@ export default function RequestPanel({ activeRequest }) {
                 >
                   {isSending ? 'Running...' : 'Re-run Test'}
                 </Button>
-                <Button
-                  variant="primary"
-                  size="small"
-                  onClick={() => {
-                    // Save the modified test result data
-                    // Here you would implement saving logic to your backend
-                    // For now, just show a confirmation
-                    alert(
-                      'Test data changes saved locally. Implement backend save as needed.'
-                    );
-                  }}
-                >
+                <Button variant="primary" size="small" onClick={() => {}}>
                   Save Changes
                 </Button>
                 <Button

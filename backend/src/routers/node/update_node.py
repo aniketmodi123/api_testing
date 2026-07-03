@@ -1,13 +1,17 @@
+"""
+What this file does: Exposes PUT /node/{node_id} for renaming or reparenting a node within a workspace.
+"""
+
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_db
 from common_querys import (
+    can_access_workspace,
     check_circular_reference,
     get_user_by_username,
     validate_parent_node,
-    verify_node_ownership
 )
 from models import Node
 from schema import (
@@ -29,17 +33,20 @@ async def update_node(
     username: str = Header(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """Update/rename/move a node"""
+    """PUT /node/{node_id} — rename or reparent a node; reject circular references and duplicate names in the target location."""
     try:
         # Get user
         user = await get_user_by_username(db, username)
         if not user:
             return create_response(400, error_message="User not found")
 
-        # Verify node ownership
-        node = await verify_node_ownership(db, node_id, user.id)
+        # Fetch node, then require editor access (rename/move is a write)
+        node_result = await db.execute(select(Node).where(Node.id == node_id))
+        node = node_result.scalar_one_or_none()
         if not node:
-            return create_response(206, error_message="Node not found or access denied")
+            return create_response(404, error_message="Node not found")
+        if not await can_access_workspace(db, node.workspace_id, user.id, min_role="editor"):
+            return create_response(403, error_message="Access denied")
 
         # If moving the node, validate the new parent
         if node_data.parent_id is not None:
@@ -80,11 +87,11 @@ async def update_node(
         # Use shared workspace tree response function
         data, err = await get_workspace_tree_response(db, node.workspace_id, include_apis=True)
         if not data:
-            return create_response(206, error_message=err or "Workspace not found after update.")
+            return create_response(404, error_message=err or "Workspace not found after update.")
         message = f"{node.type.title()} renamed/updated successfully"
         return create_response(200, value_correction(data), message=message)
 
     except Exception as e:
         await db.rollback()
-        ExceptionHandler(e)
+        return ExceptionHandler(e)
 

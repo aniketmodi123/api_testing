@@ -1,73 +1,161 @@
-.button {
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 1.2rem;
-  padding: 0.5rem;
+/* === Header Shell === */
+.header {
+  height: var(--header-height);
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-3);
+  gap: var(--space-3);
+  flex-shrink: 0;
+  z-index: 10;
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-shrink: 0;
+}
+
+.headerCenter {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1;
+  min-width: 0;
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* === Logo === */
+.logo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  text-decoration: none;
+  color: var(--text);
+}
+
+.logoIcon {
+  width: 22px;
+  height: 22px;
+  background: var(--accent);
+  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-color);
-  border-radius: 50%;
-  transition: all 0.2s ease;
+  font-size: 12px;
+  font-weight: 700;
+  color: white;
+  flex-shrink: 0;
+}
+
+.logoText {
+  font-size: var(--text-base);
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+/* === Icon button (theme toggle, etc.) === */
+.button {
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  border-radius: var(--radius);
+  transition:
+    color var(--duration-base),
+    background var(--duration-base);
 }
 
 .button:hover {
-  background-color: rgba(128, 128, 128, 0.1);
-  transform: translateY(-2px);
+  color: var(--text);
+  background: var(--surface-3);
 }
 
 .icon {
-  font-size: 1.5rem;
+  font-size: 16px;
 }
 
+/* === Dropdown === */
 .buttonContainer {
   position: relative;
 }
 
 .dropdown {
   position: absolute;
-  top: 100%;
+  top: calc(100% + 6px);
   right: 0;
-  background-color: var(--card-bg);
-  border-radius: 0.5rem;
-  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
-  padding: 0.75rem 1rem;
-  z-index: 10;
-  min-width: 180px;
-  margin-top: 0.5rem;
-  animation: fadeIn 0.2s ease;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-2);
+  z-index: 100;
+  min-width: 200px;
+  animation: fadeIn 0.12s ease;
 }
 
 .email {
   margin: 0;
-  font-weight: normal;
-  color: var(--text-color);
-  font-size: 0.9rem;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  padding: var(--space-1) var(--space-2);
   word-break: break-all;
 }
 
 .divider {
   height: 1px;
-  background-color: rgba(128, 128, 128, 0.2);
-  margin: 0.5rem 0;
+  background: var(--border);
+  margin: var(--space-1) 0;
 }
 
 .dropdownItem {
   display: flex;
   align-items: center;
-  padding: 0.5rem 0;
-  color: var(--text-color);
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2);
+  color: var(--text-muted);
   text-decoration: none;
-  font-size: 0.9rem;
-  transition: all 0.2s;
+  font-size: var(--text-sm);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  width: 100%;
+  transition:
+    color var(--duration-fast),
+    background var(--duration-fast);
 }
 
 .dropdownItem:hover {
-  color: var(--primary-color);
+  color: var(--text);
+  background: var(--surface-3);
 }
 
 .menuIcon {
-  margin-right: 0.5rem;
-  font-size: 1rem;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.logoutItem {
+  color: var(--error, #e05252);
+}
+
+.logoutItem:hover {
+  color: var(--error, #e05252);
+  background: color-mix(in srgb, var(--error, #e05252) 10%, transparent);
 }

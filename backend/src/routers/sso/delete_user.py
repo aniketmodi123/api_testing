@@ -1,3 +1,7 @@
+"""
+What this file does: Exposes the DELETE /delete_user route for soft-deleting the authenticated user's account.
+"""
+
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,18 +24,19 @@ async def delete_user(
     username: str= Header(...),
     db: AsyncSession = Depends(get_db)
 ):
+    """DELETE /delete_user — blacklist the user's token and mark the account inactive."""
     try:
         result = await db.execute(select(User).where(User.email == username))
         user = result.scalar_one_or_none()
 
         if user is None:
-            return create_response(400, error_message="User not found")
+            return create_response(404, error_message="User not found")
 
         await blacklist_token(username)
         user.is_active = False
         await db.commit()
 
-        return create_response(200 , error_message= "User account successfully deleted")
+        return create_response(200, message="User account successfully deleted")
     except Exception as e:
         await db.rollback()
-        ExceptionHandler(e)
+        return ExceptionHandler(e)

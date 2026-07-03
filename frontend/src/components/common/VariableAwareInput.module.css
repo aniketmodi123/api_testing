@@ -1,0 +1,62 @@
+.wrapper {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.input {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 13px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-1);
+  color: transparent;
+  caret-color: var(--accent);
+  font-family: var(--font-mono);
+  transition: border-color var(--duration-base);
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--bg);
+}
+
+/* Highlight overlay — padding must exactly match .input padding */
+.highlights {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-family: var(--font-mono);
+  white-space: pre;
+  overflow: hidden;
+  pointer-events: none;
+  color: var(--text);
+}
+
+.token {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.tooltip {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: var(--text-xs);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius);
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 100;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+}

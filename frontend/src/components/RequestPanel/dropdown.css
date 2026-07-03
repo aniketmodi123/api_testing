@@ -6,31 +6,39 @@
 }
 
 .dropdownButton {
-  background-color: #445261;
-  color: white;
-  padding: 8px 7px;
-  border: none;
+  background: var(--surface-2);
+  color: var(--text);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border);
+  border-left: none; /* Avoid double border if attached */
   cursor: pointer;
-  border-radius: 0 4px 4px 0;
+  border-radius: 0 var(--radius) var(--radius) 0;
   height: 100%;
-  margin-left: -1px; /* Ensure connected look with Send button */
+  margin-left: 0;
   font-size: 10px;
   min-width: 25px;
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: background var(--duration-base);
+}
+
+.dropdownButton:hover {
+  background: var(--surface-3);
 }
 
 .dropdownContent {
   display: none;
   position: absolute;
-  background-color: #ffffff;
+  background: var(--surface-1);
   min-width: 120px;
-  box-shadow: 0px 2px 10px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow-md);
   z-index: 100;
   right: 0;
-  border-radius: 4px;
-  margin-top: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-top: 4px;
+  padding: var(--space-1) 0;
 }
 
 .saveActionsDropdown {
@@ -38,8 +46,8 @@
 }
 
 .dropdownContent button {
-  color: #333333;
-  padding: 8px 16px;
+  color: var(--text);
+  padding: var(--space-2) var(--space-3);
   text-decoration: none;
   display: block;
   width: 100%;
@@ -47,23 +55,18 @@
   border: none;
   background: none;
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--text-sm);
+  transition: background var(--duration-base);
 }
 
 .dropdownContent button:hover {
-  background-color: #f1f1f1;
+  background: var(--surface-2);
 }
-
-/* No longer show dropdown on hover - we use click instead */
-/*.dropdownContainer:hover .dropdownContent {
-  display: block;
-}*/
 
 .dropdownContent.active {
   display: block;
 }
 
-/* These are now replaced by actionsContainer */
 .saveButtonContainer,
 .recordCaseButtonContainer {
   position: relative;
@@ -77,41 +80,52 @@
   display: flex;
   align-items: center;
   vertical-align: middle;
-  margin-left: 10px;
+  margin-left: var(--space-2);
   height: 34px;
 }
 
 .actionsButton {
-  background-color: #4d5969 !important;
-  color: white !important;
-  border: none !important;
-  padding: 0 15px !important;
-  border-radius: 4px 0 0 4px !important;
+  background: var(--surface-2) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border) !important;
+  padding: 0 var(--space-3) !important;
+  border-radius: var(--radius) 0 0 var(--radius) !important;
   cursor: pointer !important;
-  font-size: 14px !important;
+  font-size: var(--text-sm) !important;
   height: 100% !important;
-  font-weight: normal !important;
+  font-weight: 500 !important;
   min-width: 70px;
+  transition: background var(--duration-base) !important;
+}
+
+.actionsButton:hover:not(:disabled) {
+  background: var(--surface-3) !important;
+}
+
+.actionsButton:disabled {
+  opacity: 0.5 !important;
+  cursor: not-allowed !important;
 }
 
 .saveButton {
-  padding: 0 15px;
-  margin-left: 10px;
-  background-color: #ffffff;
-  color: #000000;
-  font-size: 14px;
-  border: 1px solid #ddd;
-  border-radius: 4px 0 0 4px;
+  padding: 0 var(--space-3);
+  margin-left: var(--space-2);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: var(--text-sm);
+  border: 1px solid var(--border);
+  border-radius: var(--radius) 0 0 var(--radius);
   cursor: pointer;
-  font-weight: normal;
+  font-weight: 500;
   height: 32px;
+  transition: background var(--duration-base);
 }
 
-.saveButton:hover {
-  background-color: #f1f1f1;
+.saveButton:hover:not(:disabled) {
+  background: var(--surface-3);
 }
 
 .saveButton:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: not-allowed;
 }

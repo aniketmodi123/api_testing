@@ -86,7 +86,7 @@ export default function EnvironmentForm({
           <p className={styles.subtitle}>
             {isEdit
               ? 'Update the environment settings below.'
-              : 'Set up a new environment for your API testing workflow.'}
+              : 'Set up a new environment for your ApiPilot workflow.'}
           </p>
         </div>
       </div>

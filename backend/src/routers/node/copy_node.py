@@ -1,15 +1,19 @@
-from fastapi import APIRouter, Depends
+"""
+What this file does: Exposes POST /node/{node_id}/copy for deep-copying a node tree to a target workspace/folder; also exports copy_node_recursive for use in move_node.
+"""
+
+from fastapi import APIRouter, Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
-from models import Node, Workspace, Api, ApiCase
+from models import Node, Api, ApiCase
 from config import get_db
 from schema import NodeCopyRequest
 from typing import Optional
 import logging
 
 from utils import ExceptionHandler, create_response, value_correction
-from common_querys import get_workspace_tree_response, get_unique_name
+from common_querys import get_workspace_tree_response, get_unique_name, get_user_by_username, can_access_workspace, verify_node_ownership
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -22,7 +26,18 @@ async def copy_node_recursive(
     db: AsyncSession
 ) -> Node:
     """
-    Recursively copy a node and all its children
+    What it does: Deep-copy a node into a target workspace/folder, duplicating its API and test cases for file nodes and recursing into children for folder nodes.
+    Args:
+        source_node: The Node to copy.
+        target_workspace_id: Workspace that will own the copy.
+        target_parent_id: Parent folder id in the target workspace; None places the copy at the root.
+        new_name: Name to assign to the copied root node.
+    Returns:
+        Node: The newly created root copy with its DB id populated via flush.
+    Steps:
+        - Step 1: Create a new Node with new_name, target_workspace_id, and target_parent_id; flush to obtain its id
+        - Step 2: If source is a file — copy the associated Api record and all its ApiCase children under the new node
+        - Step 3: If source is a folder — fetch all direct children and recursively copy each into the new folder
     """
     # Create the copied node
     copied_node = Node(
@@ -90,25 +105,23 @@ async def copy_node_recursive(
 async def copy_node(
     node_id: int,
     request: NodeCopyRequest,
+    username: str = Header(...),
     db: AsyncSession = Depends(get_db)
 ):
-    """
-    Copy a node (file or folder) to a different location.
-    Handles name conflicts by appending 'copy', 'copy 2', etc.
-    Returns the full workspace tree structure (like list_workspace_tree).
-    """
+    """POST /node/{node_id}/copy — deep-copy a node to the target workspace/folder with a unique name; return updated workspace tree."""
     try:
-        # Get the node to copy
-        result = await db.execute(select(Node).where(Node.id == node_id))
-        source_node = result.scalar_one_or_none()
-        if not source_node:
-            return create_response(206, error_message="Node not found")
+        user = await get_user_by_username(db, username)
+        if not user:
+            return create_response(400, error_message="User not found")
 
-        # Verify target workspace exists
-        result = await db.execute(select(Workspace).where(Workspace.id == request.target_workspace_id))
-        target_workspace = result.scalar_one_or_none()
-        if not target_workspace:
-            return create_response(206, error_message="Target workspace not found")
+        # Verify read access to the source node
+        source_node = await verify_node_ownership(db, node_id, user.id)
+        if not source_node:
+            return create_response(404, error_message="Node not found or access denied")
+
+        # Verify write access to the target workspace
+        if not await can_access_workspace(db, request.target_workspace_id, user.id, min_role="editor"):
+            return create_response(403, error_message="Target workspace access denied")
 
         # Verify target folder exists if specified
         if request.target_folder_id:
@@ -120,7 +133,7 @@ async def copy_node(
             )
             target_folder = result.scalar_one_or_none()
             if not target_folder:
-                return create_response(206, error_message="Target folder not found")
+                return create_response(400, error_message="Invalid target folder")
             # Ensure target folder is in the target workspace
             if target_folder.workspace_id != request.target_workspace_id:
                 return create_response(400, error_message="Target folder must be in the target workspace")
@@ -148,10 +161,10 @@ async def copy_node(
         # Use shared workspace tree response function
         data, err = await get_workspace_tree_response(db, request.target_workspace_id, include_apis=True)
         if not data:
-            return create_response(206, error_message=err or "Workspace not found after copy.")
+            return create_response(404, error_message=err or "Workspace not found after copy.")
         return create_response(200, value_correction(data))
 
     except Exception as e:
         logger.error(f"Error copying node {node_id}: {str(e)}")
         await db.rollback()
-        ExceptionHandler(e)
+        return ExceptionHandler(e)

@@ -1,3 +1,9 @@
+"""
+What this file does: Provides shared utilities for logging, password hashing, JWT token management,
+response building, OTP email delivery, and {{VAR}} variable resolution across all routers;
+SMTP credentials are read from environment variables.
+"""
+
 from time import time
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
@@ -23,27 +29,24 @@ base_dir = Path.cwd()
 
 
 logging.basicConfig(
-    # Set the log level (e.g., DEBUG, INFO, WARNING, ERROR)
     level=logging.INFO,
-    # Set the log message format
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'  # Set the date format for log timestamps
+    datefmt='%Y-%m-%d %H:%M:%S'
 )
 
 loggers = {}
 
 
 def setup_logger(log_filename):
+    """Set up a named file logger, reusing the existing instance when called again.
+
+    Args:
+        log_filename: Log file name used both as the logger name and file path
+                      under ``extras/``.
+
+    Returns:
+        logging.Logger: Configured logger that writes DEBUG-level and above to the file.
     """
-        Set up and configure a logger for logging messages to a specific file.
-
-        Parameters:
-        - log_filename (str): The name of the log file.
-
-        Returns:
-        logging.Logger: The configured logger instance for the specified log file.
-    """
-
     if log_filename in loggers:
         return loggers[log_filename]
 
@@ -65,20 +68,15 @@ def setup_logger(log_filename):
 
 
 def logs(msg='', type='info', file_name=''):
+    """Emit a log message at the specified level, optionally to a named file logger.
+
+    Args:
+        msg: Message string to log; defaults to empty string.
+        type: ``"info"`` (default) INFO level; ``"debug"`` → DEBUG; ``"warning"`` → WARNING;
+              ``"error"`` → ERROR; ``"critical"`` → CRITICAL.
+        file_name: When provided, routes the message to a dedicated file logger for that name;
+                   empty string uses the module-level logger.
     """
-        Log messages with different log levels (debug, info, warning, error, critical).
-
-        Parameters:
-        - msg (str, optional): The message to be logged. Defaults to an empty string.
-        - type (str, optional): The log level/type (debug, info, warning, error, critical).
-        Defaults to 'info'.
-        - file_name (str, optional): The name of the log file. If provided,
-        a new logger will be set up for that file.
-
-        Returns:
-        None: The function logs the specified message at the specified log level.
-    """
-
     logger = logging.getLogger(__name__)
     if file_name:
         logger = setup_logger(file_name)
@@ -98,25 +96,49 @@ def logs(msg='', type='info', file_name=''):
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
-# Function to verify password
 def verify_password(plain_password, hashed_password):
+    """Verify a plain-text password against a bcrypt hash.
+
+    Returns:
+        bool: ``True`` when the password matches the hash; ``False`` otherwise.
+    """
     return pwd_context.verify(plain_password, hashed_password)
 
 
-# Function to hash the password
 def get_password_hash(password):
+    """Hash a plain-text password using bcrypt.
+
+    Returns:
+        str: The bcrypt hash string suitable for storage.
+    """
     return pwd_context.hash(password)
 
+
 async def create_access_token(data: Dict[str, Any], expires_delta: relativedelta = relativedelta(minutes=30)):
+    """Create a signed JWT access token with an expiry claim.
+
+    Args:
+        data: Payload dict to encode; an ``exp`` key will be added or overwritten.
+        expires_delta: Validity duration from now; defaults to 30 minutes.
+
+    Returns:
+        str: Encoded JWT string.
+    """
     expire = datetime.now() + expires_delta
     data.update({"exp": int(expire.timestamp())})
     return jwt.encode(data, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
 
 
 async def blacklist_token(username: str, token: str = '') -> bool:
-    """
-    Asynchronously blacklist all tokens associated with a username (or a specific token if given).
-    Sets `black_list = True` for matched tokens in the `sso_cache` table.
+    """Invalidate all active tokens for a user, or a single token when specified.
+
+    Args:
+        username: Username whose tokens should be blacklisted.
+        token: Specific JWT string to blacklist; empty string blacklists all active tokens
+               for the user.
+
+    Returns:
+        bool: ``True`` when blacklisting succeeded; ``False`` when a DB error occurred.
     """
     try:
         async with SessionLocal() as db:
@@ -144,26 +166,41 @@ async def blacklist_token(username: str, token: str = '') -> bool:
         return False
 
 
-
-
-
 def ExceptionHandler(e, context_data=None):
-    """
-    Enhanced global exception handler that handles various types of errors
-    including HTTP connection errors, database errors, and general exceptions.
+    """Map a caught exception to a structured JSON error response or re-raise as HTTPException.
 
     Args:
-        e: The exception to handle
-        context_data: Optional dict with context information (url, headers, request_data, etc.)
+        e: The exception to handle.
+        context_data: Optional dict with ``url``, ``method``, ``headers`` keys for HTTP
+                      error context; ``None`` omits request details from the error payload.
+
+    Returns:
+        JSONResponse: Structured error response for httpx network errors (ConnectError,
+                      TimeoutException, RequestError) which include diagnostics in ``data``.
+
+    Raises:
+        HTTPException: For all other exception types (ValueError, SQLAlchemyError, etc.)
+                       with an appropriate status code and detail message.
+
+    Steps:
+        - Step 1: Set default 409 response code and generic error message
+        - Step 2: Check for HTTPException — use its status code and detail directly
+        - Step 3: Check for httpx network errors — build diagnostic error_data with troubleshooting tips
+        - Step 4: Check for Python built-in errors (ValueError, TypeError, KeyError, etc.) — map to 400/404/403
+        - Step 5: Check for SQLAlchemy / DB errors — map to 409
+        - Step 6: Return create_response when error_data is present; otherwise raise HTTPException
     """
+    # Step 1: Defaults
     response_code = status.HTTP_409_CONFLICT
     error_message = "Something went wrong"
     error_data = None
 
+    # Step 2: HTTPException
     if isinstance(e, HTTPException):
         response_code = e.status_code
         error_message = e.detail
 
+    # Step 3: httpx network errors
     elif isinstance(e, httpx.ConnectError):
         response_code = 502
         error_message = "Connection failed"
@@ -206,6 +243,7 @@ def ExceptionHandler(e, context_data=None):
             "original_error": str(e)
         }
 
+    # Step 4: Python built-in errors
     elif isinstance(e, ValueError):
         response_code = 400
         error_message = "Invalid value provided." + str(e)
@@ -224,6 +262,8 @@ def ExceptionHandler(e, context_data=None):
     elif isinstance(e, PermissionError):
         response_code = 403
         error_message = "Permission denied." + str(e)
+
+    # Step 5: DB errors
     elif isinstance(e, SQLAlchemyError):
         response_code = 409
         error_message = f"Database error: {str(e)}"
@@ -237,7 +277,7 @@ def ExceptionHandler(e, context_data=None):
         response_code = 400
         error_message = "Syntax error in the SQL query: " + str(e)
 
-    # Return structured response instead of raising HTTPException
+    # Step 6: Return structured response or raise
     if error_data:
         return create_response(
             response_code=response_code,
@@ -252,14 +292,16 @@ def ExceptionHandler(e, context_data=None):
 
 
 def handle_http_error(e, url=None, method=None, headers=None):
-    """
-    Convenience function for handling HTTP errors with context.
+    """Delegate an HTTP exception to ExceptionHandler with request context attached.
 
     Args:
-        e: The HTTP exception
-        url: The request URL
-        method: The HTTP method
-        headers: The request headers
+        e: The exception to handle.
+        url: Request URL for context; ``None`` when not available.
+        method: HTTP method string for context; ``None`` when not available.
+        headers: Request headers dict for context; ``None`` when not available.
+
+    Returns:
+        JSONResponse: Structured error response from ExceptionHandler.
     """
     context_data = {
         'url': url,
@@ -270,14 +312,27 @@ def handle_http_error(e, url=None, method=None, headers=None):
 
 
 def value_correction(data):
+    """Recursively normalise Python values into JSON-safe primitives.
+
+    Args:
+        data: Any Python value — str, Decimal, datetime, date, Timedelta, float, dict, list,
+              or other; ``None`` and other types are returned unchanged.
+
+    Returns:
+        str: Stripped string, or formatted date/datetime/timedelta string.
+        float: Decimal converted to float; floats rounded to 2 decimal places.
+        dict: Dict with all values recursively corrected.
+        list: List with all items recursively corrected.
+        Any: Original value for types not handled above.
+    """
     if isinstance(data, str):
         return data.strip()
     elif isinstance(data, Decimal):
         return float(data)
     elif isinstance(data, datetime):
-        return data.strftime('%Y-%m-%d %H:%M:%S')  # Format for datetime
-    elif isinstance(data, date):  # Handle date separately from datetime
-        return data.strftime('%Y-%m-%d')  # Format for date
+        return data.strftime('%Y-%m-%d %H:%M:%S')
+    elif isinstance(data, date):
+        return data.strftime('%Y-%m-%d')
     elif isinstance(data, pd.Timedelta) or isinstance(data, timedelta):
         return str(data)
     elif isinstance(data, float):
@@ -291,7 +346,7 @@ def value_correction(data):
 
 
 def _format_validation_errors(errors: list) -> list:
-    """Formats validation errors into a readable structure."""
+    """What it does: Format Pydantic validation error dicts into field/message pairs."""
     return [
         {"field": ".".join(map(str, error['loc'])).replace("__root__.", ""), "message": error['msg']}
         for error in errors
@@ -306,23 +361,27 @@ def create_response(
     error_message: Optional[str] = None,
     message: Optional[str] = None
 ) -> Union[JSONResponse, Response]:
-    """
-    Constructs a well-structured JSON response that supports data validation, error handling,
-    and pagination. Data is validated against a schema if provided, and errors are formatted
-    and logged.
+    """Build a standardised JSON API response with optional schema validation and pagination.
 
     Args:
-        response_code (int): The HTTP status code of the response.
-        data (Any, optional): The data to include in the response. Can be a list or dictionary.
-                              If a schema is provided, the data will be validated.
-        schema (Any, optional): A Pydantic schema used to validate the data.
-        pagination (dict, optional): A dictionary with pagination details.
-        error_message (str, optional): An error message to be included in the response.
+        response_code: HTTP status code to set on the response.
+        data: Response payload; validated against schema when provided; ``None`` omits
+              the ``data`` key entirely.
+        schema: Pydantic model class to validate data against; ``None`` passes data through
+                without validation.
+        pagination: Dict with ``page``, ``rows``, ``total_rows`` keys; ``None`` omits pagination.
+        error_message: Human-readable error string; ``None`` omits the ``error_message`` key.
+        message: Human-readable success string; ``None`` omits the ``message`` key.
 
     Returns:
-        JSONResponse: A structured JSON response object.
-    """
+        Response: Empty 204 response when response_code is 204.
+        JSONResponse: Structured envelope with ``response_code``, optional ``data``,
+                      ``message``, ``error_message``, ``pagination``, and ``errors`` keys.
 
+    Notes:
+        - When schema validation fails, response_code is overridden to 422 and ``errors``
+          is added to the envelope instead of ``data``.
+    """
     response: dict[str, Any] = {
         'response_code': response_code,
     }
@@ -336,20 +395,22 @@ def create_response(
             response["data"] = data
         else:
             try:
+                # mode="json" keeps datetime/Decimal/etc. as JSON-safe primitives (ISO
+                # strings) instead of re-emitting Python objects that JSONResponse's
+                # default encoder cannot serialize.
                 if isinstance(data, list):
                     response["data"] = [
-                        TypeAdapter(schema).validate_python(item).model_dump() for item in data
+                        TypeAdapter(schema).validate_python(item).model_dump(mode="json") for item in data
                     ]
                 elif isinstance(data, dict):
                     validated_data = TypeAdapter(schema).validate_python(data)
-                    response["data"] = validated_data.model_dump()
+                    response["data"] = validated_data.model_dump(mode="json")
                 else:
                     raise ValueError("Expected data to be a list or dict")
             except ValidationError as e:
-                # Log and format validation errors
                 errors = _format_validation_errors(e.errors())
                 logs(json.dumps(errors, indent=4), type="error")
-                response_code = 422  # Set HTTP status to Unprocessable Entity
+                response_code = 422
                 error_message = "Data validation error"
                 response["errors"] = errors
 
@@ -378,16 +439,32 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 
-
 OTP_EXPIRY_SECONDS = 600
 MAX_ATTEMPTS = 2
 LOCK_DURATION = 10
 
+
 def generate_otp():
-    return random.randint(100000, 999999)  # Generates a random 6-digit number
+    """Generate a random 6-digit OTP integer.
+
+    Returns:
+        int: A random integer in the range 100000–999999.
+    """
+    return random.randint(100000, 999999)
 
 
 def email_otp_message(otp, email, use_for):
+    """Send an HTML OTP email to the specified address via SMTP.
+
+    Args:
+        otp: The OTP value to embed in the email body.
+        email: Recipient email address.
+        use_for: Purpose label shown in the email body (e.g. ``"login"`` or ``"password_reset"``).
+
+    Returns:
+        bool: ``True`` when the email was sent successfully; ``False`` when SMTP credentials
+              are missing or sending fails.
+    """
     body = f"""
         <html>
         <head>
@@ -461,13 +538,12 @@ def email_otp_message(otp, email, use_for):
                 </div>
                 <div class="footer">
                     <p>If you did not request this email, please contact us immediately.</p>
-                    <p>Thank you,<br>The Polaris Team</p>
+                    <p>Thank you,<br>The APIPilot Team</p>
                 </div>
             </div>
         </body>
     </html>"""
     try:
-        # Configure these based on your email provider
         smtp_server = os.environ.get('SMTP_SERVER', 'smtp.gmail.com')
         smtp_port = int(os.environ.get('SMTP_PORT', '587'))
         smtp_username = os.environ.get('SMTP_USERNAME', '')
@@ -477,7 +553,6 @@ def email_otp_message(otp, email, use_for):
             logs("SMTP credentials not configured", type="warning")
             return False
 
-        # Create message
         msg = MIMEMultipart()
         msg['From'] = smtp_username
         msg['To'] = email
@@ -485,7 +560,6 @@ def email_otp_message(otp, email, use_for):
 
         msg.attach(MIMEText(body, 'plain'))
 
-        # Send email
         server = smtplib.SMTP(smtp_server, smtp_port)
         server.starttls()
         server.login(smtp_username, smtp_password)
@@ -506,47 +580,201 @@ import re
 from typing import Dict, Any, List, Union
 
 
-def extract_variables_from_text(text: str) -> List[str]:
-    """
-    Extract all variable names from text that follow the {{variable_name}} pattern.
+def merge_scopes(*scopes: dict) -> dict:
+    """Merge variable scope dicts with right-most scope taking highest priority.
 
     Args:
-        text (str): The text to extract variables from
+        scopes: Variable number of dicts ordered from lowest to highest priority;
+                empty or ``None`` scopes are safely skipped.
 
     Returns:
-        List[str]: List of unique variable names found in the text
+        dict: Merged dict where later scopes override earlier ones for duplicate keys.
+    """
+    merged = {}
+    for scope in scopes:
+        if scope:
+            merged.update(scope)
+    return merged
+
+
+def extract_variables_from_text(text: str) -> List[str]:
+    """Extract unique variable names from ``{{variable_name}}`` placeholders in a string.
+
+    Args:
+        text: Input string to scan; non-string values return an empty list.
+
+    Returns:
+        list[str]: Deduplicated list of variable names found between ``{{`` and ``}}``.
     """
     if not isinstance(text, str):
         return []
 
     pattern = r'\{\{([^}]+)\}\}'
     matches = re.findall(pattern, text)
-    return list(set(matches))  # Return unique variable names
+    return list(set(matches))
 
 
-def resolve_variables(data: Any, variables: dict, ts: int | None = None) -> Any:
+def _make_dynamic_context() -> dict:
+    """What it does: Generate a single-use dynamic token set so all tokens are stable within one resolve call."""
+    import uuid as _uuid
+    import random as _random
+    from datetime import datetime, timezone as _tz
+
+    try:
+        from faker import Faker as _Faker
+        _f = _Faker()
+    except ImportError:
+        _f = None
+
+    _now = datetime.now(_tz.utc)
+    _ts_sec = int(_now.timestamp())
+    _guid = str(_uuid.uuid4())
+
+    ctx: dict = {
+        # --- canonical timestamp tokens ---
+        "$timestamp": str(_ts_sec),
+        "$isoTimestamp": _now.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+        # --- GUID ---
+        "$guid": _guid,
+        "$randomUUID": _guid,
+        # --- legacy (keep for backward compat) ---
+        "$uuid": _guid,
+        # --- numbers ---
+        "$randomInt": str(_random.randint(0, 1000)),
+        "$randomFloat": f"{_random.uniform(0.0, 1.0):.2f}",
+        # --- boolean ---
+        "$randomBoolean": _random.choice(["true", "false"]),
+    }
+
+    if _f:
+        ctx.update({
+            # internet / contact
+            "$randomEmail": _f.email(),
+            "$randomExampleEmail": _f.ascii_email(),
+            "$randomUserName": _f.user_name(),
+            "$randomUrl": _f.url(),
+            "$randomDomainName": _f.domain_name(),
+            "$randomDomainSuffix": _f.tld(),
+            "$randomDomainWord": _f.domain_word(),
+            "$randomIP": _f.ipv4(),
+            "$randomIPV6": _f.ipv6(),
+            "$randomMACAddress": _f.mac_address(),
+            "$randomProtocol": _random.choice(["http", "https"]),
+            "$randomPassword": _f.password(),
+            "$randomUserAgent": _f.user_agent(),
+            "$randomSemver": f"{_random.randint(0,9)}.{_random.randint(0,99)}.{_random.randint(0,999)}",
+            # names
+            "$randomFirstName": _f.first_name(),
+            "$randomLastName": _f.last_name(),
+            "$randomFullName": _f.name(),
+            "$randomNamePrefix": _f.prefix(),
+            "$randomNameSuffix": _f.suffix(),
+            # phone / finance
+            "$randomPhoneNumber": _f.phone_number(),
+            "$randomCurrencyCode": _f.currency_code(),
+            "$randomCurrencyName": _f.currency_name(),
+            "$randomCurrencySymbol": _f.currency_symbol(),
+            # company
+            "$randomCompanyName": _f.company(),
+            "$randomCompanySuffix": _f.company_suffix(),
+            "$randomJobTitle": _f.job(),
+            # address / location
+            "$randomCity": _f.city(),
+            "$randomStreetName": _f.street_name(),
+            "$randomStreetAddress": _f.street_address(),
+            "$randomCountry": _f.country(),
+            "$randomCountryCode": _f.country_code(),
+            "$randomLatitude": str(_f.latitude()),
+            "$randomLongitude": str(_f.longitude()),
+            "$randomZipCode": _f.zipcode(),
+            "$randomTimeZone": _f.timezone(),
+            # text / lorem
+            "$randomAlphaNumeric": _random.choice("abcdefghijklmnopqrstuvwxyz0123456789"),
+            "$randomWord": _f.word(),
+            "$randomWords": " ".join(_f.words(_random.randint(1, 5))),
+            "$randomLoremWord": _f.word(),
+            "$randomLoremWords": " ".join(_f.words(3)),
+            "$randomLoremSentence": _f.sentence(),
+            "$randomLoremSentences": " ".join(_f.sentences(_random.randint(2, 6))),
+            "$randomLoremParagraph": _f.paragraph(),
+            # color / file
+            "$randomHexColor": _f.hex_color(),
+            "$randomMimeType": _f.mime_type(),
+            "$randomFileName": _f.file_name(),
+            "$randomFileExtension": _f.file_extension(),
+            "$randomFilePath": _f.file_path(),
+            "$randomDirectoryPath": _f.file_path(depth=2).rsplit("/", 1)[0],
+        })
+    else:
+        # fallback when faker not installed
+        import string as _string
+        _rand_user = "".join(_random.choices(_string.ascii_lowercase, k=8))
+        _rand_domain = "".join(_random.choices(_string.ascii_lowercase, k=6))
+        ctx["$randomEmail"] = f"{_rand_user}@{_rand_domain}.com"
+        ctx["$randomUserName"] = _rand_user
+        ctx["$randomFirstName"] = "John"
+        ctx["$randomLastName"] = "Doe"
+        ctx["$randomFullName"] = "John Doe"
+        ctx["$randomWord"] = "lorem"
+        ctx["$randomWords"] = "lorem ipsum dolor"
+        ctx["$randomLoremSentence"] = "Lorem ipsum dolor sit amet."
+        ctx["$randomAlphaNumeric"] = _random.choice("abcdefghijklmnopqrstuvwxyz0123456789")
+
+    return ctx
+
+
+def resolve_variables(data: Any, variables: dict, ts: int | None = None, _dyn: dict | None = None) -> Any:
+    """Substitute ``{{VAR}}`` and dynamic ``{{$token}}`` placeholders in data with resolved values.
+
+    Args:
+        data: Value to process — str, dict, list, or other; ``None`` returns ``None``;
+              non-string/dict/list types are returned unchanged.
+        variables: Mapping of variable name → replacement string; empty dict leaves
+                   placeholders unchanged.
+        ts: Unix timestamp in milliseconds used to replace ``${ts}`` tokens; generated
+            from current time when ``None``.
+        _dyn: Pre-generated dynamic token dict (``$uuid``, ``$randomInt``, ``$randomEmail``);
+              created once on the first call and threaded through recursion so tokens are
+              stable within a single resolve pass. Callers should not pass this explicitly.
+
+    Returns:
+        Any: Input data with all known ``{{VAR}}``, ``{{$token}}``, and ``${ts}`` tokens
+             substituted; unknown variables remain as their original ``{{VAR}}`` literal.
+    """
     if data is None:
         return None
     if not ts:
         ts = int(time() * 1000)
+    # Generate dynamic tokens once per top-level call; thread through recursion
+    if _dyn is None:
+        _dyn = _make_dynamic_context()
 
     if isinstance(data, str):
         result = str(data)
-        if variables:
-            def replace_variable(match):
-                var_name = match.group(1)
-                return str(variables.get(var_name, match.group(0)))
-            result = re.sub(r"\{\{([a-zA-Z_][a-zA-Z0-9_\-]*)\}\}", replace_variable, result)
+        # Merged lookup: user variables take priority over dynamic tokens
+        lookup = {**_dyn, **(variables or {})}
+        def replace_variable(match):
+            """What it does: Return the resolved value or leave the placeholder unchanged."""
+            var_name = match.group(1)
+            return str(lookup.get(var_name, match.group(0)))
+        result = re.sub(r"\{\{([a-zA-Z_\$][a-zA-Z0-9_\-\$]*)\}\}", replace_variable, result)
         return result.replace("${ts}", str(ts))
 
     if isinstance(data, dict):
-        return {k: resolve_variables(v, variables, ts) for k, v in data.items()}
+        return {k: resolve_variables(v, variables, ts, _dyn) for k, v in data.items()}
     if isinstance(data, list):
-        return [resolve_variables(i, variables, ts) for i in data]
+        return [resolve_variables(i, variables, ts, _dyn) for i in data]
     return data
 
 
 async def get_environment_variables(environment_id: int) -> Dict[str, str]:
+    """Fetch the variable dict from a specific environment by id.
+
+    Returns:
+        dict: Variable key→value mapping from the environment's JSON column.
+              Returns empty dict when the environment does not exist, has no variables,
+              or any DB error occurs.
+    """
     try:
         async with SessionLocal() as db:
             from models import Environment
@@ -563,34 +791,34 @@ async def get_environment_variables(environment_id: int) -> Dict[str, str]:
         logs(f"Error getting environment variables: {e}", type="error")
         return {}
 
+
 async def resolve_api_variables(environment_id: int, api_data: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Resolve all variables in API data using variables from the specified environment.
+    """Resolve all ``{{VAR}}`` placeholders in an API data dict using a specific environment.
 
     Args:
-        environment_id (int): The ID of the environment containing variables
-        api_data (Dict[str, Any]): The API data structure to resolve variables in
+        environment_id: Environment whose variables will be used for substitution.
+        api_data: API data structure (headers, body, params, url, etc.) to resolve.
 
     Returns:
-        Dict[str, Any]: API data with all variables resolved
+        dict: API data with all known variable placeholders substituted.
     """
     variables = await get_environment_variables(environment_id)
     return resolve_variables(api_data, variables)
 
 
 def get_variables_from_api_data(api_data: Dict[str, Any]) -> List[str]:
-    """
-    Extract all variable names used in an API data structure.
+    """Extract all unique ``{{VAR}}`` variable names referenced in an API data structure.
 
     Args:
-        api_data (Dict[str, Any]): The API data structure to analyze
+        api_data: API data structure to scan — may contain nested dicts, lists, and strings.
 
     Returns:
-        List[str]: List of unique variable names found
+        list[str]: Deduplicated list of variable names found across the entire structure.
     """
     variables = set()
 
     def extract_from_value(value):
+        """What it does: Recursively collect variable names from any value type."""
         if isinstance(value, str):
             variables.update(extract_variables_from_text(value))
         elif isinstance(value, dict):

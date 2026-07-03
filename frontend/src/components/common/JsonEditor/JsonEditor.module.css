@@ -1,15 +1,15 @@
 .jsonEditorContainer {
   position: relative;
   border: 1px solid var(--border);
-  border-radius: 6px;
-  background-color: var(--input-background);
+  border-radius: var(--radius);
+  background-color: var(--input-bg);
   display: flex;
   flex-direction: column;
   min-height: 150px;
   max-height: 600px;
   overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  transition: height 0.1s ease-out;
+  box-shadow: none;
+  transition: height var(--duration-fast) var(--easing-default);
 }
 
 .jsonEditorContainer.resizing {
@@ -21,7 +21,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 8px 12px;
-  background-color: var(--background-lighter);
+  background-color: var(--surface-2);
   border-bottom: 1px solid var(--border);
   min-height: 40px;
   box-sizing: border-box;
@@ -37,20 +37,20 @@
 .minifyButton {
   padding: 4px 8px;
   border: 1px solid var(--border);
-  background-color: var(--background);
+  background-color: var(--bg);
   color: var(--text);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 12px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all var(--duration-base) var(--easing-default);
   font-weight: 500;
 }
 
 .formatButton:hover,
 .minifyButton:hover {
-  background-color: var(--hover-background);
-  border-color: var(--primary);
-  color: var(--primary);
+  background-color: var(--surface-3);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .formatButton:disabled,
@@ -60,7 +60,7 @@
 }
 
 .errorIndicator {
-  color: #ef4444;
+  color: var(--error);
   font-size: 12px;
   font-weight: 500;
   display: flex;
@@ -71,12 +71,12 @@
 .copyButton {
   padding: 6px 10px;
   border: 1px solid var(--border);
-  background-color: var(--background);
+  background-color: var(--bg);
   color: var(--text);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 12px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all var(--duration-base) var(--easing-default);
   display: flex;
   align-items: center;
   gap: 4px;
@@ -84,9 +84,9 @@
 }
 
 .copyButton:hover {
-  background-color: var(--hover-background);
-  border-color: var(--primary);
-  color: var(--primary);
+  background-color: var(--surface-3);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .editorContent {
@@ -98,10 +98,13 @@
 }
 
 .textarea {
+  position: relative;
+  z-index: 1;
   width: 100%;
-  border: none;
-  background-color: var(--input-background);
-  color: var(--text);
+  border: 1px solid var(--code-border);
+  background-color: var(--code-bg);
+  color: transparent;
+  caret-color: var(--accent);
   font-family: "SF Mono", "Monaco", "Inconsolata", "Roboto Mono", "Source Code Pro", monospace;
   font-size: 14px;
   line-height: 1.5;
@@ -114,10 +117,34 @@
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
   transition:
-    background-color 0.2s ease,
-    height 0.1s ease-out;
+    background-color var(--duration-base) var(--easing-default),
+    height var(--duration-fast) var(--easing-default);
   flex: 1;
   min-height: 0;
+}
+
+/* Colored overlay on top of the textarea — metrics must match .textarea exactly. */
+.highlightOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border: 1px solid transparent;
+  padding: 16px;
+  font-family: "SF Mono", "Monaco", "Inconsolata", "Roboto Mono", "Source Code Pro", monospace;
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  color: var(--text);
+  pointer-events: none;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.varToken {
+  color: var(--accent);
+  font-weight: 600;
 }
 
 .textarea.resizing {
@@ -136,8 +163,8 @@
 
 .textarea::-webkit-scrollbar-thumb {
   background: var(--border);
-  border-radius: 4px;
-  border: 2px solid var(--input-background);
+  border-radius: var(--radius-sm);
+  border: 2px solid var(--input-bg);
 }
 
 .textarea::-webkit-scrollbar-thumb:hover {
@@ -149,8 +176,8 @@
 }
 
 .textarea.error {
-  border-left: 3px solid #ef4444;
-  background-color: rgba(239, 68, 68, 0.05);
+  border-left: 3px solid var(--error);
+  background-color: var(--error-dim);
 }
 
 .textarea::placeholder {
@@ -160,8 +187,8 @@
 }
 
 .textarea:focus {
-  background-color: var(--background);
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+  background-color: var(--code-bg-deeper);
+  box-shadow: none;
 }
 
 /* Resize handle */
@@ -177,7 +204,7 @@
   align-items: center;
   justify-content: center;
   opacity: 0;
-  transition: opacity 0.2s ease;
+  transition: opacity var(--duration-base) var(--easing-default);
 }
 
 .jsonEditorContainer:hover .resizeHandle {
@@ -189,30 +216,12 @@
   color: var(--text-muted);
   font-size: 12px;
   letter-spacing: 2px;
-  background-color: var(--background-lighter);
+  background-color: var(--surface-2);
   padding: 2px 8px;
   border-radius: 2px;
   border: 1px solid var(--border);
 }
 
-/* Theme-specific enhancements */
-[data-theme="dark"] .textarea {
-  background-color: #1a1a1a;
-}
-
-[data-theme="dark"] .textarea:focus {
-  background-color: #0f0f0f;
-}
-
-[data-theme="light"] .textarea {
-  background-color: #fafafa;
-  border: 1px solid #e5e7eb;
-}
-
-[data-theme="light"] .textarea:focus {
-  background-color: #ffffff;
-  border-color: var(--primary);
-}
 
 /* JSON syntax highlighting simulation through CSS */
 .textarea {
@@ -223,13 +232,13 @@
 
 /* Read-only mode styling */
 .textarea[readonly] {
-  background-color: var(--background-lighter);
+  background-color: var(--surface-2);
   cursor: default;
   opacity: 0.9;
 }
 
 .textarea[readonly]:focus {
-  background-color: var(--background-lighter);
+  background-color: var(--surface-2);
   box-shadow: none;
 }
 
@@ -246,12 +255,12 @@
 
 /* Status indicators */
 .validIcon {
-  color: #10b981;
+  color: var(--success);
   font-size: 14px;
 }
 
 .invalidIcon {
-  color: #ef4444;
+  color: var(--error);
   font-size: 14px;
 }
 
@@ -261,14 +270,14 @@
 }
 
 .resizeHandle.resizing::before {
-  background-color: var(--primary);
+  background-color: var(--accent);
   color: white;
 }
 
 /* Responsive design */
 @media (max-width: 768px) {
   .jsonEditorContainer {
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
   }
 
   .textarea {

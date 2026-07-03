@@ -5,6 +5,34 @@ export const API_BASE =
   import.meta.env.VITE_API_BASE || 'https://api-testing-2vjt.onrender.com';
 export const api = axios.create({ baseURL: API_BASE });
 
+/**
+ * What it does: Reads the stored credentials and returns the auth request headers shared
+ * by the axios client and the RTK Query base query — the single source for auth headers.
+ * Returns:
+ *   object: ``{ Authorization, username }`` — each key present only when its source value
+ *           exists in localStorage; an empty object when the user is signed out.
+ */
+export function getAuthHeaders() {
+  const token = localStorage.getItem('token');
+  const user = localStorage.getItem('user');
+
+  let email = null;
+  try {
+    if (user) email = JSON.parse(user)?.email ?? null;
+  } catch (e) {
+    console.error('Error parsing user from localStorage:', e);
+  }
+
+  const headers = {};
+  if (token) {
+    headers.Authorization = token.startsWith('Bearer ')
+      ? token
+      : `Bearer ${token}`;
+  }
+  if (email) headers.username = email;
+  return headers;
+}
+
 // By default we don't send cookies; enable if your backend uses cookie-based sessions
 // api.defaults.withCredentials = true;
 
@@ -20,44 +48,13 @@ api.interceptors.request.use(config => {
     config.headers['User-Agent'] = 'API-Testing-Tool/1.0';
   }
 
-  // Get token from localStorage - this ensures we always use the latest token
-  const token = localStorage.getItem('token');
-  const user = localStorage.getItem('user');
-  let userObj = null;
-
-  try {
-    if (user) {
-      userObj = JSON.parse(user);
-    }
-  } catch (e) {
-    console.error('Error parsing user from localStorage:', e);
+  // Apply the shared auth headers without overriding any explicitly set on the request.
+  const authHeaders = getAuthHeaders();
+  if (authHeaders.Authorization && !('Authorization' in config.headers)) {
+    config.headers['Authorization'] = authHeaders.Authorization;
   }
-
-  // Add auth headers if available
-  if (token && !('Authorization' in config.headers)) {
-    // Ensure backend receives Bearer token format
-    config.headers['Authorization'] =
-      typeof token === 'string' && token.startsWith('Bearer ')
-        ? token
-        : `Bearer ${token}`;
-  }
-
-  // Debug: log whether we will send auth for this request
-  try {
-    // Avoid spamming prod logs; keep as debug
-    console.debug('[api] Request:', config.method?.toUpperCase(), config.url, {
-      hasAuthorization: !!config.headers['Authorization'],
-      usernameHeader: !!config.headers['username'],
-      baseURL: config.baseURL,
-      withCredentials:
-        config.withCredentials || api.defaults.withCredentials || false,
-    });
-  } catch (e) {
-    /* ignore */
-  }
-
-  if (userObj?.email && !('username' in config.headers)) {
-    config.headers['username'] = userObj.email;
+  if (authHeaders.username && !('username' in config.headers)) {
+    config.headers['username'] = authHeaders.username;
   }
 
   return config;
@@ -76,7 +73,7 @@ api.interceptors.response.use(
       // Log the full response body to help debugging
       try {
         console.debug('[api] 401 response body:', error.response.data);
-      } catch (e) {
+      } catch {
         /* ignore */
       }
 
@@ -99,8 +96,8 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    // Process the error with our error handler utility
-    const processedError = handleApiError(error);
+    // Process the error with our error handler utility (logging/normalization side effect)
+    handleApiError(error);
 
     return Promise.reject(error);
   }
