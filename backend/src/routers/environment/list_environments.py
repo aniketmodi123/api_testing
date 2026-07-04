@@ -59,6 +59,7 @@ async def list_environments(
                     "name": env.name,
                     "description": env.description,
                     "is_active": env.is_active,
+                    "variables": env.variables or {},
                     "created_at": str(env.created_at) if env.created_at else None,
                     "updated_at": str(env.updated_at) if env.updated_at else None,
                     "workspace_id": env.workspace_id
@@ -70,6 +71,7 @@ async def list_environments(
                 "name": active_environment.name,
                 "description": active_environment.description,
                 "is_active": active_environment.is_active,
+                "variables": active_environment.variables or {},
                 "created_at": str(active_environment.created_at) if active_environment.created_at else None,
                 "updated_at": str(active_environment.updated_at) if active_environment.updated_at else None,
                 "workspace_id": active_environment.workspace_id
@@ -229,6 +231,7 @@ async def update_environment(
             "name": environment.name,
             "description": environment.description,
             "is_active": environment.is_active,
+            "variables": environment.variables or {},
             "created_at": str(environment.created_at) if environment.created_at else None,
             "updated_at": str(environment.updated_at) if environment.updated_at else None,
             "workspace_id": environment.workspace_id
@@ -305,6 +308,7 @@ async def activate_environment(
             "name": environment.name,
             "description": environment.description,
             "is_active": environment.is_active,
+            "variables": environment.variables or {},
             "created_at": str(environment.created_at) if environment.created_at else None,
             "updated_at": str(environment.updated_at) if environment.updated_at else None,
             "workspace_id": environment.workspace_id

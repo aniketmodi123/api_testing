@@ -71,7 +71,7 @@ export default function TestResultsGrid({
   return (
     <div className={styles.container}>
       <div className={styles.header}>
-        <h2 className={styles.title}>{title}</h2>
+        {title && <h2 className={styles.title}>{title}</h2>}
         <div className={styles.summary}>
           <span className={styles.summaryItem}>
             Total: <strong>{totalCount}</strong>

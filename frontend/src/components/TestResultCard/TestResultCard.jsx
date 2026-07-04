@@ -16,6 +16,15 @@ export default function TestResultCard({
   onSave,
   onRunTest,
 }) {
+  // Hooks must run before any early return (Rules of Hooks) — a hook after the
+  // `!testResult` guard changes hook order across renders and crashes the grid.
+  const [editableData, setEditableData] = useState({
+    request: pretty(testResult?.request || testResult?.requestData || {}),
+    expected: pretty(testResult?.expected || testResult?.expectedData || {}),
+  });
+  const [hasChanges, setHasChanges] = useState(false);
+  const [showDiff, setShowDiff] = useState(false);
+
   if (!testResult) {
     return (
       <div className={styles.card}>
@@ -27,13 +36,6 @@ export default function TestResultCard({
       </div>
     );
   }
-
-  const [editableData, setEditableData] = useState({
-    request: pretty(testResult.request || testResult.requestData || {}),
-    expected: pretty(testResult.expected || testResult.expectedData || {}),
-  });
-  const [hasChanges, setHasChanges] = useState(false);
-  const [showDiff, setShowDiff] = useState(false);
 
   const handleOpenDetailView = () => {
     onFocus?.(testResult);
@@ -103,9 +105,9 @@ export default function TestResultCard({
             </span>
           </h3>
           <div className={styles.meta}>
-            status:{' '}
             <span className={isSuccess ? styles.statusOk : styles.statusBad}>{statusCode}</span>
-            &nbsp;·&nbsp; duration: {duration} ms
+            <span className={styles.metaDot}>·</span>
+            {Math.round(duration)} ms
           </div>
         </div>
         <div className={styles.actions}>

@@ -210,14 +210,44 @@ Request Body Example: <BODY_EXAMPLE>
 Success Response Example: <SUCCESS_EXAMPLE>
 Error Response Examples: <ERROR_EXAMPLES>
 
-extra variable for normal cases:
-username : aniketmodi@polarisgrids.com
-vertical : mes
-user-type : admin / consumer
-site_id: S1_MDMS Aniket Test_1760510676 or S1_Site Gaurav_1764679640 or S1_CLEMENT TOWN DEMO SITE 1_1764061020 or S1_PITHORAGARH DEMO SITE 1_1764050316 or S1_DEHRADUN DEMO SITE 1_1764061101 or S1_BAREILLY DEMO SITE 1_1764061060
-sc_no: 1764063171_H_1 or 1764085300_H_4 or 1764062514_H_1 or 1764062799_H_1 or 1764234913_543 or 1768798570_H_13 or 1764063204_H_2 or 1764134307_12 or 1764062573_H_2 or 1762235767_gh23 or 1765438154_H1_2 or 1764062989_H_1 or 1764063059_H_3 or 1760511548_cam or 1764085219_H_4 or 1760511225_HouseA or 1760511610_HouseD or 1764085449_H_4 or 1764063029_H_2 or 1764062873_H_3 or 1762235706_A141 or 1761294819_H_101_4 or 1764062841_H_2 or 1760511345_HouseB or 1760511903_houseH or 1764135076_125 or 1760511447_HouseC or 1764063242_H_3 or 1764085368_H_4 or 1764238889_A1 or 1764132982_1231 or 1765435346_H1_1 or 1764062633_H_3
+VARIABLES — WHERE EACH VALUE LIVES (MANDATORY)
 
+CORE RULE: a `{{var}}` is ONLY for a value SHARED ACROSS MULTIPLE APIs. If a value is used by a
+single case or a single API, it is a plain LITERAL — never a variable. Variables exist to reuse one
+value everywhere (change it once, every case follows). Nothing else justifies a variable.
 
+1. SHARED AUTH / IDENTITY HEADERS → environment variable `{{var}}`. THIS IS THE MAIN (usually only) USE.
+   * token, username, usertype, base URL — sent by (almost) every request in the workspace.
+   * Put them ONCE in the environment as `{{token}}`, `{{username}}`, `{{usertype}}`, `{{devurl}}`.
+     Reference them in headers. Never paste a raw VALID token into a case.
+   * PERSONAS live side by side in one env: admin keys `{{token}}`/`{{username}}`/`{{usertype}}` and
+     consumer keys `{{consumer_token}}`/`{{consumer_username}}`/`{{consumer_usertype}}` (consumer keys
+     carry the word `consumer`). A case acting AS a persona references that persona's env var.
+   * A test that needs an INVALID value on purpose (bad/expired/tampered token, wrong role) puts a
+     STATIC LITERAL directly in that one case's request — NEVER a variable. That is the point of the test.
 
+2. PARAMS and BODY → ALWAYS LITERAL. NEVER put a `{{var}}` in params or body.
+   * Each case's params/body carry the concrete value THAT case tests — write it inline as a literal.
+   * A VALID data value that must exist in the target DB (a real `site_id`, `feeder_id`, `sc_no`,
+     `project_id`) is STILL a literal — do not variable-ize it. GROUND it first: query the target DB
+     for a value that returns rows, then inline that literal. A guessed/placeholder id silently
+     returns 206/empty. (This is the #1 bug: an unconfigured `{{site_id}}` sends the literal text
+     `{{site_id}}`, matches nothing, and every case returns 206.)
+   * Invalid/edge values — empty string, whitespace, missing param, malformed id, out-of-range
+     number, wrong-type field — are literals too, one per case.
+
+3. EXPECTED BLOCKS ARE NOT VARIABLE-RESOLVED.
+   * The runner substitutes `{{var}}` only in headers / params / body — NOT in `expected`.
+   * So when a param is `{{site_id}}`, never assert `equals "<a literal site_id>"` in expected —
+     assert `present`/`type` instead, so the assertion still holds when the env value changes.
+
+4. NEVER EMIT A VARIABLE THAT IS NOT CONFIGURED — HARD GATE (this is the bug this rule prevents).
+   * Before writing ANY `{{var}}` into a case, that variable MUST already exist in the active
+     environment. If it does not exist yet, STOP: ASK the user for its value, persist it with the
+     environment tools, and only THEN produce cases that reference it.
+   * A case that ships an unconfigured `{{var}}` runs with the LITERAL TEXT `{{token}}` / `{{site_id}}`
+     as the value and fails wholesale (mass "Invalid token" / 206-empty). This is not an API bug —
+     it is an unconfigured-variable bug. Prevent it, do not diagnose it later.
+   * Ask ONCE per value; reuse the stored env var across all later cases and APIs. Never ask twice.
 
 Return JSON only.

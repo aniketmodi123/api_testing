@@ -70,8 +70,10 @@ async def _run_case(
             async with sem:
                 method = (case.get("method") or "GET").upper()
                 url = case.get("endpoint", "")
-                merged_headers = {**headers, **case.get("headers", {})}
-                merged_headers = {str(k): str(v) for k, v in merged_headers.items()}
+                merged_headers = {**headers, **(case.get("headers") or {})}
+                # None value = "remove this header" (missing-header test cases); str(None)
+                # would otherwise leak the literal string "None" onto the wire.
+                merged_headers = {str(k): str(v) for k, v in merged_headers.items() if v is not None}
 
                 body = case.get("body")
                 params = case.get("params")

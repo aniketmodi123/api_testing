@@ -4,6 +4,7 @@ discovery, bulk project sync, environment variables, test runs with reconcile hi
 result export. Requires env vars PLATFORM_BASE_URL, PLATFORM_EMAIL, PLATFORM_PASSWORD.
 """
 
+import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -24,11 +25,14 @@ CASEGEN_PROMPT_PATH = _BACKEND_DIR / "gpt_test_case_creatio_prompt.txt"
 TEST_WORKFLOW_PATH = _REPO_DIR / "research" / "mcp" / "TEST_WORKFLOW.md"
 
 _SERVER_INSTRUCTIONS = (
-    "ApiPilot test-automation server. To run the full test pipeline for a project's APIs, load the "
-    "`test_pipeline` prompt — it returns the current end-to-end workflow (generate cases, mirror the "
-    "folder tree, fill variables, run, judge expected-vs-response, export). The workflow and the "
-    "case-generation prompt are served live as resources (`workflow://test-pipeline`, "
-    "`prompt://case-generation`) and always reflect the latest edited version."
+    "ApiPilot test-automation server. BEFORE using any other tool, call the `how_to_use` tool once — "
+    "it returns the current end-to-end workflow (generate cases, mirror the folder tree, fill "
+    "variables, run, judge expected-vs-response, export) plus the case-generation contract "
+    "(case shape, expected-block rules, variable rules). Skipping it causes the known failure modes: "
+    "variables in params/body, unconfigured {{vars}} sent as literal text, guessed DB ids (mass 206s). "
+    "The same content is also available as the `test_pipeline` prompt and as live resources "
+    "(`workflow://test-pipeline`, `prompt://case-generation`) — all read fresh from the source files "
+    "on every call, so they always reflect the latest edited version."
 )
 
 mcp = FastMCP("apipilot", instructions=_SERVER_INSTRUCTIONS)
@@ -49,6 +53,21 @@ DUPLICATE_MARKERS = ("exist", "duplicate")
 
 
 # ---------- helpers ----------
+
+def _pipeline_text() -> str:
+    """What it does: Build the full pipeline text (workflow + case-gen contract) from the live source files."""
+    workflow = _read_source_file(TEST_WORKFLOW_PATH, "TEST_WORKFLOW.md")
+    casegen = _read_source_file(CASEGEN_PROMPT_PATH, "case-generation prompt")
+    return (
+        "Run the ApiPilot API test pipeline. Follow the workflow below exactly, using this server's "
+        "tools (login, get_workspace_tree, get_api, ensure_folder, create_api_file, save_cases_bulk, "
+        "set_environment_variables, run_file_cases, export_results_table, ...).\n\n"
+        "=== WORKFLOW (source of truth) ===\n"
+        f"{workflow}\n\n"
+        "=== CASE-GENERATION PROMPT (authoritative for case shape / expected blocks) ===\n"
+        f"{casegen}\n"
+    )
+
 
 def _validate_node_name(name: str) -> None:
     """What it does: Enforce the platform's node-name rules before spending a round-trip."""
@@ -121,8 +140,26 @@ def _reconcile_case(result: Dict[str, Any]) -> Dict[str, Any]:
         "failures": failures,
         "status_code": status,
         "hint": hint,
-        "response": result.get("response"),
+        "response": _truncate_response(result.get("response")),
     }
+
+
+# Cap per-case response snippets in reconcile output — full bodies of a big run blow past
+# agent context limits; the snippet is for judging a failure, not for archiving the payload.
+_RESPONSE_SNIPPET_CHARS = 800
+
+
+def _truncate_response(response: Any) -> Any:
+    """What it does: Shrink a response body to a judgment-sized snippet, marking any truncation."""
+    if response is None:
+        return None
+    try:
+        text = json.dumps(response, default=str)
+    except (TypeError, ValueError):
+        text = str(response)
+    if len(text) <= _RESPONSE_SNIPPET_CHARS:
+        return response
+    return {"_truncated": True, "_snippet": text[:_RESPONSE_SNIPPET_CHARS]}
 
 
 def _collect_case_results(data: Any, out: List[Dict[str, Any]]) -> None:
@@ -138,20 +175,37 @@ def _collect_case_results(data: Any, out: List[Dict[str, Any]]) -> None:
             _collect_case_results(item, out)
 
 
-def _annotate_run(envelope: Dict[str, Any]) -> Dict[str, Any]:
+def _annotate_run(envelope: Dict[str, Any], include_raw: bool = False) -> Dict[str, Any]:
     """What it does: Attach per-case verdicts + reconcile hints to a raw run envelope."""
     case_results: List[Dict[str, Any]] = []
     _collect_case_results(envelope.get("data"), case_results)
     reconcile = [_reconcile_case(r) for r in case_results]
     passed = sum(1 for r in reconcile if r["verdict"] == "pass")
-    return {
+    result = {
         "summary": {"total": len(reconcile), "passed": passed, "failed": len(reconcile) - passed},
         "reconcile": reconcile,
-        "raw": envelope,
     }
+    # raw duplicates reconcile with full response bodies — several 100KB on a big run.
+    # Off by default; the reconcile snippets carry everything needed to judge failures.
+    if include_raw:
+        result["raw"] = envelope
+    return result
 
 
 # ---------- discovery tools ----------
+
+@mcp.tool()
+async def how_to_use() -> str:
+    """START HERE — call this ONCE before any other tool if you have not read the pipeline yet.
+
+    Returns the full end-to-end test workflow + the case-generation contract (case shape,
+    expected-block rules, variable rules, judgment buckets). Read fresh from the source files
+    on every call, so it always matches the latest version. Without this you WILL make the
+    known mistakes: variables in params/body, unconfigured {{vars}}, guessed DB ids (mass 206s),
+    loosened assertions. One call = complete knowledge; no other setup needed.
+    """
+    return _pipeline_text()
+
 
 @mcp.tool()
 async def login() -> Dict[str, Any]:
@@ -170,20 +224,97 @@ async def list_workspaces() -> Dict[str, Any]:
     return {"workspaces": envelope.get("data", []), "message": envelope.get("message")}
 
 
+def _compact_tree_node(node: Any) -> Any:
+    """What it does: Strip a tree node to navigation essentials (id/name/type/method/endpoint/children)."""
+    if isinstance(node, list):
+        return [_compact_tree_node(n) for n in node]
+    if not isinstance(node, dict):
+        return node
+    slim: Dict[str, Any] = {
+        "id": node.get("id"),
+        "name": node.get("name"),
+        "type": node.get("type"),
+    }
+    # method/endpoint live DIRECTLY on platform tree nodes; a nested "api" dict is a
+    # legacy shape — support both (observed live: workspace tree + bulk-testing-tree
+    # both use direct fields).
+    api = node.get("api") if isinstance(node.get("api"), dict) else node
+    if api.get("method"):
+        slim["method"] = api.get("method")
+        slim["endpoint"] = api.get("endpoint")
+    cases = node.get("cases") or node.get("test_cases")
+    if isinstance(cases, list):
+        slim["case_count"] = len(cases)
+    elif isinstance(node.get("total_cases"), int):
+        slim["case_count"] = node["total_cases"]
+    # The workspace root nests children under "file_tree"; inner nodes use "children".
+    children = node.get("children") or node.get("file_tree")
+    if children:
+        if node.get("type") == "file":
+            # A file's children are its test cases — collapse to a count, list_cases
+            # fetches details. Inlining 1000+ case names would flood agent context.
+            slim.setdefault("case_count", len(children))
+        else:
+            slim["children"] = [_compact_tree_node(c) for c in children]
+    return slim
+
+
+def _flatten_apis(node: Any, path: str, out: List[Dict[str, Any]]) -> None:
+    """What it does: Collect every file node carrying an API into a flat list with its folder path."""
+    if isinstance(node, list):
+        for item in node:
+            _flatten_apis(item, path, out)
+        return
+    if not isinstance(node, dict):
+        return
+    own_path = f"{path}/{node.get('name')}" if node.get("name") else path
+    # File nodes carry method/endpoint DIRECTLY (observed live on bulk-testing-tree);
+    # a nested "api" dict is a legacy shape — support both.
+    api = node.get("api") if isinstance(node.get("api"), dict) else node
+    if node.get("type") == "file" and api.get("method"):
+        cases = node.get("cases") or node.get("test_cases") or api.get("cases") or []
+        case_count = len(cases) if isinstance(cases, list) else cases
+        if isinstance(node.get("total_cases"), int):
+            case_count = node["total_cases"]
+        out.append(
+            {
+                "file_id": node.get("id"),
+                "name": node.get("name"),
+                "path": own_path,
+                "method": api.get("method"),
+                "endpoint": api.get("endpoint"),
+                "case_count": case_count,
+            }
+        )
+    # The workspace root nests children under "file_tree"/"tree"; inner nodes use "children".
+    for child in node.get("children") or node.get("file_tree") or node.get("tree") or []:
+        _flatten_apis(child, own_path, out)
+
+
 @mcp.tool()
-async def get_workspace_tree(workspace_id: int) -> Dict[str, Any]:
-    """Get the full folder/file node tree of a workspace (GET /workspace/{workspace_id})."""
+async def get_workspace_tree(workspace_id: int, compact: bool = True) -> Dict[str, Any]:
+    """Get the folder/file node tree of a workspace (GET /workspace/{workspace_id}).
+
+    compact=True (default) returns only id/name/type/method/endpoint/case_count per node —
+    full node payloads on a real workspace overflow agent context. Pass compact=False for raw.
+    """
     envelope = await client.request("GET", f"/workspace/{workspace_id}")
-    return {"tree": envelope.get("data", {})}
+    data = envelope.get("data", {})
+    return {"tree": _compact_tree_node(data) if compact else data}
 
 
 @mcp.tool()
 async def list_apis(workspace_id: int) -> Dict[str, Any]:
-    """List all APIs in a workspace via the bulk-testing tree
-    (GET /workspace/{workspace_id}/bulk-testing-tree) — includes file ids, methods, endpoints, case counts.
+    """List all APIs in a workspace as a FLAT list — file_id, name, folder path, method,
+    endpoint, case_count (GET /workspace/{workspace_id}/bulk-testing-tree, flattened).
+
+    Use this to find an existing endpoint before creating files; fetch details via get_api/list_cases.
     """
     envelope = await client.request("GET", f"/workspace/{workspace_id}/bulk-testing-tree")
-    return {"tree": envelope.get("data", {})}
+    data = envelope.get("data", {})
+    apis: List[Dict[str, Any]] = []
+    _flatten_apis(data.get("tree", data), "", apis)
+    return {"apis": apis, "total": len(apis)}
 
 
 @mcp.tool()
@@ -217,6 +348,7 @@ async def sync_project(
 ) -> Dict[str, Any]:
     """Mirror a whole project tree (folders + APIs + cases) into the platform in ONE call
     (POST /node/bulk-import). This is the primary authoring tool — prefer it over granular calls.
+    First time on this server? Call how_to_use() first — it returns the full pipeline + case rules.
 
     items is a FLAT list, parent-before-child, each item:
       {"temp_id": "f1", "name": "billing", "type": "folder", "parent_temp_id": null}
@@ -439,11 +571,19 @@ async def save_api_request(
 @mcp.tool()
 async def save_cases_bulk(file_id: int, cases: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Save multiple test cases onto a file's API (POST /file/{file_id}/api/cases/bulk).
+    First time on this server? Call how_to_use() first — it returns the full pipeline + case rules.
 
     Each case: {"name": str, "headers": dict?, "params": dict?, "body": dict?, "expected": dict?}
     The expected block must follow the platform assertion contract (status/status_in +
     at least one body assertion via json.checks / json.either / text_contains).
     The platform rejects duplicate case names, both within the payload and vs existing cases.
+
+    VARIABLES: {{var}} is ONLY for values shared across many APIs — auth/identity HEADERS
+    (token, username, usertype; personas: consumer_token/consumer_username/consumer_usertype).
+    params/body are ALWAYS literals — never a {{var}}. A valid data value (real site_id/sc_no)
+    is a literal grounded from the target DB; an INVALID value (bad token, wrong id) is a literal
+    too. Any {{var}} referenced must already exist in the active env; if not, ask the user and
+    set_environment_variables FIRST — an unconfigured {{var}} runs as literal text and fails wholesale.
     """
     names = [c.get("name", "").strip() for c in cases]
     if any(not n for n in names):
@@ -467,6 +607,53 @@ async def save_cases_bulk(file_id: int, cases: List[Dict[str, Any]]) -> Dict[str
         raise
 
 
+@mcp.tool()
+async def update_case(
+    file_id: int,
+    case_id: int,
+    name: Optional[str] = None,
+    headers: Optional[Dict[str, Any]] = None,
+    params: Optional[Dict[str, Any]] = None,
+    body: Optional[Dict[str, Any]] = None,
+    expected: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Update an existing test case in place (POST /file/{file_id}/api/cases/save?case_id=...).
+
+    Only the fields you pass change; omitted fields keep their stored value. This is the repair
+    tool for expected-block-bugs found by run reconcile — fix the assertion, keep the case id.
+    At least one field is required.
+    """
+    fields = {"name": name, "headers": headers, "params": params, "body": body, "expected": expected}
+    payload = {k: v for k, v in fields.items() if v is not None}
+    if not payload:
+        raise ValueError("update_case requires at least one of: name, headers, params, body, expected")
+    if "name" not in payload:
+        # Platform save endpoint requires a name — fetch the stored one to keep it unchanged.
+        case_env = await client.request("GET", f"/case/{case_id}")
+        stored = case_env.get("data") or {}
+        payload["name"] = stored.get("name")
+        if not payload["name"]:
+            raise PlatformError(404, f"Case {case_id} not found or has no name")
+    envelope = await client.request(
+        "POST",
+        f"/file/{file_id}/api/cases/save",
+        json=payload,
+        params={"case_id": case_id},
+    )
+    return {"status": "updated", "case": envelope.get("data"), "message": envelope.get("message")}
+
+
+@mcp.tool()
+async def delete_case(case_id: int) -> Dict[str, Any]:
+    """Delete a single test case (DELETE /case/{case_id}).
+
+    Permanent. Prefer update_case to fix a broken expected block — delete only true duplicates
+    or cases that no longer apply to the endpoint.
+    """
+    envelope = await client.request("DELETE", f"/case/{case_id}")
+    return {"status": "deleted", "case_id": case_id, "message": envelope.get("message")}
+
+
 # ---------- environment / secrets tools ----------
 
 @mcp.tool()
@@ -480,6 +667,8 @@ async def create_environment(
     """Create an environment in a workspace (POST /environment/workspace/{id}/environments).
 
     Ask the USER for real values (base URL, tokens, usernames) — never invent or hardcode them.
+    Environments are PERSONAS (admin / consumer / test) — never overwrite a user-owned env;
+    put pipeline vars in a pipeline env and activate it. See how_to_use() for the full rules.
     """
     envelope = await client.request(
         "POST",
@@ -502,7 +691,8 @@ async def set_environment_variables(
     (POST /environment/workspace/{ws}/environments/{env}/variables).
 
     REPLACE semantics (observed live): the payload becomes the environment's full variable
-    set — keys not included are dropped. Send the complete dict every time.
+    set — keys not included are dropped. Send the complete dict every time (fetch current
+    vars via list_environments first, merge, then send).
     Ask the USER for secret values (tokens, passwords, base URLs) — never invent or hardcode them.
     """
     if not variables:
@@ -537,16 +727,25 @@ async def resolve_variables(
 # ---------- run + reconcile tools ----------
 
 @mcp.tool()
-async def run_file_cases(file_id: int, case_ids: Optional[List[int]] = None) -> Dict[str, Any]:
+async def run_file_cases(
+    file_id: int, case_ids: Optional[List[int]] = None, include_raw: bool = False
+) -> Dict[str, Any]:
     """Run test cases for one file's API (POST /run). case_ids None runs ALL cases.
+    First time on this server? Call how_to_use() first — it returns the full pipeline + case rules.
+
+    PREFLIGHT: every {{var}} the cases use MUST be defined in the ACTIVE environment first.
+    An unconfigured {{var}} runs as literal text and fails wholesale — a variable bug, not an
+    API bug. Confirm via list_environments/resolve_variables; ask the user + set any missing.
 
     Returns per-case verdicts plus a reconcile hint for every failure:
     target-api-bug vs expected-block-bug vs connectivity. Never silently passes.
+    Failure response bodies are truncated to a judgment-sized snippet; include_raw=True
+    returns the full untruncated envelope as well (large — can overflow agent context).
     """
     envelope = await client.request(
         "POST", "/run", json={"file_id": file_id, "case_id": case_ids}
     )
-    return _annotate_run(envelope)
+    return _annotate_run(envelope, include_raw=include_raw)
 
 
 @mcp.tool()
@@ -554,14 +753,20 @@ async def run_bulk(
     workspace_id: int,
     file_ids: Optional[List[int]] = None,
     selections: Optional[List[Dict[str, Any]]] = None,
+    include_raw: bool = False,
 ) -> Dict[str, Any]:
     """Run cases across many files concurrently (POST /bulk_run_cases, workspace_id header).
+    First time on this server? Call how_to_use() first — it returns the full pipeline + case rules.
+
+    PREFLIGHT: every {{var}} the cases use MUST be defined in the ACTIVE environment first —
+    an unconfigured {{var}} runs as literal text and fails wholesale (variable bug, not API bug).
 
     Exactly one of:
       file_ids: run ALL cases of each file            → {"type": "api", "apis": [...]}
       selections: [{"file_id": int, "cases": [int]?}] → {"type": "selected", "apis": [...]}
 
     Returns per-case verdicts + reconcile hints (same contract as run_file_cases).
+    Failure response bodies are truncated; include_raw=True adds the full envelope (large).
     """
     if bool(file_ids) == bool(selections):
         raise ValueError("Pass exactly one of file_ids or selections")
@@ -577,9 +782,11 @@ async def run_bulk(
         "POST",
         "/bulk_run_cases",
         json=body,
-        extra_headers={"workspace_id": str(workspace_id)},
+        # FastAPI Header(...) maps param `workspace_id` to the hyphenated header `workspace-id`
+        # (convert_underscores default). Sending the underscore form is silently ignored → 422.
+        extra_headers={"workspace-id": str(workspace_id)},
     )
-    return _annotate_run(envelope)
+    return _annotate_run(envelope, include_raw=include_raw)
 
 
 @mcp.tool()
@@ -698,17 +905,7 @@ def test_pipeline() -> str:
     Reads TEST_WORKFLOW.md and the case-generation prompt fresh on every call, so the pipeline a
     client receives always matches the latest edited version — no per-user skill, no server restart.
     """
-    workflow = _read_source_file(TEST_WORKFLOW_PATH, "TEST_WORKFLOW.md")
-    casegen = _read_source_file(CASEGEN_PROMPT_PATH, "case-generation prompt")
-    return (
-        "Run the ApiPilot API test pipeline. Follow the workflow below exactly, using this server's "
-        "tools (login, get_workspace_tree, get_api, ensure_folder, create_api_file, save_cases_bulk, "
-        "set_environment_variables, run_file_cases, export_results_table, ...).\n\n"
-        "=== WORKFLOW (source of truth) ===\n"
-        f"{workflow}\n\n"
-        "=== CASE-GENERATION PROMPT (authoritative for case shape / expected blocks) ===\n"
-        f"{casegen}\n"
-    )
+    return _pipeline_text()
 
 
 @mcp.resource("workflow://test-pipeline", title="ApiPilot test workflow", mime_type="text/markdown")
