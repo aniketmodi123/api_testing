@@ -127,14 +127,14 @@ def _run_to_dict(run: FlowRun, steps: Optional[List[FlowStepResult]] = None) -> 
     return d
 
 
-async def _background_execute(flow_id: int, username: str, input_vars: Optional[Dict[str, Any]]) -> None:
-    """What it does: Run the flow engine in a background task; errors are logged by the engine itself."""
+async def _background_execute(flow_id: int, username: str, input_vars: Optional[Dict[str, Any]], run_id: int) -> None:
+    """What it does: Run the flow engine in a background task against the stub FlowRun already returned to the caller; errors are logged by the engine itself."""
     from routers.flow.engine import execute_flow
     try:
-        await execute_flow(flow_id, username, input_vars)
+        await execute_flow(flow_id, username, input_vars, run_id=run_id)
     except Exception as e:
         from utils import logs
-        logs(f"Background flow execution failed flow={flow_id}: {e}", type="error")
+        logs(f"Background flow execution failed flow={flow_id} run={run_id}: {e}", type="error")
 
 
 @router.post("/flow/{flow_id}/run")
@@ -167,8 +167,8 @@ async def run_flow(
         run_id = run.id
         await db.commit()
 
-        # Fire engine in background; engine opens its own session
-        background_tasks.add_task(_background_execute, flow_id, username, payload.input_vars)
+        # Fire engine in background; engine opens its own session and writes into the stub run
+        background_tasks.add_task(_background_execute, flow_id, username, payload.input_vars, run_id)
 
         return create_response(202, data={"run_id": run_id, "status": "running"}, schema=FlowRunAcceptedResponse)
     except Exception as e:

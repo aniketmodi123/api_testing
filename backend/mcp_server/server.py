@@ -4,6 +4,7 @@ discovery, bulk project sync, environment variables, test runs with reconcile hi
 result export. Requires env vars PLATFORM_BASE_URL, PLATFORM_EMAIL, PLATFORM_PASSWORD.
 """
 
+import asyncio
 import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -23,6 +24,8 @@ _BACKEND_DIR = _SERVER_DIR.parent                       # backend
 _REPO_DIR = _BACKEND_DIR.parent                         # api_testing
 CASEGEN_PROMPT_PATH = _BACKEND_DIR / "gpt_test_case_creatio_prompt.txt"
 TEST_WORKFLOW_PATH = _REPO_DIR / "research" / "mcp" / "TEST_WORKFLOW.md"
+SKILL_PATH = _REPO_DIR / "research" / "mcp" / "skill" / "SKILL.md"
+SKILL_INSTALL_PATH = "~/.claude/skills/apipilot-test/SKILL.md"
 
 _SERVER_INSTRUCTIONS = (
     "ApiPilot test-automation server. BEFORE using any other tool, call the `how_to_use` tool once — "
@@ -32,7 +35,10 @@ _SERVER_INSTRUCTIONS = (
     "variables in params/body, unconfigured {{vars}} sent as literal text, guessed DB ids (mass 206s). "
     "The same content is also available as the `test_pipeline` prompt and as live resources "
     "(`workflow://test-pipeline`, `prompt://case-generation`) — all read fresh from the source files "
-    "on every call, so they always reflect the latest edited version."
+    "on every call, so they always reflect the latest edited version. "
+    "To add the `/apipilot-test` slash command on a device that only has this MCP connection, call "
+    "`install_skill` and write its returned content to the returned path — the pipeline itself already "
+    "works without it via the `test_pipeline` prompt."
 )
 
 mcp = FastMCP("apipilot", instructions=_SERVER_INSTRUCTIONS)
@@ -208,6 +214,28 @@ async def how_to_use() -> str:
 
 
 @mcp.tool()
+async def install_skill() -> Dict[str, Any]:
+    """Install the /apipilot-test slash command on THIS device — for a client that only has the MCP connection.
+
+    Returns the canonical skill file text plus the target path. The agent writes `content` verbatim
+    to `install_path` (expand `~`, create parent dirs), which registers the /apipilot-test slash
+    command in Claude Code — no repo access needed. Read fresh from the server's source file, so a
+    re-call after the skill changes server-side updates the local copy. Note: the full pipeline works
+    WITHOUT this via the `test_pipeline` prompt; this only adds the /apipilot-test trigger.
+    """
+    content = _read_source_file(SKILL_PATH, "SKILL.md")
+    return {
+        "install_path": SKILL_INSTALL_PATH,
+        "content": content,
+        "instructions": (
+            f"Write `content` verbatim to `{SKILL_INSTALL_PATH}` (expand ~ to the user's home dir; "
+            "create parent dirs if missing). This registers the /apipilot-test slash command on this "
+            "device. To update after a server-side change, call install_skill again and overwrite the file."
+        ),
+    }
+
+
+@mcp.tool()
 async def login() -> Dict[str, Any]:
     """Authenticate against the platform (POST /sign_in) and cache the JWT for all later calls.
 
@@ -328,7 +356,12 @@ async def get_api(file_id: int) -> Dict[str, Any]:
 async def list_cases(file_id: int) -> Dict[str, Any]:
     """List all test cases attached to a file's API (GET /file/{file_id}/api/cases)."""
     envelope = await client.request("GET", f"/file/{file_id}/api/cases")
-    return {"cases": envelope.get("data", []), "pagination": envelope.get("pagination")}
+    data = envelope.get("data") or {}
+    return {
+        "cases": data.get("test_cases") or [],
+        "total": data.get("total_cases", 0),
+        "api": {k: data.get(k) for k in ("api_id", "api_name", "api_method", "api_endpoint")},
+    }
 
 
 @mcp.tool()
@@ -652,6 +685,257 @@ async def delete_case(case_id: int) -> Dict[str, Any]:
     """
     envelope = await client.request("DELETE", f"/case/{case_id}")
     return {"status": "deleted", "case_id": case_id, "message": envelope.get("message")}
+
+
+# ---------- deterministic standard cases (token-free generation) ----------
+
+_STD_FLAGS = {"_mirror_http_status": True, "_require_content_for_error": True}
+
+
+def _std_validation_expected(envelope: str) -> Dict[str, Any]:
+    """What it does: Build the expected block for a validation-error case per envelope style."""
+    if envelope == "fastapi":
+        checks = [
+            {"path": "detail", "present": True},
+            {"path": "detail[0].msg", "present": True},
+        ]
+    else:
+        checks = [{"path": "error_message", "present": True}]
+    return {"status_in": [400, 422], "json": {"checks": checks}, **_STD_FLAGS}
+
+
+def _std_auth_expected(contains: str) -> Dict[str, Any]:
+    """What it does: Build the expected block for a 401 auth-failure case."""
+    return {"status": 401, "text_contains": contains, **_STD_FLAGS}
+
+
+@mcp.tool()
+async def generate_standard_cases(
+    file_id: int,
+    base_params: Optional[Dict[str, Any]] = None,
+    base_body: Optional[Dict[str, Any]] = None,
+    required_params: Optional[List[str]] = None,
+    required_body_fields: Optional[List[str]] = None,
+    int_fields: Optional[List[str]] = None,
+    auth_headers: Optional[List[str]] = None,
+    envelope: str = "custom",
+    auth_401_contains: str = "Invalid token",
+    save: bool = True,
+) -> Dict[str, Any]:
+    """Mechanically expand the standard negative-case matrix for an API — auth failures plus
+    missing / empty / whitespace / wrong-type mutations of each required field — and save them
+    onto the file in one call. Zero generation tokens: the matrix is built server-side and only
+    the case NAMES come back. The agent then writes ONLY the interesting cases itself (happy
+    path, boundaries, business logic, 409 conflicts).
+
+    Args:
+        base_params: Valid baseline query params; every name in required_params must be a key
+            here (each mutation starts from this baseline). ``None`` when the endpoint has none.
+        base_body: Valid baseline JSON body; same contract for required_body_fields.
+        required_params: Query param names to mutate one at a time (missing/empty/whitespace).
+        required_body_fields: Body field names to mutate one at a time.
+        int_fields: Names (from either list) that are numeric — adds one wrong-type case each.
+        auth_headers: Header names carrying auth; defaults to ``["Authorization"]``. One
+            missing-header 401 case per name plus one invalid-token case for the first.
+        envelope: ``"custom"`` (default) → validation errors assert ``error_message`` present;
+            ``"fastapi"`` → asserts raw ``detail[]``.
+        auth_401_contains: Substring the 401 response body must contain.
+        save: ``True`` (default) saves via the bulk endpoint and returns names only; ``False``
+            returns the full case JSONs for review without saving.
+
+    Returns:
+        dict: ``generated`` count, ``names`` list, ``skipped_existing`` (name clashes left
+        untouched), and ``cases`` only when ``save=False``.
+
+    Steps:
+        - Step 1: Validate that every required field exists in its baseline; fail fast otherwise
+        - Step 2: Build auth cases (one per auth header + one invalid-token) and per-field mutations
+        - Step 3: Fetch existing case names and drop clashes (idempotent re-runs)
+        - Step 4: Save the remainder via the bulk endpoint unless save=False
+    """
+    required_params = required_params or []
+    required_body_fields = required_body_fields or []
+    int_set = set(int_fields or [])
+    auth_hdrs = auth_headers or ["Authorization"]
+    params = base_params or {}
+    body = base_body or {}
+
+    # Step 1: Fail fast — each mutated field must exist in its baseline
+    missing_from_base = [p for p in required_params if p not in params] + [
+        f for f in required_body_fields if f not in body
+    ]
+    if missing_from_base:
+        raise ValueError(
+            f"Baseline is missing required fields {missing_from_base} — pass a valid "
+            "base_params/base_body containing every field you want mutated."
+        )
+    if envelope not in ("custom", "fastapi"):
+        raise ValueError("envelope must be 'custom' or 'fastapi'")
+
+    # Step 2: Expand the matrix
+    cases: List[Dict[str, Any]] = []
+
+    for h in auth_hdrs:
+        cases.append({
+            "name": f"[std] auth - missing {h}",
+            "headers": {h: None},
+            "params": params,
+            "body": body or None,
+            "expected": _std_auth_expected(auth_401_contains),
+        })
+    cases.append({
+        "name": "[std] auth - invalid token",
+        "headers": {auth_hdrs[0]: "Bearer invalid.token.value"},
+        "params": params,
+        "body": body or None,
+        "expected": _std_auth_expected(auth_401_contains),
+    })
+
+    def _mutations(field: str, baseline: Dict[str, Any], kind: str):
+        """What it does: Yield (suffix, mutated-dict) pairs for one field of params or body."""
+        removed = {k: v for k, v in baseline.items() if k != field}
+        yield "missing", removed
+        if isinstance(baseline[field], str) or field not in int_set:
+            yield "empty string", {**baseline, field: ""}
+            yield "whitespace", {**baseline, field: "   "}
+        if field in int_set:
+            yield "wrong type", {**baseline, field: "not-a-number"}
+
+    for p in required_params:
+        for suffix, mutated in _mutations(p, params, "param"):
+            cases.append({
+                "name": f"[std] param {p} - {suffix}",
+                "params": mutated,
+                "body": body or None,
+                "expected": _std_validation_expected(envelope),
+            })
+    for f in required_body_fields:
+        for suffix, mutated in _mutations(f, body, "field"):
+            cases.append({
+                "name": f"[std] field {f} - {suffix}",
+                "params": params,
+                "body": mutated,
+                "expected": _std_validation_expected(envelope),
+            })
+
+    # Step 3: Idempotency — never clash with cases already on the file.
+    # data is a dict payload; the case list lives under data.test_cases.
+    existing_env = await client.request("GET", f"/file/{file_id}/api/cases")
+    existing_cases = (existing_env.get("data") or {}).get("test_cases") or []
+    existing_names = {c.get("name") for c in existing_cases}
+    skipped = [c["name"] for c in cases if c["name"] in existing_names]
+    cases = [c for c in cases if c["name"] not in existing_names]
+
+    if not save:
+        return {"generated": len(cases), "names": [c["name"] for c in cases],
+                "skipped_existing": skipped, "cases": cases}
+
+    # Step 4: Persist and return names only (token diet)
+    if cases:
+        await client.request("POST", f"/file/{file_id}/api/cases/bulk", json=cases)
+    return {"generated": len(cases), "names": [c["name"] for c in cases],
+            "skipped_existing": skipped, "status": "saved" if cases else "nothing_new"}
+
+
+# ---------- flow tools (server-side chained CRUD with extraction) ----------
+
+_FLOW_BODY_TRUNCATE = 800
+
+
+def _truncate_flow_run(run: Dict[str, Any]) -> Dict[str, Any]:
+    """What it does: Cap step-result response bodies so a flow run fits the agent context."""
+    for step in run.get("steps") or []:
+        resp = step.get("response")
+        if isinstance(resp, dict) and isinstance(resp.get("body"), str) and len(resp["body"]) > _FLOW_BODY_TRUNCATE:
+            resp["body"] = resp["body"][:_FLOW_BODY_TRUNCATE] + f"... [truncated, {len(resp['body'])} chars total]"
+    return run
+
+
+@mcp.tool()
+async def create_flow(
+    workspace_id: int,
+    name: str,
+    steps: List[Dict[str, Any]],
+    description: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Create a flow — ordered steps executed SERVER-SIDE with jsonpath extraction chaining
+    (POST /workspace/{workspace_id}/flow). This is how a CRUD chain runs without agent
+    turn-by-turn chaining, and how a UI re-run stays id-safe: create (extract id) →
+    read/update (reference {{id}}) → delete ({{id}}) — the server re-extracts a fresh id
+    every run.
+
+    Each step:
+      {"step_order": 0, "type": "request", "api_id": <Api row id — get_api returns it; NOT the
+       file_id>, "config": {"params": {...}, "body": {...}, "headers": {...}},
+       "extract": {"created_id": "$.data.id"}}
+    Later steps reference extracted vars as {{created_id}} inside config params/body/headers.
+    Step types: request | condition ({"var", "op": eq/neq/gt/lt/contains/exists, "value",
+    "on_false": "stop"}) | delay ({"delay_ms": n}) | set_var (config = {var: value}).
+
+    A request step "succeeds" when the HTTP call completes — it does NOT assert status codes.
+    Verify statuses from get_flow_run step results, or insert condition steps to stop the
+    chain early. list_flows first — reuse an existing chain instead of duplicating it.
+    """
+    if not name.strip():
+        raise ValueError("name must be non-empty")
+    for i, s in enumerate(steps):
+        if s.get("type") == "request" and not s.get("api_id"):
+            raise ValueError(f"steps[{i}] is a request step but has no api_id")
+    envelope = await client.request(
+        "POST",
+        f"/workspace/{workspace_id}/flow",
+        json={"name": name, "description": description, "steps": steps},
+    )
+    data = envelope.get("data") or {}
+    return {"flow_id": data.get("id"), "name": data.get("name"),
+            "steps": len(data.get("steps") or []), "message": envelope.get("message")}
+
+
+@mcp.tool()
+async def list_flows(workspace_id: int) -> Dict[str, Any]:
+    """List flows in a workspace (GET /workspace/{workspace_id}/flow) — check here BEFORE
+    create_flow so re-runs reuse the existing chain instead of duplicating it."""
+    envelope = await client.request("GET", f"/workspace/{workspace_id}/flow")
+    return {"flows": envelope.get("data") or []}
+
+
+@mcp.tool()
+async def run_flow(
+    flow_id: int,
+    input_vars: Optional[Dict[str, Any]] = None,
+    wait_seconds: int = 30,
+) -> Dict[str, Any]:
+    """Trigger a flow and wait for it to finish (POST /flow/{flow_id}/run, then poll
+    GET /flow/run/{run_id}). Returns the finished run with per-step results — request/response
+    snapshots, extracted variables, and the final context. Response bodies are truncated.
+
+    Args:
+        input_vars: Initial run-context variables injected before step 0; ``None`` for none.
+        wait_seconds: Max seconds to poll before returning the still-running run_id.
+    """
+    envelope = await client.request(
+        "POST", f"/flow/{flow_id}/run", json={"input_vars": input_vars}
+    )
+    run_id = (envelope.get("data") or {}).get("run_id")
+    if not run_id:
+        raise PlatformError(500, "Flow run accepted but no run_id returned")
+
+    for _ in range(max(1, wait_seconds)):
+        await asyncio.sleep(1)
+        run_env = await client.request("GET", f"/flow/run/{run_id}")
+        run = run_env.get("data") or {}
+        if run.get("status") in ("completed", "failed"):
+            return {"run": _truncate_flow_run(run)}
+    return {"run_id": run_id, "status": "running",
+            "note": f"Still running after {wait_seconds}s — fetch later with get_flow_run."}
+
+
+@mcp.tool()
+async def get_flow_run(run_id: int) -> Dict[str, Any]:
+    """Fetch a single flow run with all step results (GET /flow/run/{run_id}).
+    Use after run_flow timed out, or to re-inspect a past chain execution."""
+    envelope = await client.request("GET", f"/flow/run/{run_id}")
+    return {"run": _truncate_flow_run(envelope.get("data") or {})}
 
 
 # ---------- environment / secrets tools ----------

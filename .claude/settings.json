@@ -10,7 +10,9 @@
       "Bash(node -e ' *)",
       "Bash(ls research *)",
       "Bash(ls src/store/api.jsx src/store/apiSlice.js)",
-      "Bash(echo \"exit:$?\")"
+      "Bash(echo \"exit:$?\")",
+      "mcp__apipilot__login",
+      "mcp__apipilot__list_workspaces"
     ]
   },
   "hooks": {}

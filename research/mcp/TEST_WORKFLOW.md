@@ -12,6 +12,14 @@ API code. Cases are stored into ApiPilot through the `mcp__apipilot__*` MCP tool
   `/Users/aniketmodi/Desktop/api_testing/backend/gpt_test_case_creatio_prompt.txt`
 - This workflow (VOLATILE — read fresh every run): this file.
 - Per-project vars: `apipilot.vars.json` at the target project root (optional).
+- **Pipeline state (agent-only, survives session changes): `apipilot.state.json` at the target project
+  root.** Holds `undo_map` (scan result + built_at), `pending_cleanups` (write-ahead log), `orphans`
+  (until user deletes), and `progress` (per-endpoint run ledger — see Step 1.5). MUST be in the target
+  project's `.gitignore` — add the entry if missing. Not for the user; never ask them to edit it.
+  READ IT FIRST at session start: `pending_cleanups` non-empty → a previous session died mid-pair —
+  run those inverse calls BEFORE any new work; `undo_map` fresh → reuse instead of re-scanning;
+  `orphans` → re-list in every report; `progress` → skip any endpoint already `judged`, resume at the
+  first non-judged, and never re-fetch one already at `cases_saved` or later.
 
 ## Pipeline
 
@@ -20,15 +28,71 @@ API code. Cases are stored into ApiPilot through the `mcp__apipilot__*` MCP tool
 - `mcp__apipilot__list_workspaces` — resolve target workspace (ask user if ambiguous).
 - `mcp__apipilot__get_workspace_tree` — existing folder/api layout = the mirror target.
 
+### 1.5 Plan the run — census, group, order, gate, ledger (do this BEFORE fetching any body)
+This step exists so a big scope (a whole `src/routers`) does not burn tokens in a flat per-API loop.
+Nothing heavy (`get_api`, handler reads, case-gen) happens until the plan is set and — when large —
+confirmed.
+- **Cheap census (NO `get_api` yet):** `list_apis` over the scope subtree — collect only
+  name + method + url per endpoint. Count endpoints, classify each by method. This is names-only, near-zero token.
+- **Group the endpoints:**
+  - All GET / read endpoints → ONE `reads` group (order-independent, safe to batch).
+  - Write endpoints (POST/PUT/PATCH/DELETE) → group BY RESOURCE/MODEL. Reuse the same resource key the
+    write-scan/undo-map uses (Step 3 — it matches inverses on resource, not filename): every endpoint
+    acting on resource X (create/read/update/delete) is ONE `crud:<resource>` group, so its undo pair,
+    self-restore, and any server-generated-id flow all stay inside a single group.
+- **Run order:** the `reads` group first (no side effects) → then each `crud:<resource>` group in
+  create → read → update → delete order (forward + inverse files together, as Step 6 requires).
+- **GATE — stop and confirm before heavy work:** trigger when the scope has ANY write group, OR more
+  than one resource group, OR more than 8 endpoints. On trigger, present the plan — the groups, the
+  per-group endpoint count, the run order, and the batched list of values only the user can give
+  (fold this into Step 5's "BATCH THE ASKS") — then STOP and let the user confirm or subset. A small
+  pure-read scope under the trigger proceeds without asking. Never call `get_api` before the plan is
+  confirmed on a gated scope.
+- **Progress ledger (`progress` in `apipilot.state.json`) — makes the run resumable:** one entry per
+  endpoint `{endpoint, group, status: pending | cases_saved | run | judged}`. Advance the status after
+  each stage completes. At session start / after compaction, read the ledger FIRST: skip anything
+  `judged`, resume at the first non-judged endpoint, and NEVER re-fetch an endpoint already at
+  `cases_saved` or later. This is what stops a compacted big run from re-discovering and re-fetching.
+- **Process ONE group fully before the next** (fetch → generate → save → run → judge → report), so
+  main context only ever holds the active group. Cases are stored server-side and the ledger is on
+  disk, so both survive compaction — that is the token-safety guarantee.
+- **Subagent delegation is OPTIONAL:** for a very large write group, per-file case-gen MAY be handed
+  to a subagent to keep main context lean — but a subagent cold-starts and usually costs MORE total
+  tokens, so the DEFAULT is main-thread group-checkpointing. Delegate only when the group is big
+  enough that context bloat outweighs the cold-start.
+
 ### 2. Load case-gen prompt FRESH
 Read `gpt_test_case_creatio_prompt.txt` in full. Its rules are authoritative for case shape,
 `expected` blocks, coverage, and the extra normal-case variables at its bottom. Never reproduce from memory.
 
-### 3. Per API — fetch + generate
+### 3. Per API — fetch + generate (ONE group at a time, per Step 1.5)
+Fetch bodies and read handlers ONLY for endpoints in the group currently being processed — never
+`get_api` the whole scope upfront. Advance each endpoint's `progress` status as you go.
 - `mcp__apipilot__get_api` — method, url, headers, params, body.
 - Read the matching handler in the CURRENT project's source — learn real success/error response shapes,
   status codes, validation fields. Grounds `expected` in reality.
-- Generate max reasonable case set (10-15+) applying the Step-2 prompt. Exact JSON array shape, no markdown.
+- **WRITE-API SCAN + UNDO MAP (once per scope, BEFORE generating any write case):** if the scope
+  contains any POST/PUT/PATCH/DELETE, scan ALL routes in the scope subtree AND sibling folders
+  (source files + `list_apis`) and classify each: `read / create / update / delete / assign /
+  unassign / record-only`. Build the undo map by pairing inverses — create↔delete, assign↔deassign,
+  activate↔deactivate, add↔remove (match on resource, not filename). The undo often lives in a
+  DIFFERENT folder — that is exactly why the scan covers siblings, and why generating "one API at a
+  time" without this map produces junk data. No inverse in the scope? WIDEN the scan to the whole
+  project's routes before declaring `no undo exists` — CRUD for one resource is often split across
+  folders (create here, delete elsewhere). No inverse found → record `no undo exists` explicitly
+  for that API; the prompt's no-undo ladder then applies. Persist the finished map into
+  `apipilot.state.json` (`undo_map` + `built_at`); at session start reuse it when fresh (source files
+  unchanged) instead of re-scanning.
+- **Feed the map into generation:** for every write endpoint, the gen input must carry its operation
+  kind, its inverse endpoint (or `no undo exists`), the SHARED fixed fake test values for the pair
+  (`apipilot_test_` prefix; fake mobiles `90000000xx`; emails `@example.com` — never real PII), and
+  for updates the record's original values (GET/DB-snapshot them first) so the file can self-restore.
+- **Split the generation work (token diet):** call `mcp__apipilot__generate_standard_cases` FIRST —
+  it mechanically expands and saves the standard negative matrix (401 auth, per-field
+  missing/empty/whitespace/wrong-type) server-side and returns only names. Then hand-write ONLY the
+  interesting cases (happy path, 206/404 data-state, boundaries, 409s, business logic). Never
+  hand-write a case whose name starts with "[std] ".
+- Generate the remaining interesting case set applying the Step-2 prompt. Exact JSON array shape, no markdown.
 
 ### 4. Mirror tree + store — CHECK-FIRST, reuse before creating (match by ENDPOINT, not by name)
 Recreate the project's folder→api structure in ApiPilot (same as Postman layout). Identity of an API is
@@ -73,6 +137,13 @@ plain literal, never a variable (see the case-gen prompt's VARIABLES section).
 - **PREFLIGHT before every run:** enumerate every `{{var}}` used across the cases about to run;
   `list_environments`/`resolve_variables` to confirm the active env defines all of them; any missing →
   STOP, ask, set, then run. Never run with an unresolved variable.
+- **BATCH THE ASKS (one message, not five):** after the Step-3 scan the agent knows EVERY value the
+  whole scope needs — valid ids to ground, sample payload fields for write APIs, personas. Collect
+  them into ONE question to the user BEFORE generating/running anything; never interrupt mid-run for
+  a value the scan could have predicted. Answers that are shared auth/identity → env vars; per-resource
+  sample payload values → literals in cases (optionally recorded under `sample_data` in
+  `apipilot.state.json` for regeneration). Values the agent can ground itself (DB query for a live id)
+  are NOT asked — self-serve first, ask only what only the user knows.
 - **ASK ONCE, THEN PERSIST:** if a needed value is not already an env var, ask the user once (a
   known-good value, plus a known-bad one for the not-found test), store with `set_environment_variables`.
   The person running this MCP is served by their OWN agent — once stored, never ask that user again;
@@ -105,6 +176,43 @@ plain literal, never a variable (see the case-gen prompt's VARIABLES section).
 ### 6. Run
 `mcp__apipilot__run_file_cases` per file (or `mcp__apipilot__run_bulk` for a batch). Capture each
 case's actual status + body + pass/fail of its `expected` assertions.
+- **Write-pair run order (default):** a forward write file does not run alone — its inverse file runs
+  immediately after in the same batch (assign file → deassign file; create file → delete file). The
+  inverse file's success case IS the cleanup (same shared fixed values). Update files self-restore via
+  their last case, so they may run standalone. Read-only files run in any order.
+- **Deferred pair-closing (interleaved / cross-session CRUD):** when the inverse is planned LATER —
+  create tested now, update/delete tested at the end, other APIs in between — running forward alone is
+  ALLOWED, provided the cleanup entry sits in `pending_cleanups` the whole time. The created marker
+  record deliberately stays alive as the working record for the middle tests (reads, updates). Every
+  report in between lists it under "pending cleanup — test record still in DB". The chain closes when
+  the delete/inverse file finally runs; a session may end with pending entries (not a failure — the
+  next session sees them and either continues the chain or closes it). Only an entry nobody can ever
+  close becomes an orphan.
+- **Full CRUD set (4 endpoints, one resource):** run order is create → read → update → delete. The
+  create file's 2xx case makes the shared test record (marker values); read + update cases target that
+  record (update self-restores); the delete file's 2xx case removes it — delete IS the pair-closer for
+  create. The record exists only inside the batch window, so a full green run leaves zero rows. The
+  delete file additionally keeps its safe standalone cases (404 on nonexistent id, 401/422).
+  When the chain depends on a server-generated id, model the happy-path chain as a FLOW instead (see
+  server-generated-ids bullet) — per-endpoint negative cases still live in the case files.
+- **Write-ahead the cleanup (crash safety):** BEFORE running a forward write file, append its planned
+  cleanup to `pending_cleanups` in `apipilot.state.json` (endpoint, values, inverse). Remove the entry
+  only AFTER the inverse succeeds. Inverse fails or session dies → the entry survives; the next
+  session runs it first (see Fixed paths). Cleanup that can never succeed → move the entry to
+  `orphans`.
+- If the forward file ran but the inverse file failed or was skipped, treat every 2xx write from the
+  forward file as orphaned data for Step 8 — do not end the session without reporting it.
+- **Server-generated ids — use a FLOW (server-side chaining):** when the undo needs an id the server
+  invented (create returns `data.id`), model the chain as a flow — `list_flows` first (reuse), then
+  `create_flow` with ordered request steps: create (`extract: {"created_id": "$.data.id"}`) →
+  update/read (config params/body reference `{{created_id}}`) → delete (`{{created_id}}`). `run_flow`
+  executes the whole chain server-side and returns per-step results — no agent turn-by-turn chaining,
+  and a manual UI re-run stays id-safe because the server re-extracts a fresh id every run. Step
+  `api_id` is the Api row id from `get_api`, NOT the file_id; request steps do not assert status —
+  check each step's `response.status_code` in the run result, or add condition steps to stop early.
+  Prefer natural-key undo (username+feeder_id) when the inverse endpoint accepts it — then plain
+  case files + pair run order suffice, no flow needed. Agent-side chaining via `update_case` remains
+  a fallback for one-off repairs only.
 
 ### 7. Judge every mismatch (the important part)
 For each case where `expected` does NOT match the response, classify into exactly ONE bucket + act:
@@ -133,10 +241,19 @@ stale — every id returned 206. Query the TARGET service's DB for a live id wit
 ### 8. Export
 `mcp__apipilot__export_results_table` with a clear title → reconcile table for Confluence/docs.
 Summarise: total cases, pass/fail, count of API-bugs vs expected-bugs, list of proposed fixes awaiting approval.
+- **Orphan report (MANDATORY when any write ran):** list every 2xx write whose undo did NOT execute —
+  cases named " [ORPHANS DATA]", forward files whose inverse failed/skipped, no-undo creates. For each:
+  endpoint, table, identifying values (the `apipilot_test_` markers), and the explicit line
+  "no delete API exists — remove these yourself". Zero leftovers → state "DB left as found". Never end
+  a run silent about data it created. Orphans persist in `apipilot.state.json` and are re-listed in
+  EVERY report until the user confirms deletion — only then remove them from the file.
 
 ## Rules
 - Read this file + the case-gen prompt fresh every run — both are the volatile source of truth.
 - Idempotent: re-run must not duplicate the tree. If ApiPilot renames duplicates, stop + report.
 - Never hardcode tokens/PII — variables only.
+- Write APIs: the run leaves the DB as it found it, or the report names every leftover row. Fake data
+  only in write payloads — `apipilot_test_` prefix, fake mobiles, `@example.com` emails; a real mobile
+  number can fire a real SMS/OTP.
 - Step 7 = judgment: classify, propose, wait. Two directions (fix API / fix expected), never a silent third.
 - Report honestly — if the run had failures, say so with numbers; don't declare green early.

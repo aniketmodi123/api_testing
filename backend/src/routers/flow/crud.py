@@ -143,8 +143,10 @@ def _validate_steps(steps: List[FlowStepIn]) -> Optional[str]:
     return None
 
 
-def _flow_to_dict(flow: Flow) -> Dict[str, Any]:
-    """What it does: Serialize a Flow ORM object and its steps to a response dict."""
+def _flow_to_dict(flow: Flow, steps: Optional[List[FlowStep]] = None) -> Dict[str, Any]:
+    """What it does: Serialize a Flow ORM object and an explicitly loaded step list to a response dict."""
+    # Steps are passed explicitly — assigning/reading flow.steps after commit triggers an
+    # async lazy-load (greenlet_spawn error) on AsyncSession.
     return {
         "id": flow.id,
         "workspace_id": flow.workspace_id,
@@ -164,7 +166,7 @@ def _flow_to_dict(flow: Flow) -> Dict[str, Any]:
                 "extract": s.extract,
                 "condition": s.condition,
             }
-            for s in (flow.steps or [])
+            for s in (steps or [])
         ],
     }
 
@@ -217,11 +219,10 @@ async def create_flow(
         await db.commit()
         await db.refresh(flow)
 
-        # Eager-load steps for response
         steps_result = await db.execute(select(FlowStep).where(FlowStep.flow_id == flow.id).order_by(FlowStep.step_order))
-        flow.steps = steps_result.scalars().all()
+        steps = steps_result.scalars().all()
 
-        return create_response(201, data=_flow_to_dict(flow), schema=FlowResponse)
+        return create_response(201, data=_flow_to_dict(flow, steps), schema=FlowResponse)
     except Exception as e:
         await db.rollback()
         return ExceptionHandler(e)
@@ -276,9 +277,9 @@ async def get_flow(
             return create_response(403, error_message="Access denied")
 
         steps_result = await db.execute(select(FlowStep).where(FlowStep.flow_id == flow_id).order_by(FlowStep.step_order))
-        flow.steps = steps_result.scalars().all()
+        steps = steps_result.scalars().all()
 
-        return create_response(200, data=_flow_to_dict(flow), schema=FlowResponse)
+        return create_response(200, data=_flow_to_dict(flow, steps), schema=FlowResponse)
     except Exception as e:
         return ExceptionHandler(e)
 
@@ -331,9 +332,9 @@ async def update_flow(
         await db.commit()
         await db.refresh(flow)
         steps_result = await db.execute(select(FlowStep).where(FlowStep.flow_id == flow_id).order_by(FlowStep.step_order))
-        flow.steps = steps_result.scalars().all()
+        steps = steps_result.scalars().all()
 
-        return create_response(200, data=_flow_to_dict(flow), schema=FlowResponse)
+        return create_response(200, data=_flow_to_dict(flow, steps), schema=FlowResponse)
     except Exception as e:
         await db.rollback()
         return ExceptionHandler(e)

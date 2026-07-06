@@ -66,17 +66,19 @@ def _eval_condition(condition: Dict[str, Any], context: Dict[str, Any]) -> bool:
     return False
 
 
-async def execute_flow(flow_id: int, username: str, input_vars: Optional[Dict[str, Any]] = None) -> int:
+async def execute_flow(flow_id: int, username: str, input_vars: Optional[Dict[str, Any]] = None, run_id: Optional[int] = None) -> int:
     """
     What it does: Execute all steps of a flow in order within its own DB session; return the FlowRun.id.
     Args:
         flow_id: Id of the flow to execute.
         username: Email of the triggering user; used for auth resolution and audit.
         input_vars: Optional caller-supplied local variables injected as the initial run context.
+        run_id: Existing FlowRun to execute into (the stub the trigger route created so it could
+            return an id immediately); ``None`` creates a fresh FlowRun.
     Returns:
-        int: The FlowRun.id created for this execution.
+        int: The FlowRun.id this execution wrote its results to.
     Steps:
-        - Step 1: Open own DB session; load flow + steps; create FlowRun with status running
+        - Step 1: Open own DB session; load flow + steps; reuse the stub FlowRun or create one
         - Step 2: For each step in order, resolve variables against full scope chain + run context
         - Step 3: Execute step action (request / condition / delay / set_var)
         - Step 4: On request: extract jsonpath vars into context; mask secrets; persist FlowStepResult
@@ -84,7 +86,7 @@ async def execute_flow(flow_id: int, username: str, input_vars: Optional[Dict[st
         - Step 6: Mark FlowRun completed or failed; write audit row; return run_id
     """
     async with SessionLocal() as db:
-        # Step 1: Load flow and create run
+        # Step 1: Load flow and resolve the run row (reuse stub if the trigger route made one)
         flow_result = await db.execute(select(Flow).where(Flow.id == flow_id))
         flow = flow_result.scalar_one_or_none()
         if not flow:
@@ -95,9 +97,14 @@ async def execute_flow(flow_id: int, username: str, input_vars: Optional[Dict[st
         )
         steps = steps_result.scalars().all()
 
-        run = FlowRun(flow_id=flow_id, status="running", context=input_vars or {})
-        db.add(run)
-        await db.flush()
+        run = None
+        if run_id is not None:
+            run_result = await db.execute(select(FlowRun).where(FlowRun.id == run_id))
+            run = run_result.scalar_one_or_none()
+        if run is None:
+            run = FlowRun(flow_id=flow_id, status="running", context=input_vars or {})
+            db.add(run)
+            await db.flush()
         run_id = run.id
 
         context: Dict[str, Any] = dict(input_vars or {})

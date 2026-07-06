@@ -68,6 +68,45 @@ GET ENDPOINT SPECIAL RULES (MANDATORY)
   * error_message contains `"No Data Found"`
   * data absent
 
+WRITE ENDPOINT SPECIAL RULES (POST/PUT/PATCH/DELETE — MANDATORY)
+
+Every 2xx case on a write endpoint changes real data. The run must leave the DB as it found it —
+or name exactly what it left behind. Never create silent junk rows.
+
+1. FAKE DATA ONLY — never real-looking personal data in any payload:
+
+* mobile → obviously-fake reserved pattern (`9000000001`, `9000000002`, …) — a real number can
+  trigger a real SMS/OTP to a real person.
+* email → `apipilot_test_<x>@example.com` (`example.com` is reserved, never delivers).
+* names / usernames / codes → prefix `apipilot_test_` so leftovers are findable with one DB query.
+* NEVER real employee names, real customer numbers, or production identifiers as new-record data.
+
+2. UNDO PAIRING — the input states this endpoint's inverse (undo) endpoint when one exists
+   (create↔delete, assign↔deassign, activate↔deactivate) plus the SHARED fixed test values.
+
+* Cases in a file can only call THIS endpoint — cleanup happens in the inverse endpoint's OWN file,
+  which the runner executes right after this one. So every 2xx case here MUST use exactly the shared
+  fixed values, so the inverse file's success case undoes it precisely.
+
+3. UPDATE (PUT/PATCH) endpoints — self-restore inside the file:
+
+* The input provides the record's ORIGINAL values. The LAST case in the array MUST be a
+  "restore original values" success case that puts them back. Mid-file cases may mutate freely.
+
+4. NO UNDO EXISTS (record-only, or create with no delete) — apply the FIRST strategy that fits:
+
+* a. Endpoint is an upsert / overwrites the same row → use ONE fixed payload for every run (no growth).
+* b. Otherwise → marker payload (`apipilot_test_` prefix everywhere) AND append " [ORPHANS DATA]" to
+  the case name; the final run report must list exactly what was created (table + identifying values)
+  and tell the user they must delete it themselves.
+* c. Even marker data is unsafe (triggers real side effects: SMS, emails, device commands) →
+  generate NO 2xx case at all. Cover the endpoint with validation (400/422), auth (401/403) and
+  conflict (409) cases only, and state the happy path needs manual verification.
+
+5. PREFER SAFE-BY-DESIGN cases (they never write anything): missing/invalid fields (400/422),
+   missing/invalid token (401/403), duplicate-create conflict (second identical POST → 409),
+   update/delete of a nonexistent id (404/206).
+
 FASTAPI VALIDATION RULES (MANDATORY)
 
 * For 422/400 validation errors, prefer checking FastAPI `detail[]`:
@@ -128,6 +167,16 @@ MAXIMUM COVERAGE RULE (MANDATORY)
 
     * record exists vs does not exist
     * pending vs completed (if status-like fields exist)
+
+STANDARD-CASE DIVISION OF LABOR (MANDATORY when the `generate_standard_cases` tool is available)
+
+* The standard negative matrix — 401 missing/invalid auth, and per-required-field
+  missing / empty string / whitespace / wrong-type — is generated MECHANICALLY by the
+  `generate_standard_cases` MCP tool. Do NOT hand-write those cases; call the tool with the
+  baseline params/body, required field names, int fields, auth header names, and envelope style.
+* Hand-write ONLY the interesting cases: happy path(s), 206/404 data-state, boundary values,
+  enum/format tests, 409 duplicates, business logic, gateway-specific behavior.
+* Tool-generated names start with "[std] " — never create a case whose name starts with that prefix.
 
 OUTPUT SIZE RULE
 
@@ -200,6 +249,9 @@ INPUT I WILL PROVIDE
 * Body example or schema
 * Success response example(s)
 * Error response example(s)
+* For WRITE endpoints additionally: operation kind (create/update/delete/assign/unassign/record-only),
+  the inverse (undo) endpoint or the explicit statement "no undo exists", the shared fixed test values
+  for the undo pair, and (for updates) the record's original values to restore
 
 NOW GENERATE TESTS FOR:
 Method: <METHOD>
