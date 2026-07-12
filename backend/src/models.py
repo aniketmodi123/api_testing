@@ -99,6 +99,36 @@ class Cache(Base):
     timestamp: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
 
 
+class PersonalAccessToken(Base):
+    """A long-lived, revocable credential a user pastes into any MCP/agent client.
+
+    The raw token is shown once at creation and never stored — only its SHA-256 hex is kept
+    (full-entropy token, so a fast deterministic hash is safe and indexable for lookup, unlike a
+    salted password hash). Exchanged for a short-lived JWT at POST /pat/token.
+
+    Attributes:
+        id: Primary key.
+        username: Owner (user email), matching the JWT ``username`` claim.
+        name: User-supplied label to identify the token.
+        token_hash: SHA-256 hex of the raw token; unique, used for O(1) lookup on exchange.
+        created_at: Creation time.
+        last_used_at: Last successful exchange; ``None`` until first use.
+        revoked: ``True`` once revoked; revoked tokens never exchange.
+        expires_at: Optional hard expiry; ``None`` means it never expires (until revoked).
+    """
+
+    __tablename__ = "sso_personal_access_token"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True, index=True)
+    username: Mapped[str] = mapped_column(String(150), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, default=datetime.now, server_default=func.now())
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
+    revoked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text('FALSE'))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
+
+
 # ---------------------------
 # Workspace Model
 # ---------------------------

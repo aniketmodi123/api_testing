@@ -9,9 +9,9 @@ OUTPUT RULES (MANDATORY)
 * Output MUST be a JSON array of test cases: `[ {...}, {...} ]`.
 * Each test case MUST be a single JSON object with this exact shape:
   {
-  "name": "…",
+  "name": "...",
   "headers": { ... },     // include ONLY if overriding global defaults
-  "params": { ... },      // include ALL required query params (even in negative tests, unless the test is “missing param”)
+  "params": { ... },      // include ALL required query params (even in negative tests, unless the test is "missing param")
   "body": { ... },        // only for POST/PUT/PATCH
   "expected": { ... }
   }
@@ -75,7 +75,7 @@ or name exactly what it left behind. Never create silent junk rows.
 
 1. FAKE DATA ONLY — never real-looking personal data in any payload:
 
-* mobile → obviously-fake reserved pattern (`9000000001`, `9000000002`, …) — a real number can
+* mobile → obviously-fake reserved pattern (`9000000001`, `9000000002`, ...) — a real number can
   trigger a real SMS/OTP to a real person.
 * email → `apipilot_test_<x>@example.com` (`example.com` is reserved, never delivers).
 * names / usernames / codes → prefix `apipilot_test_` so leftovers are findable with one DB query.
@@ -115,24 +115,28 @@ FASTAPI VALIDATION RULES (MANDATORY)
   * `detail[0].msg` present
   * If you know the field name, assert it (e.g., `detail[0].loc[1] == "id"`)
 
-UNAUTHORIZED RULE (MANDATORY)
+UNAUTHORIZED RULE (MANDATORY — satisfied by `generate_standard_cases` when that tool is available;
+see STANDARD-CASE DIVISION OF LABOR below)
 
-* Include a 401 test where:
+* Every endpoint's final case set MUST include a 401 test where:
 
   * status = 401
-  * text_contains includes `"Invalid token"` (only if that matches provided errors)
   * response_code == 401
   * data absent
+  * text_contains asserts the ACTUAL error text from the provided error examples (e.g.
+    `"Invalid token"`). If no 401 example was provided, assert only `error_message` /
+    `detail` present — never invent an exact message.
 
-EDGE CASES / COVERAGE (MANDATORY)
+EDGE CASES / COVERAGE (MANDATORY — coverage target for the COMBINED case set; when
+`generate_standard_cases` is available it owns part of this list — see STANDARD-CASE DIVISION OF LABOR)
 
 * Include boundary tests for numeric limits if any exist (min/max).
-* Include “missing required field” tests for body/params.
-* Include “invalid type” tests where relevant.
-* Include “empty string” tests for string fields (if applicable).
-* Include “invalid enum/value” tests for constrained fields (if applicable).
+* Include "missing required field" tests for body/params.
+* Include "invalid type" tests where relevant.
+* Include "empty string" tests for string fields (if applicable).
+* Include "invalid enum/value" tests for constrained fields (if applicable).
 
-MAXIMUM COVERAGE RULE (MANDATORY)
+MAXIMUM COVERAGE RULE (MANDATORY — same combined-set reading as EDGE CASES above)
 
 * Generate the maximum reasonable number of test cases for the endpoint.
 * Include all meaningful combinations of:
@@ -170,13 +174,19 @@ MAXIMUM COVERAGE RULE (MANDATORY)
 
 STANDARD-CASE DIVISION OF LABOR (MANDATORY when the `generate_standard_cases` tool is available)
 
+* PRECEDENCE: when the tool is available, THIS section overrides the UNAUTHORIZED RULE, the
+  EDGE CASES / COVERAGE list, and the MAXIMUM COVERAGE list above wherever they overlap. Those
+  sections describe the coverage the endpoint must END UP WITH (tool cases + hand-written cases
+  COMBINED) — they are NOT an instruction to hand-write everything they list. Without the tool,
+  hand-write the full coverage yourself.
 * The standard negative matrix — 401 missing/invalid auth, and per-required-field
   missing / empty string / whitespace / wrong-type — is generated MECHANICALLY by the
   `generate_standard_cases` MCP tool. Do NOT hand-write those cases; call the tool with the
   baseline params/body, required field names, int fields, auth header names, and envelope style.
 * Hand-write ONLY the interesting cases: happy path(s), 206/404 data-state, boundary values,
   enum/format tests, 409 duplicates, business logic, gateway-specific behavior.
-* Tool-generated names start with "[std] " — never create a case whose name starts with that prefix.
+* Tool-generated names start with "[std] " — never create a case whose name starts with that prefix,
+  and never duplicate an assertion a "[std] " case already covers.
 
 OUTPUT SIZE RULE
 
@@ -280,11 +290,19 @@ value everywhere (change it once, every case follows). Nothing else justifies a 
 
 2. PARAMS and BODY → ALWAYS LITERAL. NEVER put a `{{var}}` in params or body.
    * Each case's params/body carry the concrete value THAT case tests — write it inline as a literal.
-   * A VALID data value that must exist in the target DB (a real `site_id`, `feeder_id`, `sc_no`,
-     `project_id`) is STILL a literal — do not variable-ize it. GROUND it first: query the target DB
-     for a value that returns rows, then inline that literal. A guessed/placeholder id silently
-     returns 206/empty. (This is the #1 bug: an unconfigured `{{site_id}}` sends the literal text
-     `{{site_id}}`, matches nothing, and every case returns 206.)
+   * SPLIT the literals by ONE test: can you plausibly invent this value? (a) INVENTABLE / structurally-
+      obvious — e.g. `year`, `month`, `date`, `page`, `limit`, booleans, known enums — you fill yourself
+      per case (a sensible current/recent value); never store or ask for these. (b) UNINVENTABLE — any
+      value that must already exist in the target DB (opaque recorded ids, natural keys, references such
+      as `site_id`, `feeder_id`, `sc_no`, `project_id` — examples, not a closed list) — these are STILL
+      literals (do not variable-ize) but you cannot invent. Their durable source is the per-scope
+      fixture in `apipilot.sample_data.json` (the agent-owned, gitignored, user-confirmed sample-data store) —
+      use the value stored there. If the fixture lacks it, the agent MUST explicitly ask the user to provide it and
+      write it back to `apipilot.sample_data.json` immediately. The agent is strictly prohibited from querying the DB,
+      probing the DB, or using in-context values/IDs without persisting them directly to `apipilot.sample_data.json`.
+      A guessed/placeholder id silently returns 206/empty. (This is the #1 bug: an unconfigured `{{site_id}}`
+      sends the literal text `{{site_id}}`, matches nothing, and every case returns 206. Stale hardcoded id lists
+      caused the same failure — the confirmed fixture replaces them.)
    * Invalid/edge values — empty string, whitespace, missing param, malformed id, out-of-range
      number, wrong-type field — are literals too, one per case.
 
@@ -300,6 +318,7 @@ value everywhere (change it once, every case follows). Nothing else justifies a 
    * A case that ships an unconfigured `{{var}}` runs with the LITERAL TEXT `{{token}}` / `{{site_id}}`
      as the value and fails wholesale (mass "Invalid token" / 206-empty). This is not an API bug —
      it is an unconfigured-variable bug. Prevent it, do not diagnose it later.
-   * Ask ONCE per value; reuse the stored env var across all later cases and APIs. Never ask twice.
+   * Ask ONCE per value; reuse from its durable store across all later cases and APIs — env vars for
+     `{{var}}`s, the `apipilot.sample_data.json` fixture for literal params/body data values. Never ask twice.
 
 Return JSON only.

@@ -103,6 +103,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         self.public_routes = {
             "/sign_up",
             "/sign_in",
+            "/pat/token",
             "/send-otp",
             "/forgot-password",
             "/verify-otp",
@@ -129,6 +130,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         # /m/ = public mock serve; /docs/ = public published docs; /meta/ = public info — no auth needed
         if request.url.path.startswith("/m/") or request.url.path.startswith("/docs/") or request.url.path.startswith("/meta/"):
+            response = await call_next(request)
+            return response
+
+        # /mcp-server/* = embedded MCP server; it runs its own PAT bearer auth, so this
+        # middleware must not gate it (its token page is public by design).
+        if request.url.path.startswith("/mcp-server"):
             response = await call_next(request)
             return response
 

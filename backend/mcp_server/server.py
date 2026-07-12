@@ -1,11 +1,19 @@
 """
-What this file does: Stdio MCP server exposing the API-testing platform as agent tools —
-discovery, bulk project sync, environment variables, test runs with reconcile hints, and
-result export. Requires env vars PLATFORM_BASE_URL, PLATFORM_EMAIL, PLATFORM_PASSWORD.
+What this file does: MCP server exposing the API-testing platform as agent tools — discovery,
+bulk project sync, environment variables, test runs with reconcile hints, and result export.
+
+Runs in one of two transports, selected by MCP_TRANSPORT:
+- "stdio" (default): local, single account via PLATFORM_EMAIL / PLATFORM_PASSWORD env vars.
+- "http": remote Streamable-HTTP resource server. Clients authenticate with a Personal Access
+  Token (PAT) sent as `Authorization: Bearer apipat_...` — one JSON headers config works in every
+  MCP-capable agent/IDE. Users mint a PAT at the token page (GET /). Each connected user acts as
+  their own platform account. Set MCP_PUBLIC_URL (the public URL clients reach), MCP_HOST, MCP_PORT.
+Both modes require PLATFORM_BASE_URL.
 """
 
 import asyncio
 import json
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -41,7 +49,48 @@ _SERVER_INSTRUCTIONS = (
     "works without it via the `test_pipeline` prompt."
 )
 
-mcp = FastMCP("apipilot", instructions=_SERVER_INSTRUCTIONS)
+# Transport is env-driven so the same code runs locally (stdio) and as a remote OAuth server
+# (http). On Render the injected $PORT wins over MCP_PORT; MCP_PUBLIC_URL is the public URL
+# clients connect to (it drives the resource-server identity + the token-page config snippet).
+_TRANSPORT = os.environ.get("MCP_TRANSPORT", "stdio").lower()
+MCP_PUBLIC_URL = os.environ.get("MCP_PUBLIC_URL", "http://localhost:7010").rstrip("/")
+MCP_HOST = os.environ.get("MCP_HOST", "0.0.0.0")
+MCP_PORT = int(os.environ.get("PORT") or os.environ.get("MCP_PORT") or "7010")
+
+if _TRANSPORT == "http":
+    from mcp.server.auth.settings import AuthSettings
+    from mcp.server.transport_security import TransportSecuritySettings
+    from pydantic import AnyHttpUrl
+
+    try:
+        from .oauth_provider import ApiPilotTokenVerifier
+    except ImportError:  # direct execution without package context
+        from oauth_provider import ApiPilotTokenVerifier
+
+    _platform_base_url = os.environ.get("PLATFORM_BASE_URL", "").rstrip("/")
+    # Resource server only: authenticate clients by a Personal Access Token bearer (no OAuth
+    # authorization server, no browser flow). The token page (GET /) mints PATs; any client
+    # connects with a plain `Authorization: Bearer apipat_...` headers config.
+    _token_verifier = ApiPilotTokenVerifier(
+        platform_base_url=_platform_base_url, public_url=MCP_PUBLIC_URL
+    )
+    mcp = FastMCP(
+        "apipilot",
+        instructions=_SERVER_INSTRUCTIONS,
+        host=MCP_HOST,
+        port=MCP_PORT,
+        token_verifier=_token_verifier,
+        auth=AuthSettings(
+            issuer_url=AnyHttpUrl(MCP_PUBLIC_URL),
+            resource_server_url=AnyHttpUrl(f"{MCP_PUBLIC_URL}/mcp"),
+        ),
+        # Binding 0.0.0.0 disables the SDK's localhost-only auto DNS-rebinding guard; the bearer
+        # requirement already protects /mcp, and the public origin is the reverse proxy.
+        transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
+    )
+    _token_verifier.register_routes(mcp)
+else:
+    mcp = FastMCP("apipilot", instructions=_SERVER_INSTRUCTIONS)
 
 
 def _read_source_file(path: Path, label: str) -> str:
@@ -119,10 +168,19 @@ def _find_node_in_tree(
 
 def _reconcile_case(result: Dict[str, Any]) -> Dict[str, Any]:
     """What it does: Classify one failed case as target-API-bug vs expected-block-bug vs connectivity."""
-    if result.get("success"):
-        return {"case_id": result.get("case_id"), "case": result.get("case"), "verdict": "pass"}
-    failures = result.get("failures") or []
+    request = result.get("request")
+    response = result.get("response")
     status = result.get("status_code")
+    if result.get("success"):
+        return {
+            "case_id": result.get("case_id"),
+            "case": result.get("case"),
+            "verdict": "pass",
+            "request": request,
+            "response": _truncate_response(response),
+            "status_code": status,
+        }
+    failures = result.get("failures") or []
     if status is None:
         hint = (
             "connectivity: request never completed (timeout/network) — "
@@ -146,8 +204,10 @@ def _reconcile_case(result: Dict[str, Any]) -> Dict[str, Any]:
         "failures": failures,
         "status_code": status,
         "hint": hint,
-        "response": _truncate_response(result.get("response")),
+        "request": request,
+        "response": _truncate_response(response),
     }
+
 
 
 # Cap per-case response snippets in reconcile output — full bodies of a big run blow past
@@ -237,12 +297,22 @@ async def install_skill() -> Dict[str, Any]:
 
 @mcp.tool()
 async def login() -> Dict[str, Any]:
-    """Authenticate against the platform (POST /sign_in) and cache the JWT for all later calls.
+    """Report the authenticated identity for this session.
 
-    Credentials come from PLATFORM_EMAIL / PLATFORM_PASSWORD env vars — never pass them as args.
+    In http mode the identity comes from your Personal Access Token (the `Authorization` header) —
+    no credentials are passed here. In stdio mode this triggers an env-cred login against POST
+    /sign_in using PLATFORM_EMAIL / PLATFORM_PASSWORD.
     """
+    try:
+        from .oauth_provider import context_auth
+    except ImportError:
+        from oauth_provider import context_auth  # type: ignore
+    ctx = context_auth()
+    if ctx is not None:
+        _token, email = ctx
+        return {"authenticated": True, "username": email, "mode": "token"}
     username = await client.login()
-    return {"authenticated": True, "username": username}
+    return {"authenticated": True, "username": username, "mode": "env"}
 
 
 @mcp.tool()
@@ -1147,6 +1217,61 @@ async def compare_changes(
 
 # ---------- export ----------
 
+def _map_status_to_text(status: Any) -> str:
+    if not status:
+        return "N/A"
+    try:
+        code = int(status)
+    except (TypeError, ValueError):
+        return str(status)
+    status_map = {
+        200: "200 OK",
+        201: "201 Created",
+        204: "204 No Content",
+        400: "400 Bad Request",
+        401: "401 Unauthorized",
+        403: "403 Forbidden",
+        404: "404 Not Found",
+        406: "406 Not Acceptable",
+        409: "409 Conflict",
+        422: "422 Unprocessable Entity",
+        500: "500 Internal Server Error",
+        502: "502 Bad Gateway",
+        503: "503 Service Unavailable",
+        206: "206 No Data Found",
+    }
+    return status_map.get(code, str(code))
+
+
+def _build_curl_command(req: Optional[Dict[str, Any]]) -> str:
+    if not req or not req.get("url"):
+        return "N/A"
+    method = str(req.get("method") or "GET").upper()
+    url = req.get("url")
+    
+    headers_dict = req.get("headers") or {}
+    headers_list = [f'-H "{k}: {v}"' for k, v in headers_dict.items()]
+    headers = " \\\n  ".join(headers_list)
+    
+    body = req.get("body")
+    if body:
+        if isinstance(body, dict) and len(body) > 0:
+            body_str = f"-H \"Content-Type: application/json\" \\\n  -d '{json.dumps(body)}'"
+        elif isinstance(body, str) and len(body.strip()) > 0:
+            body_str = f"-H \"Content-Type: application/json\" \\\n  -d '{body}'"
+        else:
+            body_str = ""
+    else:
+        body_str = ""
+        
+    curl = f'curl -X {method} "{url}"'
+    if headers:
+        curl += f" \\\n  {headers}"
+    if body_str:
+        curl += f" \\\n  {body_str}"
+    return curl
+
+
 @mcp.tool()
 async def export_results_table(reconcile: List[Dict[str, Any]], title: str = "API Test Results") -> Dict[str, Any]:
     """Format run reconcile output (from run_file_cases/run_bulk) into a Markdown table and
@@ -1154,32 +1279,111 @@ async def export_results_table(reconcile: List[Dict[str, Any]], title: str = "AP
 
     Pure transform, no platform call. Pass the `reconcile` list from a run tool's output.
     """
-    header = "| Case | Verdict | Status | Failures / Hint |\n|---|---|---|---|"
-    md_rows, cf_rows = [], []
-    for r in reconcile:
-        case = str(r.get("case") or r.get("case_id") or "?")
-        verdict = r.get("verdict", "?")
-        status = str(r.get("status_code") if r.get("status_code") is not None else "-")
-        detail = "" if verdict == "pass" else "; ".join(map(str, r.get("failures", []))) + f" — {r.get('hint', '')}"
-        detail_md = detail.replace("|", "\\|")
-        md_rows.append(f"| {case} | {verdict} | {status} | {detail_md} |")
-        cf_rows.append(
-            f"<tr><td>{case}</td><td>{verdict}</td><td>{status}</td><td>{detail}</td></tr>"
+    excel_data = []
+    has_details = any("request" in r for r in reconcile)
+
+    if has_details:
+        for index, r in enumerate(reconcile):
+            case_name = str(r.get("case") or r.get("case_id") or f"Test Case {index + 1}")
+            result_verdict = "Pass" if r.get("verdict") == "pass" else "Fail"
+            
+            # Request
+            req = r.get("request")
+            request_curl = _build_curl_command(req)
+            
+            # Expected
+            req_data = req or {}
+            expected = req_data.get("expected") or {}
+            status_in = expected.get("status_in")
+            if status_in:
+                expected_status = " or ".join(_map_status_to_text(s) for s in status_in)
+            else:
+                status = expected.get("status")
+                expected_status = _map_status_to_text(status) if status else "N/A"
+            
+            # Response
+            resp = r.get("response")
+            if isinstance(resp, dict):
+                resp_json = resp.get("json")
+                if resp_json is not None:
+                    resp_str = json.dumps(resp_json, indent=2)
+                elif resp.get("_truncated") and resp.get("_snippet"):
+                    resp_str = resp.get("_snippet")
+                else:
+                    resp_str = json.dumps(resp, indent=2)
+            else:
+                resp_str = str(resp) if resp is not None else "N/A"
+                
+            excel_data.append({
+                "Test case name": case_name,
+                "Request": request_curl,
+                "Expected": expected_status,
+                "Response": resp_str,
+                "Result": result_verdict
+            })
+            
+        header = "| Test case name | Request | Expected | Response | Result |\n|---|---|---|---|---|"
+        md_rows, cf_rows = [], []
+        for row in excel_data:
+            case_name = row["Test case name"]
+            req_md = row["Request"].replace("|", "\\|").replace("\n", "<br>")
+            exp_md = row["Expected"].replace("|", "\\|").replace("\n", "<br>")
+            resp_md = row["Response"].replace("|", "\\|").replace("\n", "<br>")
+            res_md = f"**{row['Result']}**"
+            md_rows.append(f"| {case_name} | <code>{req_md}</code> | {exp_md} | <code>{resp_md}</code> | {res_md} |")
+            
+            color = "#09ee09ff" if row["Result"] == "Pass" else "#fbeaea"
+            row_html = (
+                f'<tr style="background-color: {color}; vertical-align: top;">'
+                f'<td style="vertical-align: top;">{case_name}</td>'
+                f'<td style="vertical-align: top;">{row["Request"]}</td>'
+                f'<td style="vertical-align: top;">{row["Expected"]}</td>'
+                f'<td style="vertical-align: top;"><pre style="white-space: pre-wrap; font-family: monospace;">{row["Response"]}</pre></td>'
+                f'<td style="vertical-align: top;">{row["Result"]}</td>'
+                f"</tr>"
+            )
+            cf_rows.append(row_html)
+            
+        markdown = f"## {title}\n\n{header}\n" + "\n".join(md_rows)
+        confluence = (
+            f"<h2>{title}</h2>"
+            f'<table border="1" cellspacing="0" cellpadding="6" style="border-collapse: collapse; width: 100%; border: 1px solid #ccc;">'
+            f'<thead style="background-color: #f3f3f3; font-weight: bold;">'
+            f"<tr><th>Test case name</th><th>Request</th><th>Expected</th><th>Response</th><th>Result</th></tr>"
+            f"</thead>"
+            f"<tbody>"
+            f"{''.join(cf_rows)}"
+            f"</tbody></table>"
+        )
+    else:
+        header = "| Case | Verdict | Status | Failures / Hint |\n|---|---|---|---|"
+        md_rows, cf_rows = [], []
+        for r in reconcile:
+            case = str(r.get("case") or r.get("case_id") or "?")
+            verdict = r.get("verdict", "?")
+            status = str(r.get("status_code") if r.get("status_code") is not None else "-")
+            detail = "" if verdict == "pass" else "; ".join(map(str, r.get("failures", []))) + f" — {r.get('hint', '')}"
+            detail_md = detail.replace("|", "\\|")
+            md_rows.append(f"| {case} | {verdict} | {status} | {detail_md} |")
+            cf_rows.append(
+                f"<tr><td>{case}</td><td>{verdict}</td><td>{status}</td><td>{detail}</td></tr>"
+            )
+
+        markdown = f"## {title}\n\n{header}\n" + "\n".join(md_rows)
+        confluence = (
+            f"<h2>{title}</h2><table><tbody>"
+            "<tr><th>Case</th><th>Verdict</th><th>Status</th><th>Failures / Hint</th></tr>"
+            + "".join(cf_rows)
+            + "</tbody></table>"
         )
 
-    markdown = f"## {title}\n\n{header}\n" + "\n".join(md_rows)
-    confluence = (
-        f"<h2>{title}</h2><table><tbody>"
-        "<tr><th>Case</th><th>Verdict</th><th>Status</th><th>Failures / Hint</th></tr>"
-        + "".join(cf_rows)
-        + "</tbody></table>"
-    )
     passed = sum(1 for r in reconcile if r.get("verdict") == "pass")
     return {
         "markdown": markdown,
         "confluence_storage": confluence,
         "summary": {"total": len(reconcile), "passed": passed, "failed": len(reconcile) - passed},
     }
+
 
 
 @mcp.prompt(title="Run the ApiPilot test pipeline")
@@ -1205,9 +1409,9 @@ def casegen_resource() -> str:
 
 
 def main() -> None:
-    """Run the MCP server over stdio."""
+    """Run the MCP server over the configured transport (stdio or streamable-http)."""
     try:
-        mcp.run()
+        mcp.run("streamable-http" if _TRANSPORT == "http" else "stdio")
     finally:
         import asyncio
         try:

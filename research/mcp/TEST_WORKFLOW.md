@@ -1,5 +1,31 @@
 # ApiPilot Test Workflow (source of truth — "this side")
 
+## HOW TO READ THIS FILE (normative language)
+- **MUST / NEVER / PROHIBITED** — binding. No exceptions, no judgment call. Violating one of these
+  is a pipeline failure even if the tests pass.
+- **SHOULD / DEFAULT** — do this unless there is a concrete reason not to; when deviating, state
+  the deviation and the reason in the report.
+- **MAY / OPTIONAL** — allowed, agent's judgment.
+- A rule tagged **[BR-1]** / **[BR-2]** anywhere below is a reference to the boundary rules right
+  under this section — the reference and the rule are the SAME rule, not two rules.
+
+## CRITICAL BOUNDARY RULES (MANDATORY)
+1. **[BR-1] No direct database access.** The agent MUST NOT execute raw database queries, write SQL
+   scripts, or connect to any database by any means — including (not limited to) `psql`, Python DB
+   drivers, `docker exec` into a DB container, ORM sessions in ad-hoc scripts, or admin UIs. This
+   covers PostgreSQL/Aiven/local — any DB, any environment. The agent operates ONLY at the API
+   layer: reading handler code, FastAPI schemas, routers, request/response models, and executing
+   HTTP requests via the MCP tools. There is no "read-only exception" — a SELECT is as prohibited
+   as a DELETE.
+2. **[BR-2] No guessed identifiers.** The agent MUST NOT guess, invent, or probe for values that
+   must already exist in the DB (`site_id`, `feeder_id`, `project_id`, `sc_no`, etc.). Every such value MUST
+   be persisted to `apipilot.sample_data.json` immediately upon discovery or input. If the agent needs
+   a value and it is not in the file, the agent MUST explicitly ask the user for it. Bypassing the file or using
+   temporary in-context values without persisting them to `apipilot.sample_data.json` is strictly prohibited.
+
+Scattered reminders below cite [BR-1]/[BR-2] — they repeat the rule for safety after context
+compaction; the wording HERE is authoritative if any reminder reads differently.
+
 This file owns the WORKFLOW. `gpt_test_case_creatio_prompt.txt` owns the CASE SHAPE.
 Both live in this project so they stay editable here. The global `/apipilot-test` skill is a thin
 runner that reads THIS file + the prompt file fresh every run, then executes. Edit here, not in the skill.
@@ -12,12 +38,28 @@ API code. Cases are stored into ApiPilot through the `mcp__apipilot__*` MCP tool
   `/Users/aniketmodi/Desktop/api_testing/backend/gpt_test_case_creatio_prompt.txt`
 - This workflow (VOLATILE — read fresh every run): this file.
 - Per-project vars: `apipilot.vars.json` at the target project root (optional).
+- **Sample-data store (agent-only, gitignored, survives session changes): `apipilot.sample_data.json`
+  at the target project root.** Scope-keyed store of ONLY the UNGUESSABLE params/body values a run
+  needs — ANY value that must already exist in the DB and cannot be invented by the agent (opaque
+  recorded ids, natural keys, references — e.g. `project_id`, `feeder_id`, `site_id`, `sc_nos`, but the
+  rule is the TEST not the name: could the agent plausibly invent it? no → it belongs here). Arbitrary
+  shape, nesting allowed. One top-level key per scope
+  (folder-subtree / project); each holds an arbitrary `{key: value}` fixture. Data-only — auth/identity
+  stay in env vars, never here. **Do NOT store structurally-obvious values** — `year`, `month`, `date`,
+  `page`, `limit`, booleans, known enums: the agent generates those itself per case (a sensible current/
+  recent value), so they are never stored and never asked. The fixture exists only for values a human/DB
+  is the sole source of. MUST be in the target project's `.gitignore` — add the entry if missing.
+  Agent-only; never commit it; never ask the user to hand-edit it. READ + SHOW + CONFIRM at session
+  start (see Step 1.5): this is the durable home for the "ASK ONCE, THEN PERSIST" data values, and the
+  per-run confirmation is what refreshes stale ids. Distinct from `apipilot.state.json` (run ledger).
 - **Pipeline state (agent-only, survives session changes): `apipilot.state.json` at the target project
   root.** Holds `undo_map` (scan result + built_at), `pending_cleanups` (write-ahead log), `orphans`
   (until user deletes), and `progress` (per-endpoint run ledger — see Step 1.5). MUST be in the target
   project's `.gitignore` — add the entry if missing. Not for the user; never ask them to edit it.
   READ IT FIRST at session start: `pending_cleanups` non-empty → a previous session died mid-pair —
-  run those inverse calls BEFORE any new work; `undo_map` fresh → reuse instead of re-scanning;
+  run those inverse calls BEFORE any new work; `undo_map` fresh (definition: every route source file
+  in the scanned scope has an mtime older than `built_at` — one changed file means STALE, rebuild)
+  → reuse instead of re-scanning;
   `orphans` → re-list in every report; `progress` → skip any endpoint already `judged`, resume at the
   first non-judged, and never re-fetch one already at `cases_saved` or later.
 
@@ -42,10 +84,26 @@ confirmed.
     self-restore, and any server-generated-id flow all stay inside a single group.
 - **Run order:** the `reads` group first (no side effects) → then each `crud:<resource>` group in
   create → read → update → delete order (forward + inverse files together, as Step 6 requires).
+- **Sample-data: load → show → confirm (MANDATORY, do this as part of the plan before case-gen):**
+  1. The agent MUST read `apipilot.sample_data.json` for the active scope key at the start of the run.
+  2. The agent MUST NOT bypass this file. Using temporary in-context values (e.g. extracted from active logs, code, or previous API responses) without writing them to this file is strictly prohibited.
+  3. If a required value is missing or stale, the agent MUST stop and ask the user to provide it.
+  4. If the agent ever discovers or derives a valid ID (either from user input or from a successful API response), it MUST immediately write it back to `apipilot.sample_data.json` using the file modification tools so it survives session switches and context compactions.
+  5. Ensure `apipilot.sample_data.json` is added to the target project's `.gitignore` (add it if missing).
+- **Extract the value keys to guide the ask (names-only, cheap):** collect the params/body keys each
+  endpoint needs a concrete value for, then SPLIT them: (a) structurally-obvious keys (`year`, `month`,
+  `date`, `page`, `limit`, booleans, known enums) — the agent fills these itself, never ask/store;
+  (b) unguessable keys (opaque recorded ids) — these are the fixture keys. Only (b) goes to the user.
+  During the census this can come from the endpoint's declared params/url; deepen from `get_api` +
+  handler when a group is fetched. Present the UNION of unguessable keys — each with which endpoints use
+  it and any value already in the fixture — as a single fill-in form. The user fills the whole set ONCE,
+  carefully; this is the front-load that stops per-API interruptions (on a multi-API run the user
+  forgets values asked one at a time). [BR-1]/[BR-2]: this form is the ONLY source for unguessable
+  values — never a DB query, never a probe.
 - **GATE — stop and confirm before heavy work:** trigger when the scope has ANY write group, OR more
   than one resource group, OR more than 8 endpoints. On trigger, present the plan — the groups, the
-  per-group endpoint count, the run order, and the batched list of values only the user can give
-  (fold this into Step 5's "BATCH THE ASKS") — then STOP and let the user confirm or subset. A small
+  per-group endpoint count, the run order, and the batched value-key form above (folds together with
+  Step 5's "BATCH THE ASKS") — then STOP and let the user confirm or subset. A small
   pure-read scope under the trigger proceeds without asking. Never call `get_api` before the plan is
   confirmed on a gated scope.
 - **Progress ledger (`progress` in `apipilot.state.json`) — makes the run resumable:** one entry per
@@ -86,7 +144,8 @@ Fetch bodies and read handlers ONLY for endpoints in the group currently being p
 - **Feed the map into generation:** for every write endpoint, the gen input must carry its operation
   kind, its inverse endpoint (or `no undo exists`), the SHARED fixed fake test values for the pair
   (`apipilot_test_` prefix; fake mobiles `90000000xx`; emails `@example.com` — never real PII), and
-  for updates the record's original values (GET/DB-snapshot them first) so the file can self-restore.
+  for updates the record's original values so the file can self-restore — obtain them via the
+  resource's READ endpoint (GET) before generating; never from the DB ([BR-1]).
 - **Split the generation work (token diet):** call `mcp__apipilot__generate_standard_cases` FIRST —
   it mechanically expands and saves the standard negative matrix (401 auth, per-field
   missing/empty/whitespace/wrong-type) server-side and returns only names. Then hand-write ONLY the
@@ -126,10 +185,12 @@ plain literal, never a variable (see the case-gen prompt's VARIABLES section).
   persona's var. INVALID values (bad/expired/tampered token, wrong role) → static LITERAL in that one
   case, never a variable.
 - **Params & body → ALWAYS LITERAL. Never a `{{var}}`.** The concrete value a case tests goes inline.
-  A VALID data value that must exist in the DB (`site_id`, `feeder_id`, `sc_no`) is still a literal —
-  GROUND it: query the target DB (`docker exec <svc>_dev python -c "...SELECT ...LIMIT"`) for a value
-  that returns rows, inline it. A guessed id / an unconfigured `{{site_id}}` (sent as literal text)
-  matches nothing → 206 on every case. This is the #1 observed bug.
+  A VALID data value that must exist in the DB (`site_id`, `feeder_id`, `sc_no`) is still a literal.
+  Its durable home is the per-scope fixture in `apipilot.sample_data.json` (Step 1.5), confirmed with
+  the user each run — pull the literal from there. Value not in the fixture → the agent MUST ask the
+  user via the batched form ([BR-2]; DB queries/probes prohibited per [BR-1]). A guessed id / an
+  unconfigured `{{site_id}}` (sent as literal text) matches nothing → 206 on every case. This is the
+  #1 observed bug.
 - **HARD GATE — never emit or run an unconfigured `{{var}}`:** before producing a case that references
   a variable, that variable MUST already exist in the active env. If not, STOP and ask the user for its
   value, then `set_environment_variables` BEFORE writing the case. An unconfigured `{{var}}` runs as the
@@ -138,22 +199,28 @@ plain literal, never a variable (see the case-gen prompt's VARIABLES section).
   `list_environments`/`resolve_variables` to confirm the active env defines all of them; any missing →
   STOP, ask, set, then run. Never run with an unresolved variable.
 - **BATCH THE ASKS (one message, not five):** after the Step-3 scan the agent knows EVERY value the
-  whole scope needs — valid ids to ground, sample payload fields for write APIs, personas. Collect
+  whole scope needs — valid ids, sample payload fields for write APIs, personas. Collect
   them into ONE question to the user BEFORE generating/running anything; never interrupt mid-run for
   a value the scan could have predicted. Answers that are shared auth/identity → env vars; per-resource
-  sample payload values → literals in cases (optionally recorded under `sample_data` in
-  `apipilot.state.json` for regeneration). Values the agent can ground itself (DB query for a live id)
-  are NOT asked — self-serve first, ask only what only the user knows.
-- **ASK ONCE, THEN PERSIST:** if a needed value is not already an env var, ask the user once (a
-  known-good value, plus a known-bad one for the not-found test), store with `set_environment_variables`.
-  The person running this MCP is served by their OWN agent — once stored, never ask that user again;
-  reuse the stored env var across all later cases and APIs. The active environment is the durable store.
-- **Ground data values in reality (proven live):** the case-gen prompt's old hardcoded site/sc lists
-  went stale (all 206). Before storing a "known-good" value, confirm it has rows —
-  `docker exec <svc>_dev python -c "...SELECT ... LIMIT 5"` (use the ORM model's real `__tablename__`).
+  sample payload / data values → literals in cases, persisted to the scope's fixture in
+  `apipilot.sample_data.json` (Step 1.5) so later runs reuse them. Unguessable IDs/values come from
+  the user only ([BR-2]); DB queries/probes prohibited ([BR-1]).
+  Mid-run asks are allowed ONLY for a genuine single-API one-off the batched form could not predict;
+  everything reused across APIs must have been collected in the Step 1.5 form.
+- **ASK ONCE, THEN PERSIST:** if a needed value is not already stored, ask the user once, then store it
+  in its durable home so that user is never asked again — auth/identity → env vars via
+  `set_environment_variables` (a known-good value plus a known-bad one for the not-found test);
+  params/body data values → the scope fixture in `apipilot.sample_data.json`. Once stored, reuse across
+  all later cases, APIs, and sessions. The active environment is the durable store for `{{var}}`s; the
+  sample-data file is the durable store for literal data values.
+- **Ground data values in reality:** the case-gen prompt's old hardcoded site/sc lists
+  went stale (all 206). Valid IDs come from the user-confirmed sample-data fixture, nowhere else
+  ([BR-1]/[BR-2]).
 - **Expected blocks are NOT variable-resolved** — the runner substitutes `{{var}}` only in
   headers/params/body. When a param is `{{site_id}}`, assert `present`/`type`, never `equals "<literal>"`.
-- Read `apipilot.vars.json` at target project root if present; likely-expired token → ask user.
+- Read `apipilot.vars.json` at target project root if present. Token validity is VERIFIED, not
+  guessed: run ONE cheap authed GET through the target (any known read endpoint) before the first
+  batch; 401 → the token is dead — ask the user for a fresh one, update the env, re-verify.
 - Push with `mcp__apipilot__set_environment_variables`; verify with `mcp__apipilot__resolve_variables`.
 - **UI parity (proven live):** because all shared values live in the ACTIVE environment, the user's
   manual bulk-run in the ApiPilot UI resolves the exact same values and shows the exact same pass/fail
@@ -164,6 +231,8 @@ plain literal, never a variable (see the case-gen prompt's VARIABLES section).
   "All connection attempts failed". For services on the host machine use
   `http://host.docker.internal:<port>` in the URL variable. Verify before running:
   `docker exec apipilot curl -s -o /dev/null -w "%{http_code}" <resolved-url>`.
+  (This docker exec is an HTTP connectivity check against the API — it is NOT DB access and does
+  not violate [BR-1].)
 - **Runs use the ACTIVE environment (proven live):** there is no per-run environment override —
   if the user switches the active env mid-session (UI), the next run resolves against THAT env and
   vars like `token` silently go out as literal `{{token}}` → mass "Invalid token" failures.
@@ -233,10 +302,9 @@ a missing required header may die at the gateway as 401 `{"detail": ...}` before
 on it (e.g. `/sc-no`) are PUBLIC: bad/missing token still returns 200/206 data. Before writing 401
 cases, probe the route with a junk token; if it still serves data, the route is public — assert the
 public contract, and if that surprises the user, ask (it may be an intended public route or a real hole).
-**Grounding data must be real + current (proven live):** the case-gen prompt's site_id/sc_no lists went
-stale — every id returned 206. Query the TARGET service's DB for a live id with rows before asserting a
-200 body: `docker exec <svc>_dev python -c "...SELECT ... LIMIT 5"` (use the ORM model's real
-`__tablename__`, not the class name).
+**Grounding data must be real + current:** the case-gen prompt's site_id/sc_no lists went
+stale — every id returned 206. Rely entirely on the user-confirmed values in
+`apipilot.sample_data.json` ([BR-1]/[BR-2]: no DB checks, no docker-exec record queries).
 
 ### 8. Export
 `mcp__apipilot__export_results_table` with a clear title → reconcile table for Confluence/docs.
@@ -251,9 +319,19 @@ Summarise: total cases, pass/fail, count of API-bugs vs expected-bugs, list of p
 ## Rules
 - Read this file + the case-gen prompt fresh every run — both are the volatile source of truth.
 - Idempotent: re-run must not duplicate the tree. If ApiPilot renames duplicates, stop + report.
-- Never hardcode tokens/PII — variables only.
+- Never hardcode a VALID token or any real PII — valid shared credentials live in env variables
+  only. (Deliberately-INVALID tokens in negative cases are the one exception: those are static
+  literals by design, per Step 5.)
 - Write APIs: the run leaves the DB as it found it, or the report names every leftover row. Fake data
   only in write payloads — `apipilot_test_` prefix, fake mobiles, `@example.com` emails; a real mobile
   number can fire a real SMS/OTP.
 - Step 7 = judgment: classify, propose, wait. Two directions (fix API / fix expected), never a silent third.
 - Report honestly — if the run had failures, say so with numbers; don't declare green early.
+- **No custom formatting scripts:** Never write custom Python, Node.js, or shell scripts to parse, extract, or format test results. Always use the built-in `export_results_table` tool on the `reconcile` output to get the Markdown/XHTML table, and present it directly or use Confluence tools to publish.
+
+## SAMPLE DATA DIRECTORY & PERSISTENCE PROTOCOL
+
+1. **Parameter Resolution**: When the agent reads the FastAPI handler code and identifies unguessable request parameters (such as `sc_no`, `feeder_id`, `project_id`, `site_id`, etc.), it MUST look up the values directly in the project root's `apipilot.sample_data.json` file.
+2. **Strict Persistence**: Under no circumstances should the agent use temporary or in-context IDs without immediately writing them back to `apipilot.sample_data.json` using the file modification tools so that they survive session switches.
+3. **No Guessing**: If a required database identifier is missing from `apipilot.sample_data.json` and cannot be found in the current environment configuration, the agent MUST stop and ask the user to provide it.
+

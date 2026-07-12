@@ -20,3 +20,5 @@ websockets
 cryptography
 jsonpath-ng
 faker
+# Embedded remote MCP server (mounted at /mcp-oauth in single-service mode).
+mcp>=1.28
