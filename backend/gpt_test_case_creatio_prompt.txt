@@ -321,4 +321,26 @@ value everywhere (change it once, every case follows). Nothing else justifies a 
    * Ask ONCE per value; reuse from its durable store across all later cases and APIs — env vars for
      `{{var}}`s, the `apipilot.sample_data.json` fixture for literal params/body data values. Never ask twice.
 
+SELF-CHECK BEFORE RETURNING (MANDATORY — fix violations, never annotate them)
+
+Validate the finished array against every rule above. Any failure → fix it and re-run this check:
+
+1. Valid JSON array. No markdown fence, no comments, no text before or after.
+2. Every case has exactly ONE of status/status_in AND at least one body assertion. A status-only
+   case is invalid — fix it or drop it.
+3. No `{{...}}` anywhere in params or body. Headers may reference persona env vars only; deliberate
+   invalid-auth cases use static literals.
+4. No case name starting with "[std] "; when the standard-case tool ran, no hand-written case
+   duplicates an assertion a "[std] " case already covers.
+5. GET endpoints: `status_in [200, 206]` + `json.either` with both branches, exactly as specified.
+6. Write endpoints: every 2xx case uses the SHARED fixed test values from the input; update files
+   end with the restore-original-values case; no-undo endpoints follow the a/b/c ladder
+   ("[ORPHANS DATA]" name or no 2xx case at all).
+7. No real-looking PII anywhere: mobiles 90000000xx, emails @example.com, apipilot_test_ prefixes.
+8. Every expected block asserts only what the provided examples/handler evidence supports. Unknown
+   exact message → assert present/contains on the stable part only — never invent message text.
+9. Case names are unique within the array and state what the case proves (not "test 3").
+
+A case that cannot be made to pass this check gets DROPPED, not shipped rule-breaking.
+
 Return JSON only.

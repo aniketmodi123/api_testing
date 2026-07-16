@@ -32,3 +32,8 @@ i have three condition
 1) when i click on send directly api call using ui asiox or fetch using  body etc data
 2) when i click on validate the api first record the api as case then use run api to validate api
 
+
+
+"""
+/rewrite-loop 98 speed-only, contracts frozen — continue from research/perf-rewrite/progress.md, do next unchecked batch
+"""

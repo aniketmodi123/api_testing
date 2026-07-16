@@ -10,20 +10,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_db
-
-from common_querys import (
-    log_failed_attempt,
-    log_success_attempt
-)
-
+from common_querys import log_failed_attempt, log_success_attempt
 from models import User, Cache
 from schema import UserSignIn
-from utils import (
-    ExceptionHandler,
-    create_response,
-    verify_password,
-    create_access_token
-)
+from utils import create_response, verify_password, create_access_token
 
 router = APIRouter()
 
@@ -41,38 +31,22 @@ class AccessTokenResponse(BaseModel):
 @router.post("/sign_in")
 async def sign_in(user_credentials: UserSignIn, db: AsyncSession = Depends(get_db)):
     """POST /sign_in — verify credentials, issue a 7-day JWT, cache the token, and log the attempt."""
-    try:
-        # Get user by username
-        stmt = select(User).where(User.email == user_credentials.email)
-        result = await db.execute(stmt)
-        user = result.scalar_one_or_none()
+    result = await db.execute(
+        select(User.email, User.password, User.username)
+        .where(User.email == user_credentials.email)
+    )
+    user = result.one_or_none()
 
-        # Verify user exists and password is correct
-        if not user or not verify_password(user_credentials.password, user.password):
-            await log_failed_attempt(db, user_credentials.email)
-            await db.commit()
-            return create_response(401, error_message = "Incorrect username or password")
-
-        # Create access token
-        token_data = {"username": user.email}
-        access_token = await create_access_token(
-            data=token_data,
-            expires_delta=relativedelta(days= 7)
-        )
-
-        # Cache the token
-        cache_entry = Cache(
-            username=user.email,
-            token=access_token,
-            timestamp=datetime.now()
-        )
-        db.add(cache_entry)
-
-        # Log successful login
-        await log_success_attempt(db, user.username)
+    if not user or not verify_password(user_credentials.password, user.password):
+        await log_failed_attempt(db, user_credentials.email)
         await db.commit()
-        return create_response(200, {"access_token": access_token}, AccessTokenResponse)
+        return create_response(401, error_message="Incorrect username or password")
 
-    except Exception as e:
-        await db.rollback()
-        return ExceptionHandler(e)
+    access_token = await create_access_token(
+        data={"username": user.email},
+        expires_delta=relativedelta(days=7),
+    )
+    db.add(Cache(username=user.email, token=access_token, timestamp=datetime.now()))
+    await log_success_attempt(db, user.username)
+    await db.commit()
+    return create_response(200, {"access_token": access_token}, AccessTokenResponse)

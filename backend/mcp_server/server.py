@@ -44,6 +44,12 @@ _SERVER_INSTRUCTIONS = (
     "The same content is also available as the `test_pipeline` prompt and as live resources "
     "(`workflow://test-pipeline`, `prompt://case-generation`) — all read fresh from the source files "
     "on every call, so they always reflect the latest edited version. "
+    "Standing judgment rules regardless of workflow step: (1) mass failures sharing ONE signature "
+    "(all 'Invalid token' / all 206 / connection refused) are a variable/env/connectivity bug — fix "
+    "the cause and re-run before judging any case individually; (2) never loosen an expected "
+    "assertion to force a pass — classify the mismatch as API-bug or expected-bug with the handler "
+    "code as evidence; (3) never query the target DB or guess DB identifiers — unguessable values "
+    "come from the user and persist in apipilot.sample_data.json. "
     "To add the `/apipilot-test` slash command on a device that only has this MCP connection, call "
     "`install_skill` and write its returned content to the returned path — the pipeline itself already "
     "works without it via the `test_pipeline` prompt."
@@ -725,6 +731,10 @@ async def update_case(
     Only the fields you pass change; omitted fields keep their stored value. This is the repair
     tool for expected-block-bugs found by run reconcile — fix the assertion, keep the case id.
     At least one field is required.
+
+    NEVER loosen an assertion just to make a failing case pass — that masks real API bugs. Repair
+    an expected block only after the handler code confirms the RESPONSE was correct and the
+    assertion wrong. Response wrong → it is an API bug: propose a code fix, leave the case alone.
     """
     fields = {"name": name, "headers": headers, "params": params, "body": body, "expected": expected}
     payload = {k: v for k, v in fields.items() if v is not None}
@@ -1095,6 +1105,10 @@ async def run_file_cases(
     target-api-bug vs expected-block-bug vs connectivity. Never silently passes.
     Failure response bodies are truncated to a judgment-sized snippet; include_raw=True
     returns the full untruncated envelope as well (large — can overflow agent context).
+
+    TRIAGE: most cases failing with ONE shared signature (all "Invalid token" / all 206 /
+    connection refused) = systemic env/variable/connectivity bug — fix it and re-run before
+    judging any case individually.
     """
     envelope = await client.request(
         "POST", "/run", json={"file_id": file_id, "case_id": case_ids}
@@ -1121,6 +1135,8 @@ async def run_bulk(
 
     Returns per-case verdicts + reconcile hints (same contract as run_file_cases).
     Failure response bodies are truncated; include_raw=True adds the full envelope (large).
+    TRIAGE: mass failures sharing one signature = systemic env/variable bug — fix + re-run
+    before judging cases individually.
     """
     if bool(file_ids) == bool(selections):
         raise ValueError("Pass exactly one of file_ids or selections")

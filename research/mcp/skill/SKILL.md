@@ -14,7 +14,12 @@ not just this machine) — this skill only invokes it.
 1. Load the server-native prompt **`test_pipeline`** from the ApiPilot MCP server
    (`mcp__apipilot__*`). It returns the current end-to-end workflow + case-generation rules, read live
    from the repo — always the latest edited version.
-2. Follow that prompt exactly, using the server's MCP tools.
+2. Integrity check the loaded prompt: it must contain BOTH sections — "=== WORKFLOW" and
+   "=== CASE-GENERATION PROMPT" — and neither may be a "[... not found ...]" placeholder. A
+   placeholder → STOP and report which source file is missing. Never run half a pipeline, and never
+   fill the missing half from memory.
+3. Follow that prompt exactly, using the server's MCP tools. When the workflow and your instinct
+   disagree, the workflow wins — its rules encode failures already hit in production runs.
 
 For multi-API scope, do NOT run a flat per-API loop. The pipeline's Step 1.5 first does a cheap census
 (`list_apis`, names only), groups endpoints (GETs → one reads group; writes → one group per

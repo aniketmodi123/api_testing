@@ -6,13 +6,13 @@ from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, Header
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from common_querys import can_access_workspace, get_user_by_username, write_audit
+from common_querys import resolve_workspace_access, has_min_role, write_audit
 from config import get_db
 from models import Comment
-from utils import ExceptionHandler, create_response
+from utils import create_response
 
 router = APIRouter()
 
@@ -63,45 +63,36 @@ async def create_comment(
         - Comments are immutable after creation; delete and re-post to correct.
         - parent_id must refer to a comment in the same workspace.
     """
-    try:
-        user = await get_user_by_username(db, username)
-        if not user:
-            return create_response(400, error_message="User not found")
+    access = await resolve_workspace_access(db, username, workspace_id)
+    if access.user is None:
+        return create_response(400, error_message="User not found")
+    if not has_min_role(access, "editor"):
+        return create_response(403, error_message="Editor access required")
 
-        access = await can_access_workspace(db, workspace_id, user.id, min_role="editor")
-        if not access:
-            return create_response(403, error_message="Editor access required")
+    if payload.parent_id is not None:
+        parent_exists = (await db.execute(
+            select(Comment.id).where(
+                Comment.id == payload.parent_id,
+                Comment.workspace_id == workspace_id,
+            )
+        )).scalar_one_or_none()
+        if parent_exists is None:
+            return create_response(400, error_message="Parent comment not found in this workspace")
 
-        if payload.parent_id is not None:
-            parent = (
-                await db.execute(
-                    select(Comment).where(
-                        Comment.id == payload.parent_id,
-                        Comment.workspace_id == workspace_id,
-                    )
-                )
-            ).scalar_one_or_none()
-            if not parent:
-                return create_response(400, error_message="Parent comment not found in this workspace")
+    comment = Comment(
+        workspace_id=workspace_id,
+        entity_type=payload.entity_type,
+        entity_id=payload.entity_id,
+        author_username=username,
+        body=payload.body,
+        parent_id=payload.parent_id,
+    )
+    db.add(comment)
+    await db.flush()
+    await write_audit(db, username, "comment.create", "comment", comment.id, workspace_id=workspace_id)
+    await db.commit()
 
-        comment = Comment(
-            workspace_id=workspace_id,
-            entity_type=payload.entity_type,
-            entity_id=payload.entity_id,
-            author_username=username,
-            body=payload.body,
-            parent_id=payload.parent_id,
-        )
-        db.add(comment)
-        await db.flush()
-        await write_audit(db, username, "comment.create", "comment", comment.id, workspace_id=workspace_id)
-        await db.commit()
-        await db.refresh(comment)
-
-        return create_response(201, data=_comment_dict(comment), schema=CommentResponse)
-    except Exception as e:
-        await db.rollback()
-        return ExceptionHandler(e)
+    return create_response(201, data=_comment_dict(comment), schema=CommentResponse)
 
 
 @router.get("/workspace/{workspace_id}/comments")
@@ -117,33 +108,27 @@ async def list_comments(
     Notes:
         - Returns a flat list; UI builds the thread tree from parent_id.
     """
-    try:
-        user = await get_user_by_username(db, username)
-        if not user:
-            return create_response(400, error_message="User not found")
+    access = await resolve_workspace_access(db, username, workspace_id)
+    if access.user is None:
+        return create_response(400, error_message="User not found")
 
-        if entity_type not in ENTITY_TYPES:
-            return create_response(400, error_message=f"entity_type must be one of {ENTITY_TYPES}")
+    if entity_type not in ENTITY_TYPES:
+        return create_response(400, error_message=f"entity_type must be one of {ENTITY_TYPES}")
 
-        access = await can_access_workspace(db, workspace_id, user.id, min_role="viewer")
-        if not access:
-            return create_response(403, error_message="Access denied")
+    if not access.can_access:
+        return create_response(403, error_message="Access denied")
 
-        comments = (
-            await db.execute(
-                select(Comment)
-                .where(
-                    Comment.workspace_id == workspace_id,
-                    Comment.entity_type == entity_type,
-                    Comment.entity_id == entity_id,
-                )
-                .order_by(Comment.created_at.asc())
-            )
-        ).scalars().all()
+    comments = (await db.execute(
+        select(Comment)
+        .where(
+            Comment.workspace_id == workspace_id,
+            Comment.entity_type == entity_type,
+            Comment.entity_id == entity_id,
+        )
+        .order_by(Comment.created_at.asc())
+    )).scalars().all()
 
-        return create_response(200, data=[_comment_dict(c) for c in comments], schema=CommentResponse)
-    except Exception as e:
-        return ExceptionHandler(e)
+    return create_response(200, data=[_comment_dict(c) for c in comments], schema=CommentResponse)
 
 
 @router.delete("/comment/{comment_id}")
@@ -157,35 +142,27 @@ async def delete_comment(
     Notes:
         - Children of a deleted comment have parent_id set to NULL (SET NULL cascade), not deleted.
     """
-    try:
-        user = await get_user_by_username(db, username)
-        if not user:
-            return create_response(400, error_message="User not found")
+    comment_row = (await db.execute(
+        select(Comment.workspace_id, Comment.author_username).where(Comment.id == comment_id)
+    )).first()
+    if not comment_row:
+        return create_response(404, error_message="Comment not found")
 
-        comment = (
-            await db.execute(select(Comment).where(Comment.id == comment_id))
-        ).scalar_one_or_none()
-        if not comment:
-            return create_response(404, error_message="Comment not found")
+    access = await resolve_workspace_access(db, username, comment_row.workspace_id)
+    if access.user is None:
+        return create_response(400, error_message="User not found")
+    if not access.can_access:
+        return create_response(403, error_message="Access denied")
 
-        access = await can_access_workspace(db, comment.workspace_id, user.id, min_role="viewer")
-        if not access:
-            return create_response(403, error_message="Access denied")
+    is_author = comment_row.author_username == username
+    if not is_author and not has_min_role(access, "admin"):
+        return create_response(403, error_message="Only the comment author or a workspace admin may delete this comment")
 
-        is_author = comment.author_username == username
-        is_admin = await can_access_workspace(db, comment.workspace_id, user.id, min_role="admin")
-        if not is_author and not is_admin:
-            return create_response(403, error_message="Only the comment author or a workspace admin may delete this comment")
+    await db.execute(delete(Comment).where(Comment.id == comment_id))
+    await write_audit(db, username, "comment.delete", "comment", comment_id, workspace_id=comment_row.workspace_id)
+    await db.commit()
 
-        workspace_id = comment.workspace_id
-        await db.delete(comment)
-        await write_audit(db, username, "comment.delete", "comment", comment_id, workspace_id=workspace_id)
-        await db.commit()
-
-        return create_response(200, message="Comment deleted")
-    except Exception as e:
-        await db.rollback()
-        return ExceptionHandler(e)
+    return create_response(200, message="Comment deleted")
 
 
 def _comment_dict(c: Comment) -> dict:

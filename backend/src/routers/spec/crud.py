@@ -6,12 +6,12 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Header
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from common_querys import can_access_workspace, get_user_by_username, get_workspace_tree_response, write_audit
 from config import get_db
-from models import ApiSpec, Workspace
+from models import ApiSpec
 from utils import ExceptionHandler, create_response
 
 router = APIRouter()
@@ -159,14 +159,14 @@ async def list_specs(
             return create_response(403, error_message="Access denied")
 
         q = (
-            select(ApiSpec)
+            select(ApiSpec.id, ApiSpec.workspace_id, ApiSpec.name, ApiSpec.version, ApiSpec.format, ApiSpec.created_at)
             .where(ApiSpec.workspace_id == workspace_id)
             .order_by(ApiSpec.created_at.desc())
             .limit(min(limit, 200))
             .offset(offset)
         )
-        specs = (await db.execute(q)).scalars().all()
-        return create_response(200, data=[_spec_to_dict(s) for s in specs], schema=SpecSummaryResponse)
+        rows = (await db.execute(q)).fetchall()
+        return create_response(200, data=[_spec_to_dict(r) for r in rows], schema=SpecSummaryResponse)
     except Exception as e:
         return ExceptionHandler(e)
 
@@ -211,7 +211,9 @@ async def delete_spec(
         if not user:
             return create_response(400, error_message="User not found")
 
-        spec = (await db.execute(select(ApiSpec).where(ApiSpec.id == spec_id))).scalar_one_or_none()
+        spec = (await db.execute(
+            select(ApiSpec.id, ApiSpec.workspace_id).where(ApiSpec.id == spec_id)
+        )).one_or_none()
         if not spec:
             return create_response(404, error_message="Spec not found")
 
@@ -219,7 +221,7 @@ async def delete_spec(
         if not access:
             return create_response(403, error_message="Access denied")
 
-        await db.delete(spec)
+        await db.execute(delete(ApiSpec).where(ApiSpec.id == spec_id))
         await write_audit(db, username=user.username, action="spec.delete", entity_type="spec", entity_id=spec_id, workspace_id=spec.workspace_id)
         await db.commit()
         return create_response(200, message="Spec deleted")
@@ -244,7 +246,9 @@ async def export_spec(
         if not user:
             return create_response(400, error_message="User not found")
 
-        spec = (await db.execute(select(ApiSpec).where(ApiSpec.id == spec_id))).scalar_one_or_none()
+        spec = (await db.execute(
+            select(ApiSpec.workspace_id).where(ApiSpec.id == spec_id)
+        )).one_or_none()
         if not spec:
             return create_response(404, error_message="Spec not found")
 

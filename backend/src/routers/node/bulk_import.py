@@ -3,12 +3,12 @@ What this file does: Exposes POST /node/bulk-import for atomically importing a c
 """
 
 from fastapi import APIRouter, Depends, Header
-from sqlalchemy import select, and_
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_db
-from common_querys import get_user_by_username, can_access_workspace, get_workspace_tree_response
-from models import Node, Api, ApiCase
+from common_querys import can_access_workspace, get_user_by_username, get_workspace_tree_response
+from models import Api, ApiCase, Node
 from schema import BulkImportRequest
 from utils import ExceptionHandler, create_response, value_correction
 
@@ -30,6 +30,14 @@ async def bulk_import_nodes(
         if not await can_access_workspace(db, payload.workspace_id, user.id, min_role="editor"):
             return create_response(403, error_message="Workspace access denied")
 
+        # Pre-load all existing (parent_id, name) pairs in the workspace in one query
+        # to avoid an N+1 SELECT per imported item during dedup checks.
+        existing_result = await db.execute(
+            select(Node.parent_id, Node.name).where(Node.workspace_id == payload.workspace_id)
+        )
+        # existing_names: set of (parent_id_or_None, name)
+        existing_names: set[tuple] = {(row.parent_id, row.name) for row in existing_result.all()}
+
         # Map temp_id -> real DB Node id
         temp_to_real: dict[str, int] = {}
 
@@ -40,27 +48,18 @@ async def bulk_import_nodes(
 
         while items and remaining_passes > 0:
             remaining_passes -= 1
-            still_pending = []
+            still_pending: list = []
 
             for item in items:
-                # Check parent is resolved (or no parent)
                 if item.parent_temp_id and item.parent_temp_id not in temp_to_real:
                     still_pending.append(item)
                     continue
 
                 parent_id = temp_to_real.get(item.parent_temp_id) if item.parent_temp_id else None
 
-                # Deduplicate names within same parent
+                # Dedup check against in-memory set — no extra DB query per item
                 name = item.name
-                existing_query = select(Node).where(
-                    and_(
-                        Node.workspace_id == payload.workspace_id,
-                        Node.name == name,
-                        Node.parent_id == parent_id,
-                    )
-                )
-                existing = (await db.execute(existing_query)).scalar_one_or_none()
-                if existing:
+                if (parent_id, name) in existing_names:
                     name = f"{name} (imported)"
 
                 node = Node(
@@ -70,11 +69,12 @@ async def bulk_import_nodes(
                     parent_id=parent_id,
                 )
                 db.add(node)
-                await db.flush()  # get id before commit
+                await db.flush()
 
+                # Track the new name so later items in the same batch see it
+                existing_names.add((parent_id, name))
                 temp_to_real[item.temp_id] = node.id
 
-                # Create Api + ApiCases for file nodes
                 if item.type == "file" and item.api:
                     api_data = item.api
                     api = Api(
@@ -89,15 +89,16 @@ async def bulk_import_nodes(
                     await db.flush()
 
                     for case_data in (item.cases or []):
-                        case = ApiCase(
-                            api_id=api.id,
-                            name=case_data.name,
-                            headers=case_data.headers or {},
-                            params=case_data.params or {},
-                            body=case_data.body or {},
-                            expected=case_data.expected or {},
+                        db.add(
+                            ApiCase(
+                                api_id=api.id,
+                                name=case_data.name,
+                                headers=case_data.headers or {},
+                                params=case_data.params or {},
+                                body=case_data.body or {},
+                                expected=case_data.expected or {},
+                            )
                         )
-                        db.add(case)
 
                 processed_ids.add(item.temp_id)
 

@@ -614,14 +614,13 @@ export const apiSlice = createApi({
 
     saveTestCase: builder.mutation({
       query: ({ fileId, caseId, ...testCaseData }) => {
-        const endpoint = caseId
-          ? `/api/cases/${caseId}`
-          : `/file/${fileId}/api/cases`;
-        const method = caseId ? 'PUT' : 'POST';
+        const url = caseId
+          ? `/file/${fileId}/api/cases/save?case_id=${caseId}`
+          : `/file/${fileId}/api/cases/save`;
 
         return {
-          url: endpoint,
-          method,
+          url,
+          method: 'POST',
           body: testCaseData,
         };
       },

@@ -3,7 +3,6 @@ What this file does: Parses an OpenAPI 3.x or Swagger 2.0 spec (JSON or YAML) an
 """
 
 import json
-import shlex
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 try:
@@ -135,17 +134,17 @@ def _inline_refs(obj: Any, root: Dict[str, Any], seen: Optional[Set[str]] = None
     return obj
 
 
-def _schema_to_example_body(schema: Any) -> Dict[str, Any]:
+def _schema_to_example_body(schema: Any, _depth: int = 0) -> Any:
     """What it does: Generate a skeleton example dict from a JSON schema object for use as ApiCase body."""
-    if not isinstance(schema, dict):
+    if _depth > 10 or not isinstance(schema, dict):
         return {}
     t = schema.get("type", "object")
     if t == "object":
         props = schema.get("properties", {})
-        return {k: _schema_to_example_body(v) for k, v in props.items()}
+        return {k: _schema_to_example_body(v, _depth + 1) for k, v in props.items()}
     if t == "array":
         items = schema.get("items", {})
-        return [_schema_to_example_body(items)]
+        return [_schema_to_example_body(items, _depth + 1)]
     defaults = {"string": "", "integer": 0, "number": 0.0, "boolean": False, "null": None}
     return defaults.get(t, "")
 
@@ -224,27 +223,6 @@ def _operation_to_case(op: Dict[str, Any]) -> Tuple[Dict, Dict, Dict]:
     return headers, params, body
 
 
-async def _get_or_create_folder(
-    db: AsyncSession, workspace_id: int, name: str, parent_id: Optional[int]
-) -> int:
-    """What it does: Return the id of an existing folder node matching name+parent, creating it if absent."""
-    q = select(Node).where(
-        and_(
-            Node.workspace_id == workspace_id,
-            Node.name == name,
-            Node.parent_id == parent_id,
-            Node.type == "folder",
-        )
-    )
-    existing = (await db.execute(q)).scalar_one_or_none()
-    if existing:
-        return existing.id
-    folder = Node(workspace_id=workspace_id, name=name, type="folder", parent_id=parent_id)
-    db.add(folder)
-    await db.flush()
-    return folder.id
-
-
 # ---------- Route handler ----------
 
 @router.post("/spec/import")
@@ -295,60 +273,72 @@ async def import_spec(
         if len(ops) > MAX_PATHS:
             return create_response(400, error_message=f"Spec exceeds {MAX_PATHS} path limit ({len(ops)} found)")
 
-        # Step 5: create nodes/apis/cases
-        nodes_created = apis_created = cases_created = 0
+        # Step 5: create nodes/apis/cases — three bulk flushes instead of O(n) flushes
         parent_id = payload.parent_node_id
 
+        existing_names: Set[str] = {
+            r[0]
+            for r in (
+                await db.execute(
+                    select(Node.name).where(
+                        and_(
+                            Node.workspace_id == payload.workspace_id,
+                            Node.parent_id == parent_id,
+                            Node.type == "file",
+                        )
+                    )
+                )
+            ).fetchall()
+        }
+
+        seen_names: Set[str] = set(existing_names)
+        all_nodes: List[Node] = []
         for method, path, op in ops:
             op_id = op.get("operationId") or op.get("summary") or f"{method} {path}"
             node_name = op_id[:255]
-
-            # deduplicate node name within same parent
-            q = select(Node).where(
-                and_(
-                    Node.workspace_id == payload.workspace_id,
-                    Node.name == node_name,
-                    Node.parent_id == parent_id,
-                    Node.type == "file",
-                )
-            )
-            existing_node = (await db.execute(q)).scalar_one_or_none()
-            if existing_node:
+            if node_name in seen_names:
                 node_name = f"{node_name} (imported)"
-
-            node = Node(
+            seen_names.add(node_name)
+            all_nodes.append(Node(
                 workspace_id=payload.workspace_id,
                 name=node_name,
                 type="file",
                 parent_id=parent_id,
-            )
-            db.add(node)
-            await db.flush()
-            nodes_created += 1
+            ))
 
-            api = Api(
+        db.add_all(all_nodes)
+        await db.flush()
+
+        all_apis: List[Api] = []
+        for node, (method, path, op) in zip(all_nodes, ops):
+            all_apis.append(Api(
                 file_id=node.id,
                 name=op.get("summary") or f"{method} {path}",
                 method=method,
                 endpoint=path,
                 description=op.get("description") or "",
                 is_active=True,
-            )
-            db.add(api)
-            await db.flush()
-            apis_created += 1
+            ))
 
+        db.add_all(all_apis)
+        await db.flush()
+
+        all_cases: List[ApiCase] = []
+        for api, (method, path, op) in zip(all_apis, ops):
             headers, params, body = _operation_to_case(op)
-            case = ApiCase(
+            all_cases.append(ApiCase(
                 api_id=api.id,
                 name="default",
                 headers=headers,
                 params=params,
                 body=body if body else {},
                 expected={},
-            )
-            db.add(case)
-            cases_created += 1
+            ))
+        db.add_all(all_cases)
+
+        nodes_created = len(all_nodes)
+        apis_created = len(all_apis)
+        cases_created = len(all_cases)
 
         # Step 6: persist spec record
         version = payload.version or parsed.get("info", {}).get("version")

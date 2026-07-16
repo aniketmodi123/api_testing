@@ -1,14 +1,17 @@
 # Spec — Schedules
 
-STATUS: updated
-LAST_CHANGED: 2026-06-16
+STATUS: complete (batches 1–6 shipped; FE pending)
+LAST_CHANGED: 2026-07-14
 
 ---
 
 ## Overview
 
-Backend is **complete and production-ready**. Scheduler engine polls every 30s, supports 6
-frequency types, persists executions + per-case results, fires alerts. No BE changes needed.
+Batches 1–6 of the scheduler rebuild shipped (2026-07-14). All 12 confirmed backend bugs
+fixed. Key changes: engine uses FOR UPDATE SKIP LOCKED + 3-phase session lifecycle
+(no DB held during HTTP execution), timezone support added, days_of_week canonicalized,
+`next_run_for` replaces ad-hoc next-run logic, stale-execution reaper added, `timed_out`
+status added. See **[rebuild-plan.md](rebuild-plan.md)** for the original bug list.
 
 Gap: **FE is entirely missing.** No schedule management UI, no run history viewer.
 
@@ -27,12 +30,13 @@ workspace_id    INTEGER FK → Workspace
 type            ENUM: once | minutely | hourly | daily | weekly | monthly
 interval_count  INTEGER   -- every N minutes/hours/days/weeks/months
 time            VARCHAR   -- "HH:MM" for daily/weekly/monthly
-days_of_week    JSON[]    -- ["monday","wednesday"] for weekly
+days_of_week    JSON[]    -- ["monday","wednesday"] for weekly (full lowercase)
 day_of_month    INTEGER   -- 1-28 for monthly
-date_time       TIMESTAMP -- absolute time for "once"
+date_time       TIMESTAMP -- absolute time for "once" (stored as naive UTC)
+timezone        VARCHAR   -- IANA timezone name e.g. "America/New_York"; NULL = UTC
 enabled         BOOLEAN
 payload         JSONB     -- what to run: {type: "api"|"case", apis: [...]}
-next_run        TIMESTAMP
+next_run        TIMESTAMP -- naive UTC; indexed for fast engine polling
 last_run        TIMESTAMP
 created_at      TIMESTAMP
 updated_at      TIMESTAMP
@@ -42,7 +46,7 @@ updated_at      TIMESTAMP
 ```
 id              INTEGER PK
 schedule_id     INTEGER FK → BulkTestSchedule
-status          ENUM: running | success | partial | failed
+status          ENUM: queued | running | success | partial | failed | timed_out
 started_at      TIMESTAMP
 finished_at     TIMESTAMP
 total_cases     INTEGER
@@ -67,25 +71,21 @@ duration_ms     INTEGER
 created_at      TIMESTAMP
 ```
 
-### Existing Endpoints
+### Endpoints
 
 | Method | Path | Purpose |
 |---|---|---|
 | POST | `/schedules` | Create schedule |
-| GET | `/schedules` | List all schedules for workspace |
+| GET | `/schedules` | List all schedules for workspace (with exec counts) |
+| GET | `/schedules/{id}` | Single schedule detail with exec count |
 | PUT | `/schedules/{id}` | Update schedule (full replace) |
+| PATCH | `/schedules/{id}/enable` | Toggle enabled; recomputes next_run when re-enabling |
+| POST | `/schedules/{id}/run-now` | Fire immediate run; returns 202 (async background task) |
 | DELETE | `/schedules/{id}` | Delete schedule + all executions + results |
-| GET | `/schedules/{id}/executions` | List executions with per-case results |
-| DELETE | `/schedules/{id}/executions/{exec_id}` | Delete single execution |
-| GET | `/schedules/executions/running` | List currently running executions (workspace-wide) |
-
-### Missing Endpoints
-
-| Method | Path | Purpose |
-|---|---|---|
-| PATCH | `/schedules/{id}/toggle` | Enable/disable without full PUT |
-| POST | `/schedules/{id}/run-now` | Trigger immediate execution outside schedule |
-| GET | `/schedules/{id}` | Get single schedule detail |
+| GET | `/schedules/{id}/executions` | Paginated list (limit/offset); no per-case results |
+| GET | `/schedules/{id}/executions/{exec_id}` | Single execution detail with full results list |
+| DELETE | `/schedules/{id}/executions/{exec_id}` | Delete single execution (blocked if running/queued) |
+| GET | `/schedules/executions/running` | All active executions across user's workspace |
 
 ### Frequency Types + Constraints
 
@@ -131,7 +131,8 @@ interface Schedule {
   time: string | null;          // "HH:MM"
   days_of_week: string[] | null;
   day_of_month: number | null;
-  date_time: string | null;     // ISO for "once"
+  date_time: string | null;     // ISO UTC for "once"
+  timezone: string | null;      // IANA timezone e.g. "America/New_York"
   enabled: boolean;
   payload: SchedulePayload;
   next_run: string | null;
@@ -149,7 +150,7 @@ interface SchedulePayload {
 interface Execution {
   id: number;
   schedule_id: number;
-  status: 'running' | 'success' | 'partial' | 'failed';
+  status: 'queued' | 'running' | 'success' | 'partial' | 'failed' | 'timed_out';
   started_at: string;
   finished_at: string | null;
   total_cases: number;
@@ -209,7 +210,7 @@ interface FrequencySelectorProps {
 | List schedules | GET | `/schedules` | Page load |
 | Create schedule | POST | `/schedules` | Form submit (new) |
 | Update schedule | PUT | `/schedules/{id}` | Form submit (edit) |
-| Toggle enable | PATCH | `/schedules/{id}/toggle` | Toggle switch |
+| Toggle enable | PATCH | `/schedules/{id}/enable` | Toggle switch |
 | Delete schedule | DELETE | `/schedules/{id}` | Kebab → Delete |
 | Run now | POST | `/schedules/{id}/run-now` | Run Now button |
 | Load executions | GET | `/schedules/{id}/executions` | Schedule selected / poll |
@@ -226,8 +227,9 @@ interface FrequencySelectorProps {
 | 2 | day_of_month cap | 28 | Avoids Feb 29/30/31 edge cases; simplest safe cap |
 | 3 | Execution polling | 5s interval, client-side | Simple; SSE overkill for schedule dashboard |
 | 4 | Payload picker | File tree multi-select | Matches collection-runner pattern; familiar UX |
-| 5 | SKIP LOCKED | Deferred | Single-worker now; add when horizontal scaling needed |
-| 6 | Timezone | Store naive UTC; display in browser local time | Engine runs UTC; `toLocaleDateString()` handles display |
+| 5 | SKIP LOCKED | Implemented (B4) | `with_for_update(skip_locked=True)` in engine loop; safe for multi-worker |
+| 6 | Timezone | Per-schedule IANA field + BE conversion | `timezone` stored; `to_utc_naive(dt, tz)` converts at boundary; engine always UTC |
+| 7 | timed_out status | Added (B6); treated as failure for alerts | Reaper marks stale executions; `on_failure` alert fires for `timed_out` |
 
 ---
 
@@ -249,8 +251,7 @@ interface FrequencySelectorProps {
 
 | Item | Reason |
 |---|---|
-| SKIP LOCKED (multi-worker guard) | Single-worker deployment; add when scaling |
-| Timezone picker per schedule | Store UTC for now; add timezone field + conversion in V2 |
 | Email notification config in UI | Alerts feature covers this (see alerts/spec.md) |
 | Schedule templates (presets) | P3 nice-to-have |
 | Execution log streaming (SSE) | Batch results sufficient for now |
+| Timezone display in FE | FE converts UTC timestamps via `toLocaleDateString()` for now |

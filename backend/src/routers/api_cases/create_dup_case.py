@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_db
-from common_querys import can_access_workspace, resolve_case_access, write_audit
+from common_querys import has_min_role, resolve_case_access, write_audit
 from models import ApiCase
 from schema import CaseDuplicateResponse
 from utils import ExceptionHandler, create_response
@@ -28,7 +28,8 @@ async def duplicate_test_case(
             return create_response(401, error_message="User not found")
         if ca.case is None or not ca.can_access:
             return create_response(404, error_message="Test case not found or access denied")
-        if not await can_access_workspace(db, ca.node.workspace_id, ca.user.id, min_role="editor"):
+        # Role already joined by resolve_case_access — no extra query needed
+        if not has_min_role(ca, "editor"):
             return create_response(403, error_message="Editor access or higher required")
 
         original = ca.case
@@ -48,7 +49,6 @@ async def duplicate_test_case(
         await db.flush()
         await write_audit(db, username=ca.user.username, action="api_case.duplicate", entity_type="api_case", entity_id=new_case.id, workspace_id=ca.node.workspace_id)
         await db.commit()
-        await db.refresh(new_case)
 
         # Step 3: Build the response payload
         data = {

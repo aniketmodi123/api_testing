@@ -9,13 +9,19 @@ from dateutil.relativedelta import relativedelta
 from jose import JWTError, jwt
 
 from fastapi import APIRouter, Depends, Header, WebSocket, WebSocketDisconnect
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ssrf import assert_safe_url
 from config import JWT_ALGORITHM, JWT_SECRET_KEY, get_db
-from common_querys import get_user_by_username
+from models import User
 from utils import create_access_token, create_response
 from schema import WsTicketResponse
+
+try:
+    import websockets as _websockets
+except ImportError:
+    _websockets = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -29,19 +35,15 @@ async def issue_ws_ticket(username: str = Header(...), db: AsyncSession = Depend
     """GET /api/ws-ticket — mint a 30s-lived ticket so the WebSocket proxy (which the global
     JWT middleware never sees, since BaseHTTPMiddleware skips websocket scope) can verify the
     caller without the browser's native WebSocket API needing to send custom headers."""
-    try:
-        user = await get_user_by_username(db, username)
-        if not user:
-            return create_response(400, error_message="User not found")
+    exists = await db.scalar(select(User.id).where(User.username == username))
+    if exists is None:
+        return create_response(400, error_message="User not found")
 
-        ticket = await create_access_token(
-            {"username": user.email, "scope": _TICKET_SCOPE},
-            expires_delta=relativedelta(seconds=_TICKET_TTL_SECONDS),
-        )
-        return create_response(200, data={"ticket": ticket}, schema=WsTicketResponse)
-    except Exception as e:
-        logger.warning("ws_ticket mint failed: username=%s error=%s", username, e)
-        return create_response(500, error_message="Could not issue ticket")
+    ticket = await create_access_token(
+        {"username": username, "scope": _TICKET_SCOPE},
+        expires_delta=relativedelta(seconds=_TICKET_TTL_SECONDS),
+    )
+    return create_response(200, data={"ticket": ticket}, schema=WsTicketResponse)
 
 
 def _verify_ticket(ticket: str) -> bool:
@@ -70,16 +72,14 @@ async def websocket_proxy(ws: WebSocket, target_url: str, ticket: str):
         await ws.close(code=1008)
         return
 
-    try:
-        import websockets
-    except ImportError:
+    if _websockets is None:
         await ws.send_text('{"error":"websockets library not installed on server"}')
         await ws.close()
         return
 
     try:
         assert_safe_url(target_url)
-        async with websockets.connect(target_url) as target:
+        async with _websockets.connect(target_url, open_timeout=10) as target:
 
             async def relay_to_target():
                 try:

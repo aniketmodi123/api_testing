@@ -3,12 +3,12 @@ What this file does: Exposes PUT /api/{api_id}/auth for storing per-API auth con
 """
 
 from fastapi import APIRouter, Depends, Header
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_db
-from common_querys import can_access_workspace, get_user_by_username, verify_node_ownership, write_audit
-from models import Api
+from common_querys import ROLE_ORDER, write_audit
+from models import Api, Node, User, Workspace, WorkspaceMember
 from schema import SetAuthRequest, SetAuthResponse
 from utils import ExceptionHandler, create_response
 import vault
@@ -49,27 +49,42 @@ async def set_api_auth(
     """
     Store or replace the auth config on an API; secret fields are encrypted before persistence.
     Steps:
-        - Step 1: Resolve user and fetch the target Api record
-        - Step 2: Verify the caller has at least viewer access to the file's workspace
+        - Step 1: Resolve caller, target Api, its workspace, and the caller's role in one query
+        - Step 2: Verify viewer access, then editor access, from the already-joined role
         - Step 3: Encrypt secret fields in the config dict
         - Step 4: Merge the auth block into Api.extra_meta and commit
     """
     try:
-        # Step 1: Resolve user + fetch api
-        user = await get_user_by_username(db, username)
-        if not user:
+        # Step 1: Resolve caller + api + workspace + membership in one round trip
+        stmt = (
+            select(User, Api, Node.workspace_id, Workspace.user_id, WorkspaceMember.role)
+            .select_from(User)
+            .outerjoin(Api, Api.id == api_id)
+            .outerjoin(Node, Node.id == Api.file_id)
+            .outerjoin(Workspace, Workspace.id == Node.workspace_id)
+            .outerjoin(
+                WorkspaceMember,
+                and_(
+                    WorkspaceMember.workspace_id == Workspace.id,
+                    WorkspaceMember.user_id == User.id,
+                    WorkspaceMember.joined_at.isnot(None),
+                ),
+            )
+            .where(User.email == username)
+        )
+        row = (await db.execute(stmt)).first()
+        if row is None:
             return create_response(401, error_message="User not found")
-
-        result = await db.execute(select(Api).where(Api.id == api_id))
-        api = result.scalar_one_or_none()
-        if not api:
+        user, api, ws_id, ws_owner_id, member_role = row
+        if api is None:
             return create_response(404, error_message="API not found")
 
-        # Step 2: Verify workspace access via the file node
-        file_node = await verify_node_ownership(db, api.file_id, user.id)
-        if not file_node:
+        # Step 2: Viewer then editor checks from the joined role — no extra queries
+        is_owner = ws_owner_id == user.id
+        member_rank = ROLE_ORDER.get(member_role, -1)
+        if not (is_owner or member_rank >= 0):
             return create_response(403, error_message="Access denied")
-        if not await can_access_workspace(db, file_node.workspace_id, user.id, min_role="editor"):
+        if not (is_owner or member_rank >= ROLE_ORDER["editor"]):
             return create_response(403, error_message="Editor access or higher required")
 
         # Step 3: Encrypt secret fields
@@ -86,7 +101,7 @@ async def set_api_auth(
             action="api.set_auth",
             entity_type="api",
             entity_id=api.id,
-            workspace_id=file_node.workspace_id,
+            workspace_id=ws_id,
             metadata={"auth_type": request.type},
         )
         await db.commit()

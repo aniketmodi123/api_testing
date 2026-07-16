@@ -9,10 +9,10 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from common_querys import can_access_workspace, get_user_by_username, write_audit
+from common_querys import resolve_node_access, resolve_workspace_access, has_min_role, write_audit
 from config import get_db
 from models import Api, ApiCase, Node, NodeVersion
-from utils import ExceptionHandler, create_response
+from utils import create_response
 
 router = APIRouter()
 
@@ -49,7 +49,7 @@ class NodeVersionDetail(NodeVersionMeta):
     snapshot: Dict[str, Any]
 
 
-async def _snapshot_node(db: AsyncSession, node: Node) -> Dict[str, Any]:
+async def _snapshot_node(db: AsyncSession, node: Any) -> Dict[str, Any]:
     """What it does: Recursively capture a node and its full subtree (children + apis + cases) as a plain dict for storage."""
     node_data = {
         "id": node.id,
@@ -61,14 +61,18 @@ async def _snapshot_node(db: AsyncSession, node: Node) -> Dict[str, Any]:
     }
 
     if node.type == "file":
-        api = (
-            await db.execute(select(Api).where(Api.file_id == node.id))
-        ).scalar_one_or_none()
+        api = (await db.execute(
+            select(Api.id, Api.file_id, Api.name, Api.method, Api.endpoint,
+                   Api.description, Api.is_active, Api.extra_meta)
+            .where(Api.file_id == node.id)
+        )).first()
 
         if api:
-            cases = (
-                await db.execute(select(ApiCase).where(ApiCase.api_id == api.id))
-            ).scalars().all()
+            cases = (await db.execute(
+                select(ApiCase.id, ApiCase.api_id, ApiCase.name, ApiCase.headers,
+                       ApiCase.params, ApiCase.body, ApiCase.expected)
+                .where(ApiCase.api_id == api.id)
+            )).fetchall()
             api_data = {
                 "id": api.id,
                 "file_id": api.file_id,
@@ -95,14 +99,12 @@ async def _snapshot_node(db: AsyncSession, node: Node) -> Dict[str, Any]:
 
         return {"node": node_data, "apis": []}
 
-    children_rows = (
-        await db.execute(select(Node).where(Node.parent_id == node.id))
-    ).scalars().all()
+    children_rows = (await db.execute(
+        select(Node.id, Node.workspace_id, Node.name, Node.type, Node.parent_id, Node.created_at)
+        .where(Node.parent_id == node.id)
+    )).fetchall()
 
-    children = []
-    for child in children_rows:
-        children.append(await _snapshot_node(db, child))
-
+    children = [await _snapshot_node(db, child) for child in children_rows]
     return {"node": node_data, "children": children}
 
 
@@ -116,25 +118,30 @@ async def _restore_node(db: AsyncSession, snapshot: Dict[str, Any]) -> None:
             await _restore_node(db, child_snap)
         return
 
-    for api_entry in snapshot.get("apis", []):
+    api_snaps = snapshot.get("apis", [])
+    if not api_snaps:
+        return
+
+    # Pre-load all existing Apis for this node (1 query instead of 1 per Api)
+    existing_apis_by_key: Dict[tuple, Any] = {
+        (row.method, row.endpoint): row
+        for row in (await db.execute(select(Api).where(Api.file_id == node_id))).scalars().all()
+    }
+
+    new_apis: List[tuple] = []
+    updated_api_ids: List[tuple] = []
+
+    for api_entry in api_snaps:
         api_snap = api_entry.get("api", {})
         cases_snap = api_entry.get("cases", [])
+        key = (api_snap.get("method"), api_snap.get("endpoint"))
 
-        existing_api = (
-            await db.execute(
-                select(Api).where(
-                    Api.file_id == node_id,
-                    Api.method == api_snap.get("method"),
-                    Api.endpoint == api_snap.get("endpoint"),
-                )
-            )
-        ).scalar_one_or_none()
-
-        if existing_api:
-            existing_api.name = api_snap.get("name", existing_api.name)
-            existing_api.description = api_snap.get("description", existing_api.description)
-            existing_api.extra_meta = api_snap.get("extra_meta", existing_api.extra_meta)
-            api_id = existing_api.id
+        if key in existing_apis_by_key:
+            existing = existing_apis_by_key[key]
+            existing.name = api_snap.get("name", existing.name)
+            existing.description = api_snap.get("description", existing.description)
+            existing.extra_meta = api_snap.get("extra_meta", existing.extra_meta)
+            updated_api_ids.append((existing.id, cases_snap))
         else:
             new_api = Api(
                 file_id=node_id,
@@ -146,19 +153,30 @@ async def _restore_node(db: AsyncSession, snapshot: Dict[str, Any]) -> None:
                 extra_meta=api_snap.get("extra_meta"),
             )
             db.add(new_api)
-            await db.flush()
-            api_id = new_api.id
+            new_apis.append((new_api, cases_snap))
 
+    # Single flush for all new Apis to get their IDs
+    if new_apis:
+        await db.flush()
+
+    all_api_cases: List[tuple] = updated_api_ids + [(a.id, c) for a, c in new_apis]
+    if not all_api_cases:
+        return
+
+    all_api_ids = [api_id for api_id, _ in all_api_cases]
+
+    # Pre-load all existing Cases for all api_ids (1 query instead of 1 per Case)
+    existing_cases_by_key: Dict[tuple, Any] = {
+        (row.api_id, row.name): row
+        for row in (await db.execute(
+            select(ApiCase).where(ApiCase.api_id.in_(all_api_ids))
+        )).scalars().all()
+    }
+
+    for api_id, cases_snap in all_api_cases:
         for case_snap in cases_snap:
-            existing_case = (
-                await db.execute(
-                    select(ApiCase).where(
-                        ApiCase.api_id == api_id,
-                        ApiCase.name == case_snap.get("name"),
-                    )
-                )
-            ).scalar_one_or_none()
-
+            case_name = case_snap.get("name")
+            existing_case = existing_cases_by_key.get((api_id, case_name))
             if existing_case:
                 existing_case.headers = case_snap.get("headers", existing_case.headers)
                 existing_case.params = case_snap.get("params", existing_case.params)
@@ -167,7 +185,7 @@ async def _restore_node(db: AsyncSession, snapshot: Dict[str, Any]) -> None:
             else:
                 db.add(ApiCase(
                     api_id=api_id,
-                    name=case_snap.get("name", ""),
+                    name=case_name or "",
                     headers=case_snap.get("headers"),
                     params=case_snap.get("params"),
                     body=case_snap.get("body", {}),
@@ -183,43 +201,34 @@ async def create_version(
     db: AsyncSession = Depends(get_db),
 ):
     """POST /node/{node_id}/version — capture a snapshot of the node subtree for version history."""
-    try:
-        user = await get_user_by_username(db, username)
-        if not user:
-            return create_response(400, error_message="User not found")
+    access = await resolve_node_access(db, username, node_id)
+    if access.user is None:
+        return create_response(400, error_message="User not found")
+    if access.node is None:
+        return create_response(404, error_message="Node not found")
+    if not has_min_role(access, "editor"):
+        return create_response(403, error_message="Editor access required")
 
-        node = (await db.execute(select(Node).where(Node.id == node_id))).scalar_one_or_none()
-        if not node:
-            return create_response(404, error_message="Node not found")
+    snapshot = await _snapshot_node(db, access.node)
 
-        access = await can_access_workspace(db, node.workspace_id, user.id, min_role="editor")
-        if not access:
-            return create_response(403, error_message="Editor access required")
+    version = NodeVersion(
+        node_id=node_id,
+        snapshot=snapshot,
+        author_username=username,
+        message=payload.message,
+    )
+    db.add(version)
+    await db.flush()
+    await write_audit(db, username, "node.version.create", "node_version", version.id, workspace_id=access.node.workspace_id)
+    await db.commit()
 
-        snapshot = await _snapshot_node(db, node)
-
-        version = NodeVersion(
-            node_id=node_id,
-            snapshot=snapshot,
-            author_username=username,
-            message=payload.message,
-        )
-        db.add(version)
-        await db.flush()
-        await write_audit(db, username, "node.version.create", "node_version", version.id, workspace_id=node.workspace_id)
-        await db.commit()
-        await db.refresh(version)
-
-        return create_response(201, data={
-            "id": version.id,
-            "node_id": version.node_id,
-            "author_username": version.author_username,
-            "message": version.message,
-            "created_at": str(version.created_at) if version.created_at else None,
-        }, schema=NodeVersionMeta)
-    except Exception as e:
-        await db.rollback()
-        return ExceptionHandler(e)
+    return create_response(201, data={
+        "id": version.id,
+        "node_id": version.node_id,
+        "author_username": version.author_username,
+        "message": version.message,
+        "created_at": str(version.created_at) if version.created_at else None,
+    }, schema=NodeVersionMeta)
 
 
 @router.get("/node/{node_id}/versions")
@@ -229,39 +238,33 @@ async def list_versions(
     db: AsyncSession = Depends(get_db),
 ):
     """GET /node/{node_id}/versions — list all snapshots for a node, newest first."""
-    try:
-        user = await get_user_by_username(db, username)
-        if not user:
-            return create_response(400, error_message="User not found")
+    access = await resolve_node_access(db, username, node_id)
+    if access.user is None:
+        return create_response(400, error_message="User not found")
+    if access.node is None:
+        return create_response(404, error_message="Node not found")
+    if not access.can_access:
+        return create_response(403, error_message="Access denied")
 
-        node = (await db.execute(select(Node).where(Node.id == node_id))).scalar_one_or_none()
-        if not node:
-            return create_response(404, error_message="Node not found")
+    versions = (await db.execute(
+        select(
+            NodeVersion.id, NodeVersion.node_id, NodeVersion.author_username,
+            NodeVersion.message, NodeVersion.created_at,
+        )
+        .where(NodeVersion.node_id == node_id)
+        .order_by(NodeVersion.created_at.desc())
+    )).fetchall()
 
-        access = await can_access_workspace(db, node.workspace_id, user.id, min_role="viewer")
-        if not access:
-            return create_response(403, error_message="Access denied")
-
-        versions = (
-            await db.execute(
-                select(NodeVersion)
-                .where(NodeVersion.node_id == node_id)
-                .order_by(NodeVersion.created_at.desc())
-            )
-        ).scalars().all()
-
-        return create_response(200, data=[
-            {
-                "id": v.id,
-                "node_id": v.node_id,
-                "author_username": v.author_username,
-                "message": v.message,
-                "created_at": str(v.created_at) if v.created_at else None,
-            }
-            for v in versions
-        ], schema=NodeVersionMeta)
-    except Exception as e:
-        return ExceptionHandler(e)
+    return create_response(200, data=[
+        {
+            "id": v.id,
+            "node_id": v.node_id,
+            "author_username": v.author_username,
+            "message": v.message,
+            "created_at": str(v.created_at) if v.created_at else None,
+        }
+        for v in versions
+    ], schema=NodeVersionMeta)
 
 
 @router.get("/node/version/{version_id}")
@@ -271,35 +274,29 @@ async def get_version(
     db: AsyncSession = Depends(get_db),
 ):
     """GET /node/version/{version_id} — return the full snapshot JSON for a version."""
-    try:
-        user = await get_user_by_username(db, username)
-        if not user:
-            return create_response(400, error_message="User not found")
+    row = (await db.execute(
+        select(NodeVersion, Node.workspace_id)
+        .join(Node, Node.id == NodeVersion.node_id)
+        .where(NodeVersion.id == version_id)
+    )).first()
+    if row is None:
+        return create_response(404, error_message="Version not found")
+    version, ws_id = row[0], row[1]
 
-        version = (
-            await db.execute(select(NodeVersion).where(NodeVersion.id == version_id))
-        ).scalar_one_or_none()
-        if not version:
-            return create_response(404, error_message="Version not found")
+    access = await resolve_workspace_access(db, username, ws_id)
+    if access.user is None:
+        return create_response(400, error_message="User not found")
+    if not access.can_access:
+        return create_response(403, error_message="Access denied")
 
-        node = (await db.execute(select(Node).where(Node.id == version.node_id))).scalar_one_or_none()
-        if not node:
-            return create_response(404, error_message="Node not found")
-
-        access = await can_access_workspace(db, node.workspace_id, user.id, min_role="viewer")
-        if not access:
-            return create_response(403, error_message="Access denied")
-
-        return create_response(200, data={
-            "id": version.id,
-            "node_id": version.node_id,
-            "author_username": version.author_username,
-            "message": version.message,
-            "created_at": str(version.created_at) if version.created_at else None,
-            "snapshot": version.snapshot,
-        }, schema=NodeVersionDetail)
-    except Exception as e:
-        return ExceptionHandler(e)
+    return create_response(200, data={
+        "id": version.id,
+        "node_id": version.node_id,
+        "author_username": version.author_username,
+        "message": version.message,
+        "created_at": str(version.created_at) if version.created_at else None,
+        "snapshot": version.snapshot,
+    }, schema=NodeVersionDetail)
 
 
 @router.post("/node/version/{version_id}/restore")
@@ -314,34 +311,26 @@ async def restore_version(
         - Additive only: apis/cases in the live DB but absent from the snapshot are left untouched.
         - Upsert key for Api: (file_id, method, endpoint). Upsert key for ApiCase: (api_id, name).
     """
-    try:
-        user = await get_user_by_username(db, username)
-        if not user:
-            return create_response(400, error_message="User not found")
+    row = (await db.execute(
+        select(NodeVersion, Node.workspace_id)
+        .join(Node, Node.id == NodeVersion.node_id)
+        .where(NodeVersion.id == version_id)
+    )).first()
+    if row is None:
+        return create_response(404, error_message="Version not found")
+    version, ws_id = row[0], row[1]
 
-        version = (
-            await db.execute(select(NodeVersion).where(NodeVersion.id == version_id))
-        ).scalar_one_or_none()
-        if not version:
-            return create_response(404, error_message="Version not found")
+    access = await resolve_workspace_access(db, username, ws_id)
+    if access.user is None:
+        return create_response(400, error_message="User not found")
+    if not has_min_role(access, "editor"):
+        return create_response(403, error_message="Editor access required")
 
-        node = (await db.execute(select(Node).where(Node.id == version.node_id))).scalar_one_or_none()
-        if not node:
-            return create_response(404, error_message="Node not found")
+    await _restore_node(db, version.snapshot)
+    await write_audit(
+        db, username, "node.version.restore", "node_version", version_id,
+        workspace_id=ws_id,
+    )
+    await db.commit()
 
-        access = await can_access_workspace(db, node.workspace_id, user.id, min_role="editor")
-        if not access:
-            return create_response(403, error_message="Editor access required")
-
-        await _restore_node(db, version.snapshot)
-
-        await write_audit(
-            db, username, "node.version.restore", "node_version", version_id,
-            workspace_id=node.workspace_id,
-        )
-        await db.commit()
-
-        return create_response(200, message="Version restored")
-    except Exception as e:
-        await db.rollback()
-        return ExceptionHandler(e)
+    return create_response(200, message="Version restored")

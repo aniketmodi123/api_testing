@@ -98,18 +98,31 @@ function buildCurlCommand(req) {
   if (!req || !req.url) return 'N/A';
 
   const method = req.method?.toUpperCase() || 'GET';
-  const headers = req.headers
-    ? Object.entries(req.headers)
-        .map(([k, v]) => `-H "${k}: ${v}"`)
-        .join(' \\\n  ')
-    : '';
 
-  const body =
-    req.body && Object.keys(req.body).length
-      ? `-H "Content-Type: application/json" \\\n  -d '${JSON.stringify(req.body)}'`
+  const qs =
+    req.params && typeof req.params === 'object' && Object.keys(req.params).length
+      ? '?' + Object.entries(req.params).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&')
       : '';
 
-  return `curl -X ${method} "${req.url}" \\\n  ${headers}${body ? ' \\\n  ' + body : ''}`;
+  const parts = [`curl -X ${method} "${req.url}${qs}"`];
+
+  if (req.headers && typeof req.headers === 'object') {
+    Object.entries(req.headers).forEach(([k, v]) => {
+      // escape double-quotes inside value so the shell string stays valid
+      parts.push(`-H "${k}: ${String(v).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`);
+    });
+  }
+
+  const hasBody = req.body != null && (typeof req.body !== 'object' || Object.keys(req.body).length > 0);
+  if (hasBody) {
+    const bodyStr = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+    // $'...' ANSI-C quoting: escape backslashes and single quotes so any payload works
+    const escaped = bodyStr.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    parts.push('-H "Content-Type: application/json"');
+    parts.push(`-d $'${escaped}'`);
+  }
+
+  return parts.join(' \\\n  ');
 }
 
 // 🔹 Transform test results into simplified table
@@ -2391,6 +2404,9 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
                         url,
                         headers: Object.fromEntries(
                           headers.filter(h => h.key).map(h => [h.key, h.value])
+                        ),
+                        params: Object.fromEntries(
+                          params.filter(p => p.key).map(p => [p.key, p.value])
                         ),
                         body: bodyType === 'JSON' && bodyContent ? (() => { try { return JSON.parse(bodyContent); } catch { return null; } })() : null,
                       })}

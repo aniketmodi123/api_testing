@@ -104,6 +104,7 @@
   border: 1px solid var(--code-border);
   background-color: var(--code-bg);
   color: transparent;
+  -webkit-text-fill-color: transparent;
   caret-color: var(--accent);
   font-family: "SF Mono", "Monaco", "Inconsolata", "Roboto Mono", "Source Code Pro", monospace;
   font-size: 14px;

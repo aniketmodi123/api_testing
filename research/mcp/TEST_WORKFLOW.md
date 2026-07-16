@@ -284,6 +284,20 @@ case's actual status + body + pass/fail of its `expected` assertions.
   a fallback for one-off repairs only.
 
 ### 7. Judge every mismatch (the important part)
+- **SYSTEMIC TRIAGE FIRST — before judging any single case:** when a large share of a run fails with
+  ONE shared signature ("Invalid token" everywhere / every case 206 / "All connection attempts
+  failed" / literal `{{...}}` visible in a request), the cause is a variable/env/connectivity/gateway
+  problem, not dozens of API bugs. STOP judging, run the Step-5 preflight checks (active env, var
+  resolution, token verify, docker URL), fix the systemic cause, RE-RUN, and only then judge what
+  still fails. Judging cases one-by-one under a dead token is the known token-burner failure.
+- **Decision procedure per mismatch (evidence order — the handler code is the tiebreaker):**
+  1. Read the handler code for the exact path taken (plus the gateway allowlist when fronted).
+  2. Response agrees with what the code actually does → **expected-bug**.
+  3. Response contradicts the code, or the code itself violates the platform contract (envelope,
+     `response_code` mirror, safe error messages) → **API-bug**.
+  4. Code ambiguous / contract genuinely unclear → ask the user. Never guess a bucket — a wrong
+     bucket either ships a broken API or rots a good test.
+  What "usually" APIs do and what the test's author intended are NOT evidence; the code is.
 For each case where `expected` does NOT match the response, classify into exactly ONE bucket + act:
 - **API-bug** — response wrong (wrong status/envelope/missing field/bad message). → API must change.
   Point to exact handler file:line in the current project, describe correct behaviour, propose the code

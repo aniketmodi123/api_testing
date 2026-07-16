@@ -386,6 +386,18 @@ class ScheduleType(str, Enum):
     hourly = "hourly"
 
 
+# Execution status constants — single source of truth for engine, CRUD, and notification service
+EXEC_STATUS_QUEUED = "queued"
+EXEC_STATUS_RUNNING = "running"
+EXEC_STATUS_SUCCESS = "success"
+EXEC_STATUS_PARTIAL = "partial"
+EXEC_STATUS_FAILED = "failed"
+EXEC_STATUS_TIMED_OUT = "timed_out"
+
+ACTIVE_STATUSES: frozenset[str] = frozenset({EXEC_STATUS_QUEUED, EXEC_STATUS_RUNNING})
+TERMINAL_STATUSES: frozenset[str] = frozenset({EXEC_STATUS_SUCCESS, EXEC_STATUS_PARTIAL, EXEC_STATUS_FAILED, EXEC_STATUS_TIMED_OUT})
+
+
 # ---------- Models ----------
 class BulkTestSchedule(Base):
     """Define a recurring or one-shot schedule that triggers a bulk API test run.
@@ -404,6 +416,7 @@ class BulkTestSchedule(Base):
         time: ``"HH:MM"`` used by hourly/daily/weekly/monthly to align within the period; ``None`` for once/minutely.
         days_of_week: List of day abbreviations (e.g. ``["Mon", "Thu"]``) for weekly; ``None`` otherwise.
         day_of_month: Day number 1–31 for monthly schedules; ``None`` otherwise.
+        timezone: IANA timezone name (e.g. ``"America/New_York"``) used to interpret wall-clock times; ``None`` defaults to UTC.
         enabled: ``True`` when the scheduler should process this schedule; ``False`` to pause it.
         payload: Original bulk run payload JSON (API IDs and case selection).
         last_run: Timestamp of the most recent execution; ``None`` if never run.
@@ -445,6 +458,7 @@ class BulkTestSchedule(Base):
     time: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)  # "HH:MM"
     days_of_week: Mapped[Optional[List[str]]] = mapped_column(JSON, nullable=True)
     day_of_month: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    timezone: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
 
@@ -530,7 +544,7 @@ class BulkTestExecution(Base):
     Attributes:
         id: Primary key.
         schedule_id: FK to the owning BulkTestSchedule; cascade-deleted with the schedule.
-        status: Current run state — ``"queued"``, ``"running"``, ``"completed"``, or ``"failed"``.
+        status: Current run state — ``"queued"`` → ``"running"`` → ``"success"`` | ``"partial"`` | ``"failed"``.
         started_at: Timestamp when execution began; ``None`` while still queued.
         finished_at: Timestamp when execution ended; ``None`` while in progress.
         total_cases: Number of test cases included in this run.

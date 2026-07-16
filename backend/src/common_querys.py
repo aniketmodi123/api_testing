@@ -138,12 +138,16 @@ class FileAccess(NamedTuple):
         node: The target file/folder node; ``None`` when the node id does not exist.
         api: The API attached to the file node; ``None`` when the node has no API or does not exist.
         can_access: ``True`` when the node exists and the caller owns or has a joined membership in its workspace.
+        is_owner: ``True`` when the caller owns the node's workspace; ``False`` when not, or when the node is absent.
+        member_role: The caller's joined membership role in the node's workspace; ``None`` when not a member.
     """
 
     user: Optional[User]
     node: Optional[Node]
     api: Optional[Api]
     can_access: bool
+    is_owner: bool = False
+    member_role: Optional[str] = None
 
 
 class CaseAccess(NamedTuple):
@@ -155,6 +159,8 @@ class CaseAccess(NamedTuple):
         api: The API owning the case; ``None`` when the case does not exist.
         node: The file node owning the API; ``None`` when the case does not exist.
         can_access: ``True`` when the case exists and the caller owns or has a joined membership in its workspace.
+        is_owner: ``True`` when the caller owns the case's workspace; ``False`` when not, or when the case is absent.
+        member_role: The caller's joined membership role in the case's workspace; ``None`` when not a member.
     """
 
     user: Optional[User]
@@ -162,6 +168,8 @@ class CaseAccess(NamedTuple):
     api: Optional[Api]
     node: Optional[Node]
     can_access: bool
+    is_owner: bool = False
+    member_role: Optional[str] = None
 
 
 async def resolve_file_access(db: AsyncSession, username: str, file_id: int) -> FileAccess:
@@ -205,10 +213,11 @@ async def resolve_file_access(db: AsyncSession, username: str, file_id: int) -> 
         return FileAccess(None, None, None, False)
 
     user, node, api, ws_owner_id, member_role = row
+    is_owner = ws_owner_id == user.id
     can_access = node is not None and (
-        ws_owner_id == user.id or ROLE_ORDER.get(member_role, -1) >= 0
+        is_owner or ROLE_ORDER.get(member_role, -1) >= 0
     )
-    return FileAccess(user, node, api if node is not None else None, can_access)
+    return FileAccess(user, node, api if node is not None else None, can_access, is_owner, member_role)
 
 
 async def resolve_case_access(db: AsyncSession, username: str, case_id: int) -> CaseAccess:
@@ -253,12 +262,143 @@ async def resolve_case_access(db: AsyncSession, username: str, case_id: int) -> 
         return CaseAccess(None, None, None, None, False)
 
     user, case, api, node, ws_owner_id, member_role = row
+    is_owner = ws_owner_id == user.id
     can_access = (
         case is not None
         and node is not None
-        and (ws_owner_id == user.id or ROLE_ORDER.get(member_role, -1) >= 0)
+        and (is_owner or ROLE_ORDER.get(member_role, -1) >= 0)
     )
-    return CaseAccess(user, case, api, node, can_access)
+    return CaseAccess(user, case, api, node, can_access, is_owner, member_role)
+
+
+class NodeAccess(NamedTuple):
+    """Resolved caller, node, and access decision for a node-scoped request.
+
+    Attributes:
+        user: Caller resolved from the username header; ``None`` when no user has that email.
+        node: The target node; ``None`` when the node id does not exist.
+        can_access: ``True`` when the node exists and the caller owns or is a joined member of its workspace.
+        is_owner: ``True`` when the caller owns the node's workspace.
+        member_role: The caller's joined membership role; ``None`` when not a member.
+    """
+
+    user: Optional[User]
+    node: Optional[Node]
+    can_access: bool
+    is_owner: bool = False
+    member_role: Optional[str] = None
+
+
+async def resolve_node_access(db: AsyncSession, username: str, node_id: int) -> "NodeAccess":
+    """What it does: Resolve the caller, a node, and the caller's workspace access in one DB round trip.
+
+    Args:
+        username: Email from the ``username`` request header.
+        node_id: Node id to resolve and access-check.
+
+    Returns:
+        NodeAccess: ``user`` is ``None`` only when the email is unknown; ``node`` is ``None`` when
+                    absent; ``can_access`` is ``True`` only when the node exists and the caller owns
+                    or is a joined member of its workspace.
+    """
+    stmt = (
+        select(User, Node, Workspace.user_id, WorkspaceMember.role)
+        .select_from(User)
+        .outerjoin(Node, Node.id == node_id)
+        .outerjoin(Workspace, Workspace.id == Node.workspace_id)
+        .outerjoin(
+            WorkspaceMember,
+            and_(
+                WorkspaceMember.workspace_id == Workspace.id,
+                WorkspaceMember.user_id == User.id,
+                WorkspaceMember.joined_at.isnot(None),
+            ),
+        )
+        .where(User.email == username)
+    )
+    row = (await db.execute(stmt)).first()
+    if row is None:
+        return NodeAccess(None, None, False)
+
+    user, node, ws_owner_id, member_role = row
+    is_owner = ws_owner_id == user.id
+    can_access = node is not None and (is_owner or ROLE_ORDER.get(member_role, -1) >= 0)
+    return NodeAccess(user, node, can_access, is_owner, member_role)
+
+
+class WorkspaceAccess(NamedTuple):
+    """Resolved caller, workspace scalars, and access decision for a workspace-scoped request.
+
+    Attributes:
+        user: Caller resolved from the username header; ``None`` when no user has that email.
+        workspace_id: Target workspace id; ``None`` when the workspace does not exist.
+        workspace_name: Workspace display name; ``None`` when the workspace does not exist.
+        can_access: ``True`` when the workspace exists and the caller owns or has a joined membership.
+        is_owner: ``True`` when the caller owns the workspace.
+        member_role: The caller's joined membership role; ``None`` when not a member.
+    """
+
+    user: Optional[User]
+    workspace_id: Optional[int]
+    workspace_name: Optional[str]
+    can_access: bool
+    is_owner: bool = False
+    member_role: Optional[str] = None
+
+
+async def resolve_workspace_access(db: AsyncSession, username: str, workspace_id: int) -> "WorkspaceAccess":
+    """Resolve the caller, workspace scalars, and the caller's access in one DB round trip.
+
+    Args:
+        username: Email from the ``username`` request header.
+        workspace_id: Workspace id to resolve and access-check.
+
+    Returns:
+        WorkspaceAccess: ``user`` is ``None`` when the email is unknown; ``workspace_id``/``workspace_name``
+                         are ``None`` when the workspace does not exist; ``can_access`` is ``True`` only
+                         when the workspace exists and the caller owns or is a joined member.
+    """
+    stmt = (
+        select(User, Workspace.id, Workspace.name, Workspace.user_id, WorkspaceMember.role)
+        .select_from(User)
+        .outerjoin(Workspace, Workspace.id == workspace_id)
+        .outerjoin(
+            WorkspaceMember,
+            and_(
+                WorkspaceMember.workspace_id == workspace_id,
+                WorkspaceMember.user_id == User.id,
+                WorkspaceMember.joined_at.isnot(None),
+            ),
+        )
+        .where(User.email == username)
+    )
+    row = (await db.execute(stmt)).first()
+    if row is None:
+        return WorkspaceAccess(None, None, None, False)
+    user, ws_id, ws_name, ws_owner_id, member_role = row
+    if ws_id is None:
+        return WorkspaceAccess(user, None, None, False)
+    is_owner = ws_owner_id == user.id
+    can_access = is_owner or ROLE_ORDER.get(member_role, -1) >= 0
+    return WorkspaceAccess(user, ws_id, ws_name, can_access, is_owner, member_role)
+
+
+def has_min_role(access: "FileAccess | CaseAccess | NodeAccess | WorkspaceAccess", min_role: str) -> bool:
+    """What it does: Check a resolved access result against a minimum role without any extra DB query.
+
+    Args:
+        access: A FileAccess or CaseAccess already resolved for the caller.
+        min_role: Minimum role required — ``"viewer"``, ``"editor"``, ``"admin"``, or ``"owner"``.
+
+    Returns:
+        bool: ``True`` when the caller owns the workspace or holds a joined membership with
+              rank >= min_role; ``False`` otherwise. Semantics match ``can_access_workspace``.
+    """
+    if access.is_owner:
+        return True
+    if min_role == "owner":
+        return False
+    return ROLE_ORDER.get(access.member_role, -1) >= ROLE_ORDER.get(min_role, 0)
 
 
 async def validate_parent_node(db: AsyncSession, parent_id: int, workspace_id: int) -> bool:
@@ -934,6 +1074,51 @@ async def get_collection_variables(db: AsyncSession, file_id: int) -> Dict[str, 
     return merged
 
 
+async def get_collection_variables_with_secrets(
+    db: AsyncSession, file_id: int
+) -> "tuple[Dict[str, Any], set]":
+    """What it does: Walk the ancestor path and return both merged collection variables and the set of secret keys in one DB round trip (one path walk + one CollectionVariable query).
+
+    Args:
+        file_id: Node id of the file to start collection variable resolution from.
+
+    Returns:
+        tuple: ``(merged_vars, secret_keys)`` — merged key→value dict (child overrides parent,
+               secrets decrypted) and the set of variable keys marked as secret. Both empty
+               when the file has no ancestor path.
+    """
+    from vault import decrypt as dec_secret
+
+    path = await get_folder_path_to_root(db, file_id)
+    if not path:
+        return {}, set()
+
+    node_ids = [n["id"] for n in path]
+    result = await db.execute(
+        select(CollectionVariable).where(CollectionVariable.node_id.in_(node_ids))
+    )
+    rows = result.scalars().all()
+
+    by_node: Dict[int, list] = {nid: [] for nid in node_ids}
+    for row in rows:
+        if row.node_id in by_node:
+            by_node[row.node_id].append(row)
+
+    secret_keys: set = set()
+    merged: Dict[str, Any] = {}
+    for node_info in path:
+        for row in by_node.get(node_info["id"], []):
+            if row.is_secret:
+                secret_keys.add(row.key)
+            try:
+                value = dec_secret(row.value) if row.is_secret else row.value
+            except ValueError:
+                value = row.value
+            merged[row.key] = value
+
+    return merged, secret_keys
+
+
 async def build_scope_chain(
     db: AsyncSession,
     file_id: int,
@@ -1020,3 +1205,19 @@ async def resolve_auth(db: AsyncSession, file_id: int) -> Optional[Dict[str, Any
             resolved = file_auth
 
     return resolved  # Step 4
+
+
+async def verify_schedule_nodes(db: AsyncSession, node_ids: List[int], user_id: int) -> set[int]:
+    """Return IDs from node_ids whose workspace is owned by user_id (owner-only; members excluded).
+
+    Used by schedule CRUD to enforce that only workspace owners may create/update schedules.
+    Returns an empty set when node_ids is empty (guards in_([]) per project rules).
+    """
+    if not node_ids:
+        return set()
+    rows = await db.execute(
+        select(Node.id)
+        .join(Workspace, Node.workspace_id == Workspace.id)
+        .where(and_(Node.id.in_(node_ids), Workspace.user_id == user_id))
+    )
+    return {row[0] for row in rows.fetchall()}

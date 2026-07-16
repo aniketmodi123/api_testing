@@ -2,16 +2,17 @@
 What this file does: Exposes CRUD endpoints for Flow and FlowStep; validates that steps form a valid DAG (no cycles, valid step types) on create and update.
 """
 
+import datetime
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, Header
 from pydantic import BaseModel
-from sqlalchemy import select, delete
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from common_querys import can_access_workspace, get_user_by_username, write_audit
+from common_querys import has_min_role, resolve_workspace_access, write_audit
 from config import get_db
 from models import Flow, FlowStep
-from utils import ExceptionHandler, create_response
+from utils import create_response
 
 router = APIRouter()
 
@@ -145,8 +146,7 @@ def _validate_steps(steps: List[FlowStepIn]) -> Optional[str]:
 
 def _flow_to_dict(flow: Flow, steps: Optional[List[FlowStep]] = None) -> Dict[str, Any]:
     """What it does: Serialize a Flow ORM object and an explicitly loaded step list to a response dict."""
-    # Steps are passed explicitly — assigning/reading flow.steps after commit triggers an
-    # async lazy-load (greenlet_spawn error) on AsyncSession.
+    # Steps are passed explicitly — reading flow.steps after commit triggers async lazy-load on AsyncSession.
     return {
         "id": flow.id,
         "workspace_id": flow.workspace_id,
@@ -181,51 +181,45 @@ async def create_flow(
     db: AsyncSession = Depends(get_db),
 ):
     """POST /workspace/{workspace_id}/flow — create a flow with its steps; requires editor role."""
-    try:
-        user = await get_user_by_username(db, username)
-        if not user:
-            return create_response(401, error_message="User not found")
+    access = await resolve_workspace_access(db, username, workspace_id)
+    if not access.user:
+        return create_response(401, error_message="User not found")
+    if not has_min_role(access, "editor"):
+        return create_response(403, error_message="Access denied")
 
-        ok = await can_access_workspace(db, workspace_id, user.id, min_role="editor")
-        if not ok:
-            return create_response(403, error_message="Access denied")
+    err = _validate_steps(payload.steps)
+    if err:
+        return create_response(400, error_message=err)
 
-        err = _validate_steps(payload.steps)
-        if err:
-            return create_response(400, error_message=err)
+    flow = Flow(
+        workspace_id=workspace_id,
+        name=payload.name,
+        description=payload.description,
+        graph=payload.graph,
+        enabled=payload.enabled,
+    )
+    db.add(flow)
+    await db.flush()
 
-        flow = Flow(
-            workspace_id=workspace_id,
-            name=payload.name,
-            description=payload.description,
-            graph=payload.graph,
-            enabled=payload.enabled,
+    step_objs = [
+        FlowStep(
+            flow_id=flow.id,
+            step_order=s.step_order,
+            type=s.type,
+            api_id=s.api_id,
+            config=s.config,
+            extract=s.extract,
+            condition=s.condition,
         )
-        db.add(flow)
-        await db.flush()
+        for s in payload.steps
+    ]
+    db.add_all(step_objs)
+    await db.flush()
 
-        for s in payload.steps:
-            db.add(FlowStep(
-                flow_id=flow.id,
-                step_order=s.step_order,
-                type=s.type,
-                api_id=s.api_id,
-                config=s.config,
-                extract=s.extract,
-                condition=s.condition,
-            ))
+    await write_audit(db, username=access.user.username, action="flow.create", entity_type="flow", entity_id=flow.id, workspace_id=workspace_id)
+    await db.commit()
 
-        await write_audit(db, username=user.username, action="flow.create", entity_type="flow", entity_id=flow.id, workspace_id=workspace_id)
-        await db.commit()
-        await db.refresh(flow)
-
-        steps_result = await db.execute(select(FlowStep).where(FlowStep.flow_id == flow.id).order_by(FlowStep.step_order))
-        steps = steps_result.scalars().all()
-
-        return create_response(201, data=_flow_to_dict(flow, steps), schema=FlowResponse)
-    except Exception as e:
-        await db.rollback()
-        return ExceptionHandler(e)
+    return create_response(201, data=_flow_to_dict(flow, step_objs), schema=FlowResponse)
 
 
 @router.get("/workspace/{workspace_id}/flow")
@@ -235,24 +229,20 @@ async def list_flows(
     db: AsyncSession = Depends(get_db),
 ):
     """GET /workspace/{workspace_id}/flow — list all flows in the workspace; requires viewer role."""
-    try:
-        user = await get_user_by_username(db, username)
-        if not user:
-            return create_response(401, error_message="User not found")
+    access = await resolve_workspace_access(db, username, workspace_id)
+    if not access.user:
+        return create_response(401, error_message="User not found")
+    if not has_min_role(access, "viewer"):
+        return create_response(403, error_message="Access denied")
 
-        ok = await can_access_workspace(db, workspace_id, user.id, min_role="viewer")
-        if not ok:
-            return create_response(403, error_message="Access denied")
+    rows = (await db.execute(
+        select(Flow.id, Flow.name, Flow.description, Flow.enabled, Flow.created_at)
+        .where(Flow.workspace_id == workspace_id)
+        .order_by(Flow.created_at.desc())
+    )).all()
 
-        result = await db.execute(
-            select(Flow).where(Flow.workspace_id == workspace_id).order_by(Flow.created_at.desc())
-        )
-        flows = result.scalars().all()
-
-        data = [{"id": f.id, "name": f.name, "description": f.description, "enabled": f.enabled, "created_at": str(f.created_at)} for f in flows]
-        return create_response(200, data=data, schema=FlowSummaryResponse)
-    except Exception as e:
-        return ExceptionHandler(e)
+    data = [{"id": r.id, "name": r.name, "description": r.description, "enabled": r.enabled, "created_at": str(r.created_at)} for r in rows]
+    return create_response(200, data=data, schema=FlowSummaryResponse)
 
 
 @router.get("/flow/{flow_id}")
@@ -262,26 +252,21 @@ async def get_flow(
     db: AsyncSession = Depends(get_db),
 ):
     """GET /flow/{flow_id} — return a flow with all its steps; requires viewer role."""
-    try:
-        user = await get_user_by_username(db, username)
-        if not user:
-            return create_response(401, error_message="User not found")
+    flow = (await db.execute(select(Flow).where(Flow.id == flow_id))).scalar_one_or_none()
+    if not flow:
+        return create_response(404, error_message="Flow not found")
 
-        flow_result = await db.execute(select(Flow).where(Flow.id == flow_id))
-        flow = flow_result.scalar_one_or_none()
-        if not flow:
-            return create_response(404, error_message="Flow not found")
+    access = await resolve_workspace_access(db, username, flow.workspace_id)
+    if not access.user:
+        return create_response(401, error_message="User not found")
+    if not has_min_role(access, "viewer"):
+        return create_response(403, error_message="Access denied")
 
-        ok = await can_access_workspace(db, flow.workspace_id, user.id, min_role="viewer")
-        if not ok:
-            return create_response(403, error_message="Access denied")
+    steps = (await db.execute(
+        select(FlowStep).where(FlowStep.flow_id == flow_id).order_by(FlowStep.step_order)
+    )).scalars().all()
 
-        steps_result = await db.execute(select(FlowStep).where(FlowStep.flow_id == flow_id).order_by(FlowStep.step_order))
-        steps = steps_result.scalars().all()
-
-        return create_response(200, data=_flow_to_dict(flow, steps), schema=FlowResponse)
-    except Exception as e:
-        return ExceptionHandler(e)
+    return create_response(200, data=_flow_to_dict(flow, steps), schema=FlowResponse)
 
 
 @router.put("/flow/{flow_id}")
@@ -292,52 +277,46 @@ async def update_flow(
     db: AsyncSession = Depends(get_db),
 ):
     """PUT /flow/{flow_id} — replace a flow's metadata and steps; requires editor role."""
-    try:
-        user = await get_user_by_username(db, username)
-        if not user:
-            return create_response(401, error_message="User not found")
+    flow = (await db.execute(select(Flow).where(Flow.id == flow_id))).scalar_one_or_none()
+    if not flow:
+        return create_response(404, error_message="Flow not found")
 
-        flow_result = await db.execute(select(Flow).where(Flow.id == flow_id))
-        flow = flow_result.scalar_one_or_none()
-        if not flow:
-            return create_response(404, error_message="Flow not found")
+    access = await resolve_workspace_access(db, username, flow.workspace_id)
+    if not access.user:
+        return create_response(401, error_message="User not found")
+    if not has_min_role(access, "editor"):
+        return create_response(403, error_message="Access denied")
 
-        ok = await can_access_workspace(db, flow.workspace_id, user.id, min_role="editor")
-        if not ok:
-            return create_response(403, error_message="Access denied")
+    err = _validate_steps(payload.steps)
+    if err:
+        return create_response(400, error_message=err)
 
-        err = _validate_steps(payload.steps)
-        if err:
-            return create_response(400, error_message=err)
+    flow.name = payload.name
+    flow.description = payload.description
+    flow.graph = payload.graph
+    flow.enabled = payload.enabled
+    flow.updated_at = datetime.datetime.now()
 
-        flow.name = payload.name
-        flow.description = payload.description
-        flow.graph = payload.graph
-        flow.enabled = payload.enabled
+    await db.execute(delete(FlowStep).where(FlowStep.flow_id == flow_id))
+    step_objs = [
+        FlowStep(
+            flow_id=flow_id,
+            step_order=s.step_order,
+            type=s.type,
+            api_id=s.api_id,
+            config=s.config,
+            extract=s.extract,
+            condition=s.condition,
+        )
+        for s in payload.steps
+    ]
+    db.add_all(step_objs)
+    await db.flush()
 
-        # Replace steps: delete existing then insert new
-        await db.execute(delete(FlowStep).where(FlowStep.flow_id == flow_id))
-        for s in payload.steps:
-            db.add(FlowStep(
-                flow_id=flow_id,
-                step_order=s.step_order,
-                type=s.type,
-                api_id=s.api_id,
-                config=s.config,
-                extract=s.extract,
-                condition=s.condition,
-            ))
+    await write_audit(db, username=access.user.username, action="flow.update", entity_type="flow", entity_id=flow_id, workspace_id=flow.workspace_id)
+    await db.commit()
 
-        await write_audit(db, username=user.username, action="flow.update", entity_type="flow", entity_id=flow_id, workspace_id=flow.workspace_id)
-        await db.commit()
-        await db.refresh(flow)
-        steps_result = await db.execute(select(FlowStep).where(FlowStep.flow_id == flow_id).order_by(FlowStep.step_order))
-        steps = steps_result.scalars().all()
-
-        return create_response(200, data=_flow_to_dict(flow, steps), schema=FlowResponse)
-    except Exception as e:
-        await db.rollback()
-        return ExceptionHandler(e)
+    return create_response(200, data=_flow_to_dict(flow, step_objs), schema=FlowResponse)
 
 
 @router.delete("/flow/{flow_id}")
@@ -347,24 +326,19 @@ async def delete_flow(
     db: AsyncSession = Depends(get_db),
 ):
     """DELETE /flow/{flow_id} — delete a flow and all its steps and runs; requires editor role."""
-    try:
-        user = await get_user_by_username(db, username)
-        if not user:
-            return create_response(401, error_message="User not found")
+    flow_row = (await db.execute(
+        select(Flow.id, Flow.workspace_id).where(Flow.id == flow_id)
+    )).first()
+    if not flow_row:
+        return create_response(404, error_message="Flow not found")
 
-        flow_result = await db.execute(select(Flow).where(Flow.id == flow_id))
-        flow = flow_result.scalar_one_or_none()
-        if not flow:
-            return create_response(404, error_message="Flow not found")
+    access = await resolve_workspace_access(db, username, flow_row.workspace_id)
+    if not access.user:
+        return create_response(401, error_message="User not found")
+    if not has_min_role(access, "editor"):
+        return create_response(403, error_message="Access denied")
 
-        ok = await can_access_workspace(db, flow.workspace_id, user.id, min_role="editor")
-        if not ok:
-            return create_response(403, error_message="Access denied")
-
-        await db.delete(flow)
-        await write_audit(db, username=user.username, action="flow.delete", entity_type="flow", entity_id=flow_id, workspace_id=flow.workspace_id)
-        await db.commit()
-        return create_response(200, message="Flow deleted")
-    except Exception as e:
-        await db.rollback()
-        return ExceptionHandler(e)
+    await db.execute(delete(Flow).where(Flow.id == flow_id))
+    await write_audit(db, username=access.user.username, action="flow.delete", entity_type="flow", entity_id=flow_id, workspace_id=flow_row.workspace_id)
+    await db.commit()
+    return create_response(200, message="Flow deleted")

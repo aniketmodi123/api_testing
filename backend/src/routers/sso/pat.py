@@ -15,12 +15,12 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
-from sqlalchemy import and_, select
+from sqlalchemy import and_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_db
-from models import Cache, PersonalAccessToken
-from utils import ExceptionHandler, create_access_token, create_response
+from models import Cache, PersonalAccessToken, User
+from utils import create_access_token, create_response
 
 router = APIRouter()
 
@@ -113,7 +113,6 @@ async def create_pat(
     )
     db.add(pat)
     await db.commit()
-    await db.refresh(pat)
 
     return create_response(
         201, {"id": pat.id, "name": pat.name, "token": raw}, PATCreatedResponse
@@ -125,13 +124,19 @@ async def list_pats(request: Request, db: AsyncSession = Depends(get_db)):
     """GET /pat — list the authenticated user's PATs (metadata only, never the raw token)."""
     username = request.state.current_user
 
-    stmt = (
-        select(PersonalAccessToken)
+    result = await db.execute(
+        select(
+            PersonalAccessToken.id,
+            PersonalAccessToken.name,
+            PersonalAccessToken.created_at,
+            PersonalAccessToken.last_used_at,
+            PersonalAccessToken.revoked,
+            PersonalAccessToken.expires_at,
+        )
         .where(PersonalAccessToken.username == username)
         .order_by(PersonalAccessToken.created_at.desc())
     )
-    result = await db.execute(stmt)
-    rows = result.scalars().all()
+    rows = result.all()
 
     data = [
         {
@@ -152,15 +157,13 @@ async def revoke_pat(pat_id: int, request: Request, db: AsyncSession = Depends(g
     """DELETE /pat/{pat_id} — revoke one of the authenticated user's PATs."""
     username = request.state.current_user
 
-    stmt = select(PersonalAccessToken).where(
-        and_(PersonalAccessToken.id == pat_id, PersonalAccessToken.username == username)
+    result = await db.execute(
+        update(PersonalAccessToken)
+        .where(and_(PersonalAccessToken.id == pat_id, PersonalAccessToken.username == username))
+        .values(revoked=True)
     )
-    result = await db.execute(stmt)
-    pat = result.scalar_one_or_none()
-    if pat is None:
+    if result.rowcount == 0:
         return create_response(404, error_message="Token not found")
-
-    pat.revoked = True
     await db.commit()
     return create_response(200, message="Token revoked")
 
@@ -172,27 +175,39 @@ async def exchange_pat(body: PATExchangeRequest, db: AsyncSession = Depends(get_
     Mirrors /sign_in's token issuance: verify the PAT, mint + cache a JWT, and record use.
     Invalid, revoked, or expired PATs return 401.
     """
-    try:
-        stmt = select(PersonalAccessToken).where(
-            PersonalAccessToken.token_hash == _hash_token(body.token)
+    token_hash = _hash_token(body.token)
+    result = await db.execute(
+        select(
+            PersonalAccessToken.revoked,
+            PersonalAccessToken.expires_at,
+            PersonalAccessToken.username,
+            User.is_active,
         )
-        result = await db.execute(stmt)
-        pat = result.scalar_one_or_none()
+        .join(User, User.username == PersonalAccessToken.username)
+        .where(PersonalAccessToken.token_hash == token_hash)
+    )
+    pat = result.one_or_none()
 
-        now = datetime.now()
-        if pat is None or pat.revoked or (pat.expires_at is not None and pat.expires_at < now):
-            return create_response(401, error_message="Invalid or revoked token")
+    now = datetime.now()
+    if (
+        pat is None
+        or pat.revoked
+        or not pat.is_active
+        or (pat.expires_at is not None and pat.expires_at < now)
+    ):
+        return create_response(401, error_message="Invalid or revoked token")
 
-        access_token = await create_access_token(
-            data={"username": pat.username}, expires_delta=relativedelta(days=7)
-        )
-        db.add(Cache(username=pat.username, token=access_token, timestamp=now))
-        pat.last_used_at = now
-        await db.commit()
+    access_token = await create_access_token(
+        data={"username": pat.username}, expires_delta=relativedelta(days=7)
+    )
+    db.add(Cache(username=pat.username, token=access_token, timestamp=now))
+    await db.execute(
+        update(PersonalAccessToken)
+        .where(PersonalAccessToken.token_hash == token_hash)
+        .values(last_used_at=now)
+    )
+    await db.commit()
 
-        return create_response(
-            200, {"access_token": access_token, "username": pat.username}, PATExchangeResponse
-        )
-    except Exception as e:
-        await db.rollback()
-        return ExceptionHandler(e)
+    return create_response(
+        200, {"access_token": access_token, "username": pat.username}, PATExchangeResponse
+    )

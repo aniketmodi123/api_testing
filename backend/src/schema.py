@@ -3,6 +3,7 @@ What this file does: Defines all Pydantic request and response schemas used acro
 """
 
 from datetime import datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import BaseModel, Field, validator, EmailStr, root_validator
 from typing import Optional, List, Dict, Any, Literal, Union
 
@@ -1237,6 +1238,71 @@ class VariableResolutionResponse(BaseModel):
         from_attributes = True
 
 
+class ResolvePreviewVariable(BaseModel):
+    """Carry the resolution details for a single {{VAR}} placeholder in a preview response.
+
+    Attributes:
+        name: Variable key found in the template text.
+        scope: The winning scope that provided the value (local/environment/collection/global); ``None`` when unresolved.
+        value: Resolved value; ``"***"`` when the variable is a secret; ``None`` when unresolved.
+        resolved: ``True`` when a value was found in any scope.
+        is_secret: ``True`` when the variable is marked as a secret in any scope.
+    """
+
+    name: str
+    scope: Optional[str] = None
+    value: Any = None
+    resolved: bool
+    is_secret: bool
+
+    class Config:
+        from_attributes = True
+
+
+class ResolvePreviewResponse(BaseModel):
+    """Carry the result of resolving {{VAR}} placeholders across the full 4-scope chain.
+
+    Attributes:
+        original_text: Input template text before substitution.
+        resolved_text: Text after substitution using the full scope chain.
+        variables: Per-variable resolution details including winning scope and masked secret values.
+    """
+
+    original_text: str
+    resolved_text: str
+    variables: List[ResolvePreviewVariable] = []
+
+    class Config:
+        from_attributes = True
+
+
+class ApiDataResolveResponse(BaseModel):
+    """Carry the result of resolving {{VAR}} placeholders across all fields of a complete API data structure.
+
+    Attributes:
+        original_api_data: The input API data dict before substitution.
+        resolved_api_data: The API data dict after all known variables have been substituted.
+        variables_found: All variable keys detected across all API data fields.
+        variables_resolved: Keys that were successfully substituted.
+        variables_missing: Keys that were found but had no matching environment variable.
+        total_variables: Total number of unique variable keys found.
+        resolved_count: Number of variables successfully resolved.
+        missing_count: Number of variables that could not be resolved.
+    """
+
+    original_api_data: Dict[str, Any]
+    resolved_api_data: Dict[str, Any]
+    variables_found: List[str] = []
+    variables_resolved: List[str] = []
+    variables_missing: List[str] = []
+    total_variables: int = 0
+    resolved_count: int = 0
+    missing_count: int = 0
+
+    class Config:
+        from_attributes = True
+
+
 class NodeMoveRequest(BaseModel):
     """Carry the target location for moving a node to a different workspace or folder.
 
@@ -1498,11 +1564,22 @@ class ScheduleCreate(BaseModel):
     time: Optional[str] = None
     days_of_week: Optional[List[str]] = None
     day_of_month: Optional[int] = None
+    timezone: Optional[str] = None
     enabled: bool = True
 
     interval_count: Optional[int] = None
 
     payload: BulkPayload
+
+    @validator("timezone")
+    def _check_timezone(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        try:
+            ZoneInfo(v)
+        except (KeyError, ZoneInfoNotFoundError):
+            raise ValueError(f"Invalid IANA timezone: {v!r}")
+        return v
 
     @validator("time")
     def _check_time_format(cls, v, values):

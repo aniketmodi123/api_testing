@@ -32,6 +32,13 @@ verification. Check each item, then print one PASS/FAIL table and a one-line ver
    - Confirm the `/apipilot-test` skill is listed in available skills.
    - This is convenience-only — mark N/A (not FAIL) if the client doesn't support skills.
 
+Rules while checking:
+- Report only — do NOT attempt any fix, restart, or config change mid-check. Collect all results,
+  report once.
+- Ambiguity = FAIL: a timeout, partial response, or unexpected shape is a FAIL with the raw error
+  quoted — never a PASS "because it probably works".
+- Run every check even after an early FAIL — the point is one complete table, not the first error.
+
 Output format:
 | # | Check | Result | Detail |
 Then: overall verdict = READY only if checks 1-5 all PASS. Skill (6) is optional.

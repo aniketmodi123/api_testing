@@ -12,9 +12,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_db
-from common_querys import get_user_by_username
-from models import OAuthToken
-from utils import ExceptionHandler, create_response, logs
+from models import OAuthToken, User
+from utils import create_response, logs
 from schema import OAuth2TokenStatusResponse
 from http_client import get_http_client
 from ssrf import assert_safe_url
@@ -170,9 +169,9 @@ async def fetch_oauth2_token(
         - authorization_code grant requires a separate browser redirect; this endpoint handles the token-exchange step after the callback sets the code.
     """
     try:
-        # Step 1: Resolve user
-        user = await get_user_by_username(db, username)
-        if not user:
+        # Step 1: Resolve user (column-pruned — only id needed for existence check)
+        user_check = await db.execute(select(User.id).where(User.email == username))
+        if user_check.scalar_one_or_none() is None:
             return create_response(401, error_message="User not found")
 
         # Step 2: Cache key
@@ -181,7 +180,7 @@ async def fetch_oauth2_token(
         # Step 3: Load existing cache entry
         result = await db.execute(
             select(OAuthToken).where(
-                OAuthToken.owner_username == user.username,
+                OAuthToken.owner_username == username,
                 OAuthToken.auth_ref == auth_ref,
             )
         )
@@ -189,7 +188,6 @@ async def fetch_oauth2_token(
 
         if existing and not request.force_refresh:
             if not _token_expired(existing):
-                # Token still valid — return status only
                 return create_response(200, {
                     "auth_ref": auth_ref,
                     "token_type": existing.token_type,
@@ -201,12 +199,11 @@ async def fetch_oauth2_token(
         if existing and existing.refresh_token:
             try:
                 plain_refresh = vault.decrypt(existing.refresh_token)
+                plain_secret = vault.decrypt(request.client_secret) if vault.is_ciphertext(request.client_secret) else request.client_secret
                 grant_data = await _refresh_token(
-                    request.token_url, request.client_id, vault.decrypt(request.client_secret) if vault.is_ciphertext(request.client_secret) else request.client_secret, plain_refresh
+                    request.token_url, request.client_id, plain_secret, plain_refresh
                 )
-                token = _upsert_token(existing, grant_data, user.username, auth_ref)
-                if existing is None:
-                    db.add(token)
+                token = _upsert_token(existing, grant_data, username, auth_ref)
                 await db.commit()
                 return create_response(200, {
                     "auth_ref": auth_ref,
@@ -216,7 +213,6 @@ async def fetch_oauth2_token(
                     "refreshed": True,
                 }, OAuth2TokenStatusResponse)
             except Exception as refresh_err:
-                # Refresh failed — log (no secrets) and fall through to full re-grant
                 logs(f"oauth2 refresh failed for auth_ref={auth_ref}: {refresh_err}", type="error")
 
         # Step 4: Full grant (client_credentials)
@@ -228,7 +224,7 @@ async def fetch_oauth2_token(
         )
 
         # Step 5: Persist encrypted token
-        token = _upsert_token(existing, grant_data, user.username, auth_ref)
+        token = _upsert_token(existing, grant_data, username, auth_ref)
         if existing is None:
             db.add(token)
         await db.commit()
@@ -244,9 +240,6 @@ async def fetch_oauth2_token(
     except ValueError as e:
         await db.rollback()
         return create_response(400, error_message=str(e))
-    except Exception as e:
-        await db.rollback()
-        return ExceptionHandler(e)
 
 
 @router.get("/auth/oauth2/token/{auth_ref}")
@@ -256,29 +249,25 @@ async def get_oauth2_token_status(
     db: AsyncSession = Depends(get_db),
 ):
     """Return cached OAuth2 token status for the caller; never returns the raw access token."""
-    try:
-        user = await get_user_by_username(db, username)
-        if not user:
-            return create_response(401, error_message="User not found")
+    user_check = await db.execute(select(User.id).where(User.email == username))
+    if user_check.scalar_one_or_none() is None:
+        return create_response(401, error_message="User not found")
 
-        result = await db.execute(
-            select(OAuthToken).where(
-                OAuthToken.owner_username == user.username,
-                OAuthToken.auth_ref == auth_ref,
-            )
+    result = await db.execute(
+        select(OAuthToken).where(
+            OAuthToken.owner_username == username,
+            OAuthToken.auth_ref == auth_ref,
         )
-        token = result.scalar_one_or_none()
-        if not token:
-            return create_response(404, error_message="No cached token for this auth_ref")
+    )
+    token = result.scalar_one_or_none()
+    if not token:
+        return create_response(404, error_message="No cached token for this auth_ref")
 
-        return create_response(200, {
-            "auth_ref": auth_ref,
-            "token_type": token.token_type,
-            "expires_at": token.expires_at.isoformat() if token.expires_at else None,
-            "expired": _token_expired(token),
-            "has_refresh_token": token.refresh_token is not None,
-            "created_at": token.created_at.isoformat() if token.created_at else None,
-        }, OAuth2TokenStatusResponse)
-
-    except Exception as e:
-        return ExceptionHandler(e)
+    return create_response(200, {
+        "auth_ref": auth_ref,
+        "token_type": token.token_type,
+        "expires_at": token.expires_at.isoformat() if token.expires_at else None,
+        "expired": _token_expired(token),
+        "has_refresh_token": token.refresh_token is not None,
+        "created_at": token.created_at.isoformat() if token.created_at else None,
+    }, OAuth2TokenStatusResponse)

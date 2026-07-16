@@ -3,17 +3,13 @@ What this file does: Exposes DELETE /node/{node_id} for recursively deleting a n
 """
 
 from fastapi import APIRouter, Depends, Header
-from sqlalchemy import select
+from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_db
-from common_querys import get_user_by_username, can_access_workspace, get_workspace_tree_response, write_audit
-from models import Node, Api, ApiCase
-from utils import (
-    ExceptionHandler,
-    create_response,
-    value_correction
-)
+from common_querys import has_min_role, resolve_node_access, get_workspace_tree_response, write_audit
+from models import Api, ApiCase, Node
+from utils import ExceptionHandler, create_response, value_correction
 
 router = APIRouter()
 
@@ -26,61 +22,54 @@ async def delete_node(
 ):
     """DELETE /node/{node_id} — recursively delete a node plus all child nodes, associated APIs, and test cases; return updated workspace tree."""
     try:
-        # Get user
-        user = await get_user_by_username(db, username)
-        if not user:
+        na = await resolve_node_access(db, username, node_id)
+        if na.user is None:
             return create_response(400, error_message="User not found")
-
-        # Fetch node, then require editor access (delete is a write)
-        node_result = await db.execute(select(Node).where(Node.id == node_id))
-        node = node_result.scalar_one_or_none()
-        if not node:
+        if na.node is None:
             return create_response(404, error_message="Node not found")
-        if not await can_access_workspace(db, node.workspace_id, user.id, min_role="editor"):
+        if not has_min_role(na, "editor"):
             return create_response(403, error_message="Access denied")
 
+        workspace_id = na.node.workspace_id
+        node_type = na.node.type
 
-        # Recursive delete function
-        async def recursive_delete_node(node_obj):
-            # Delete all child nodes first
-            children_result = await db.execute(select(Node).where(Node.parent_id == node_obj.id))
-            children = children_result.scalars().all()
-            for child in children:
-                await recursive_delete_node(child)
+        # Collect all descendant ids (including the root) via a recursive CTE — one query
+        cte_sql = text("""
+            WITH RECURSIVE descendants AS (
+                SELECT id, type FROM nodes WHERE id = :root_id
+                UNION ALL
+                SELECT n.id, n.type FROM nodes n
+                JOIN descendants d ON n.parent_id = d.id
+            )
+            SELECT id FROM descendants
+        """)
+        ids_result = await db.execute(cte_sql, {"root_id": node_id})
+        all_ids: list[int] = [row[0] for row in ids_result.fetchall()]
 
-            # If this is a file, delete associated APIs and cases
-            api_count = 0
-            case_count = 0
-            if node_obj.type == "file":
-                api_result = await db.execute(select(Api).where(Api.file_id == node_obj.id))
-                api = api_result.scalar_one_or_none()
-                if api:
-                    case_result = await db.execute(select(ApiCase).where(ApiCase.api_id == api.id))
-                    cases = case_result.scalars().all()
-                    case_count = len(cases)
-                    # Delete all cases explicitly
-                    for case in cases:
-                        await db.delete(case)
-                    await db.delete(api)
-                    api_count = 1
-            await db.delete(node_obj)
-            return len(children), api_count, case_count
+        # Bulk delete: cases → apis → nodes (FK constraint order)
+        await db.execute(
+            delete(ApiCase).where(
+                ApiCase.api_id.in_(select(Api.id).where(Api.file_id.in_(all_ids)))
+            )
+        )
+        await db.execute(delete(Api).where(Api.file_id.in_(all_ids)))
+        await db.execute(delete(Node).where(Node.id.in_(all_ids)))
 
-        # Start recursive deletion
-        children_count, api_count, case_count = await recursive_delete_node(node)
-        await write_audit(db, username=user.username, action="node.delete", entity_type="node", entity_id=node_id, workspace_id=node.workspace_id)
+        await write_audit(
+            db,
+            username=na.user.username,
+            action="node.delete",
+            entity_type="node",
+            entity_id=node_id,
+            workspace_id=workspace_id,
+        )
         await db.commit()
 
-        message = f"{node.type.title()} deleted successfully"
-        if children_count > 0:
-            message += f" (including {children_count} child items)"
-        if api_count > 0:
-            message += f", {api_count} API"
-            if case_count > 0:
-                message += f" with {case_count} test cases"
+        message = f"{node_type.title()} deleted successfully"
+        if len(all_ids) > 1:
+            message += f" (including {len(all_ids) - 1} child items)"
 
-        # Use shared workspace tree response function
-        data, err = await get_workspace_tree_response(db, node.workspace_id, include_apis=True)
+        data, err = await get_workspace_tree_response(db, workspace_id, include_apis=True)
         if not data:
             return create_response(404, error_message=err or "Workspace not found after delete.")
         return create_response(200, value_correction(data), message=message)
@@ -88,4 +77,3 @@ async def delete_node(
     except Exception as e:
         await db.rollback()
         return ExceptionHandler(e)
-

@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_db
-from common_querys import can_access_workspace, resolve_file_access, write_audit
+from common_querys import has_min_role, resolve_file_access, write_audit
 from models import Api, ApiCase
 from schema import ApiCreateRequest, ApiSaveResponse
 from utils import ExceptionHandler, create_response
@@ -34,7 +34,8 @@ async def save_api(
             return create_response(404, error_message="File not found or access denied")
         if fa.node.type != "file":
             return create_response(400, error_message="Can only create/update APIs in files, not folders")
-        if not await can_access_workspace(db, fa.node.workspace_id, fa.user.id, min_role="editor"):
+        # Role already joined by resolve_file_access — no extra query needed
+        if not has_min_role(fa, "editor"):
             return create_response(403, error_message="Editor access or higher required")
 
         file_node = fa.node
@@ -60,7 +61,6 @@ async def save_api(
             api = existing_api
             await write_audit(db, username=fa.user.username, action="api.update", entity_type="api", entity_id=api.id, workspace_id=file_node.workspace_id)
             await db.commit()
-            await db.refresh(api)
 
             count = await db.execute(
                 select(func.count()).select_from(ApiCase).where(ApiCase.api_id == api.id)
@@ -81,7 +81,6 @@ async def save_api(
             await db.flush()
             await write_audit(db, username=fa.user.username, action="api.create", entity_type="api", entity_id=new_api.id, workspace_id=file_node.workspace_id)
             await db.commit()
-            await db.refresh(new_api)
 
             api = new_api
             case_count = 0
