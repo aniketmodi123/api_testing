@@ -1264,11 +1264,11 @@ def _build_curl_command(req: Optional[Dict[str, Any]]) -> str:
         return "N/A"
     method = str(req.get("method") or "GET").upper()
     url = req.get("url")
-    
+
     headers_dict = req.get("headers") or {}
     headers_list = [f'-H "{k}: {v}"' for k, v in headers_dict.items()]
     headers = " \\\n  ".join(headers_list)
-    
+
     body = req.get("body")
     if body:
         if isinstance(body, dict) and len(body) > 0:
@@ -1279,7 +1279,7 @@ def _build_curl_command(req: Optional[Dict[str, Any]]) -> str:
             body_str = ""
     else:
         body_str = ""
-        
+
     curl = f'curl -X {method} "{url}"'
     if headers:
         curl += f" \\\n  {headers}"
@@ -1302,11 +1302,11 @@ async def export_results_table(reconcile: List[Dict[str, Any]], title: str = "AP
         for index, r in enumerate(reconcile):
             case_name = str(r.get("case") or r.get("case_id") or f"Test Case {index + 1}")
             result_verdict = "Pass" if r.get("verdict") == "pass" else "Fail"
-            
+
             # Request
             req = r.get("request")
             request_curl = _build_curl_command(req)
-            
+
             # Expected
             req_data = req or {}
             expected = req_data.get("expected") or {}
@@ -1316,7 +1316,7 @@ async def export_results_table(reconcile: List[Dict[str, Any]], title: str = "AP
             else:
                 status = expected.get("status")
                 expected_status = _map_status_to_text(status) if status else "N/A"
-            
+
             # Response
             resp = r.get("response")
             if isinstance(resp, dict):
@@ -1329,7 +1329,7 @@ async def export_results_table(reconcile: List[Dict[str, Any]], title: str = "AP
                     resp_str = json.dumps(resp, indent=2)
             else:
                 resp_str = str(resp) if resp is not None else "N/A"
-                
+
             excel_data.append({
                 "Test case name": case_name,
                 "Request": request_curl,
@@ -1337,7 +1337,7 @@ async def export_results_table(reconcile: List[Dict[str, Any]], title: str = "AP
                 "Response": resp_str,
                 "Result": result_verdict
             })
-            
+
         header = "| Test case name | Request | Expected | Response | Result |\n|---|---|---|---|---|"
         md_rows, cf_rows = [], []
         for row in excel_data:
@@ -1347,7 +1347,7 @@ async def export_results_table(reconcile: List[Dict[str, Any]], title: str = "AP
             resp_md = row["Response"].replace("|", "\\|").replace("\n", "<br>")
             res_md = f"**{row['Result']}**"
             md_rows.append(f"| {case_name} | <code>{req_md}</code> | {exp_md} | <code>{resp_md}</code> | {res_md} |")
-            
+
             color = "#09ee09ff" if row["Result"] == "Pass" else "#fbeaea"
             row_html = (
                 f'<tr style="background-color: {color}; vertical-align: top;">'
@@ -1359,7 +1359,7 @@ async def export_results_table(reconcile: List[Dict[str, Any]], title: str = "AP
                 f"</tr>"
             )
             cf_rows.append(row_html)
-            
+
         markdown = f"## {title}\n\n{header}\n" + "\n".join(md_rows)
         confluence = (
             f"<h2>{title}</h2>"
