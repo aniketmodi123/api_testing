@@ -9,7 +9,6 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 
 from config import SessionLocal
 from models import MockRoute, MockServer
@@ -83,9 +82,7 @@ async def serve_mock(public_token: str, path: str, request: Request):
     async with SessionLocal() as db:
         server = (
             await db.execute(
-                select(MockServer)
-                .where(MockServer.public_token == public_token)
-                .options(selectinload(MockServer.routes))
+                select(MockServer).where(MockServer.public_token == public_token)
             )
         ).scalar_one_or_none()
 
@@ -97,22 +94,23 @@ async def serve_mock(public_token: str, path: str, request: Request):
         if not _check_rate_limit(public_token, server.rate_limit):
             return JSONResponse({"error": "Rate limit exceeded"}, status_code=429)
 
-        incoming_path = path.lstrip("/") if path else ""
         incoming_method = request.method.upper()
+        incoming_path = path.lstrip("/") if path else ""
 
-        # find all matching routes, sorted by priority desc
-        matches: List[MockRoute] = []
-        for route in (server.routes or []):
-            if route.method != incoming_method:
-                continue
-            route_path = route.path.lstrip("/")
-            if _match_path(route_path, incoming_path):
-                matches.append(route)
+        # DB-side method filter + priority sort; Python-side path template matching
+        routes = (
+            await db.execute(
+                select(MockRoute)
+                .where(MockRoute.server_id == server.id, MockRoute.method == incoming_method)
+                .order_by(MockRoute.priority.desc())
+            )
+        ).scalars().all()
 
-        if not matches:
+        matched = [r for r in routes if _match_path(r.path.lstrip("/"), incoming_path)]
+        if not matched:
             return JSONResponse({"error": "No matching route"}, status_code=404)
 
-        best = max(matches, key=lambda r: r.priority)
+        best = matched[0]
 
         if best.delay_ms > 0:
             await asyncio.sleep(best.delay_ms / 1000)

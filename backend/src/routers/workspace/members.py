@@ -7,13 +7,17 @@ import uuid
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, Header
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_db
-from common_querys import can_access_workspace, get_user_by_username
-from models import User, Workspace, WorkspaceInvite, WorkspaceMember
-from schema import InviteCreate, InviteResponse, MemberResponse, MemberRoleUpdate
+from common_querys import (
+    get_user_by_username,
+    has_min_role,
+    resolve_workspace_access,
+)
+from models import User, WorkspaceInvite, WorkspaceMember
+from schema import InviteCreate, MemberRoleUpdate, MessageResponse
 from utils import ExceptionHandler, create_response, value_correction
 
 router = APIRouter()
@@ -29,9 +33,11 @@ async def _send_invite_email(email: str, token: str, workspace_name: str, app_ba
     if not smtp_username:
         return
 
+    import html as _html
     join_url = f"{app_base_url}/workspace/join/{token}"
-    html = f"""
-    <p>You have been invited to join the workspace <strong>{workspace_name}</strong>.</p>
+    safe_name = _html.escape(workspace_name)
+    body_html = f"""
+    <p>You have been invited to join the workspace <strong>{safe_name}</strong>.</p>
     <p><a href="{join_url}">Accept Invitation</a></p>
     <p>This link expires in 7 days.</p>
     """
@@ -40,7 +46,7 @@ async def _send_invite_email(email: str, token: str, workspace_name: str, app_ba
     msg["Subject"] = f"Invitation to join workspace: {workspace_name}"
     msg["From"] = smtp_username
     msg["To"] = email
-    msg.attach(MIMEText(html, "html"))
+    msg.attach(MIMEText(body_html, "html"))
 
     try:
         smtp_server = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
@@ -67,20 +73,16 @@ async def invite_member(
 ):
     """POST /workspace/{workspace_id}/invite — create or refresh a pending invite and fire an invitation email."""
     try:
-        user = await get_user_by_username(db, username)
-        if not user:
+        access = await resolve_workspace_access(db, username, workspace_id)
+        if not access.user:
             return create_response(400, error_message="User not found")
-
-        # Only workspace owner or admin can invite
-        has_access = await can_access_workspace(db, workspace_id, user.id, min_role="admin")
-        if not has_access:
+        if not access.workspace_id:
+            return create_response(404, error_message="Workspace not found")
+        if not has_min_role(access, "admin"):
             return create_response(403, error_message="Only workspace owner or admin can invite members")
 
-        # Get workspace name for email
-        ws_result = await db.execute(select(Workspace.name).where(Workspace.id == workspace_id))
-        workspace_name = ws_result.scalar_one_or_none() or "workspace"
+        workspace_name = access.workspace_name or "workspace"
 
-        # Check for existing pending invite to same email
         existing = await db.execute(
             select(WorkspaceInvite).where(
                 and_(
@@ -92,7 +94,6 @@ async def invite_member(
         )
         existing_invite = existing.scalar_one_or_none()
         if existing_invite:
-            # Refresh expiry and token
             existing_invite.token = uuid.uuid4().hex
             existing_invite.role = body.role
             existing_invite.expires_at = datetime.now() + timedelta(days=7)
@@ -154,7 +155,6 @@ async def join_workspace(
         if invite.email.lower() != user.email.lower():
             return create_response(403, error_message="This invitation was sent to a different email address")
 
-        # Check if already a member
         existing_member = await db.execute(
             select(WorkspaceMember).where(
                 and_(
@@ -200,17 +200,22 @@ async def list_members(
 ):
     """GET /workspace/{workspace_id}/members — return joined members and non-expired pending invites."""
     try:
-        user = await get_user_by_username(db, username)
-        if not user:
+        access = await resolve_workspace_access(db, username, workspace_id)
+        if not access.user:
             return create_response(400, error_message="User not found")
-
-        has_access = await can_access_workspace(db, workspace_id, user.id, min_role="viewer")
-        if not has_access:
+        if not access.workspace_id:
+            return create_response(404, error_message="Workspace not found")
+        if not has_min_role(access, "viewer"):
             return create_response(403, error_message="Access denied")
 
-        # Fetch joined members with user info
         members_result = await db.execute(
-            select(WorkspaceMember, User)
+            select(
+                WorkspaceMember.user_id,
+                WorkspaceMember.role,
+                WorkspaceMember.joined_at,
+                User.username,
+                User.email,
+            )
             .join(User, WorkspaceMember.user_id == User.id)
             .where(
                 and_(
@@ -221,18 +226,25 @@ async def list_members(
         )
         members_list = [
             {
-                "user_id": m.id,
-                "username": u.username,
-                "email": u.email,
-                "role": m.role,
-                "joined_at": str(m.joined_at) if m.joined_at else None,
+                "user_id": row.user_id,
+                "username": row.username,
+                "email": row.email,
+                "role": row.role,
+                "joined_at": str(row.joined_at) if row.joined_at else None,
             }
-            for m, u in members_result.all()
+            for row in members_result.all()
         ]
 
-        # Fetch pending invites (not yet accepted, not expired)
         invites_result = await db.execute(
-            select(WorkspaceInvite).where(
+            select(
+                WorkspaceInvite.id,
+                WorkspaceInvite.email,
+                WorkspaceInvite.role,
+                WorkspaceInvite.expires_at,
+                WorkspaceInvite.accepted,
+                WorkspaceInvite.created_at,
+            )
+            .where(
                 and_(
                     WorkspaceInvite.workspace_id == workspace_id,
                     WorkspaceInvite.accepted.is_(False),
@@ -242,14 +254,14 @@ async def list_members(
         )
         invites_list = [
             {
-                "id": inv.id,
-                "email": inv.email,
-                "role": inv.role,
-                "expires_at": str(inv.expires_at),
-                "accepted": inv.accepted,
-                "created_at": str(inv.created_at),
+                "id": row.id,
+                "email": row.email,
+                "role": row.role,
+                "expires_at": str(row.expires_at),
+                "accepted": row.accepted,
+                "created_at": str(row.created_at),
             }
-            for inv in invites_result.scalars().all()
+            for row in invites_result.all()
         ]
 
         return create_response(200, value_correction({
@@ -274,12 +286,12 @@ async def update_member_role(
 ):
     """PUT /workspace/{workspace_id}/members/{member_user_id} — change the role of an existing workspace member."""
     try:
-        user = await get_user_by_username(db, username)
-        if not user:
+        access = await resolve_workspace_access(db, username, workspace_id)
+        if not access.user:
             return create_response(400, error_message="User not found")
-
-        has_access = await can_access_workspace(db, workspace_id, user.id, min_role="admin")
-        if not has_access:
+        if not access.workspace_id:
+            return create_response(404, error_message="Workspace not found")
+        if not has_min_role(access, "admin"):
             return create_response(403, error_message="Only workspace owner or admin can update roles")
 
         member_result = await db.execute(
@@ -320,12 +332,12 @@ async def remove_member(
 ):
     """DELETE /workspace/{workspace_id}/members/{member_user_id} — remove a member from the workspace."""
     try:
-        user = await get_user_by_username(db, username)
-        if not user:
+        access = await resolve_workspace_access(db, username, workspace_id)
+        if not access.user:
             return create_response(400, error_message="User not found")
-
-        has_access = await can_access_workspace(db, workspace_id, user.id, min_role="admin")
-        if not has_access:
+        if not access.workspace_id:
+            return create_response(404, error_message="Workspace not found")
+        if not has_min_role(access, "admin"):
             return create_response(403, error_message="Only workspace owner or admin can remove members")
 
         member_result = await db.execute(
@@ -343,7 +355,7 @@ async def remove_member(
         await db.delete(member)
         await db.commit()
 
-        return create_response(200, value_correction({"message": "Member removed"}))
+        return create_response(200, value_correction({"message": "Member removed"}), MessageResponse)
 
     except Exception as e:
         await db.rollback()

@@ -4,7 +4,7 @@ to the client as a streaming response; SSRF-guarded.
 """
 import logging
 from fastapi import APIRouter, Query
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from ssrf import assert_safe_url
 from http_client import get_http_client, OUTBOUND_VERIFY_TLS
 
@@ -27,7 +27,6 @@ async def sse_proxy(target_url: str = Query(...)):
     try:
         assert_safe_url(target_url)
     except ValueError as e:
-        from fastapi.responses import JSONResponse
         return JSONResponse(status_code=400, content={"error_message": str(e)})
 
     return StreamingResponse(

@@ -16,6 +16,11 @@ except ImportError:
 
 JSON = Union[dict, list, str, int, float, bool, None]
 _MISSING = object()
+_ARRAY_IDX_RE = re.compile(r"\[(\d+)\]")
+_PREDICATES: frozenset = frozenset((
+    "equals", "present", "absent", "regex", "contains",
+    "length", "type", "gt", "gte", "lt", "lte", "schema",
+))
 
 # Allowed logical JSON types for `type` checks
 _TYPE_MAP = {
@@ -48,7 +53,7 @@ def _resolve_path(obj: JSON, path: str) -> Any:
         return obj
 
     # Convert [idx] -> .#idx so we can split on dots
-    path = re.sub(r"\[(\d+)\]", r".#\1", path)
+    path = _ARRAY_IDX_RE.sub(r".#\1", path)
     parts = [p for p in path.split(".") if p]
 
     cur: Any = obj
@@ -307,9 +312,8 @@ def _validate_one_check(chk: Any, errs: List[str], where: str) -> None:
     if "path" not in chk or not isinstance(chk["path"], str) or not chk["path"]:
         errs.append(f"{where}.path: required string")
     # must contain at least one predicate:
-    predicates = ("equals", "present", "absent", "regex", "contains", "length", "type", "gt", "gte", "lt", "lte", "schema")
-    if not any(p in chk for p in predicates):
-        errs.append(f"{where}: must contain one of {predicates}")
+    if not (_PREDICATES & chk.keys()):
+        errs.append(f"{where}: must contain one of {sorted(_PREDICATES)}")
     # refine a few types
     if "length" in chk and not (isinstance(chk["length"], int) and chk["length"] >= 0):
         errs.append(f"{where}.length: must be non-negative integer")
@@ -392,10 +396,14 @@ def evaluate_expect(resp, expect: Dict[str, Any]) -> Tuple[bool, List[str]]:
         if re.search(tre, body_text) is None:
             failures.append(f"text_regex: pattern '{tre}' not found")
 
-    # ----- Headers (exact) -----
+    # ----- Headers (exact + regex) — lowercase once when either block is active -----
     want_hdrs = expect.get("headers") or {}
-    if want_hdrs:
+    want_hdrs_re = expect.get("headers_regex") or {}
+    actual_hdrs: Dict[str, str] = {}
+    if want_hdrs or want_hdrs_re:
         actual_hdrs = _to_lower_headers(getattr(resp, "headers", {}) or {})
+
+    if want_hdrs:
         for hk, hv in want_hdrs.items():
             ak = hk.lower()
             av = actual_hdrs.get(ak)
@@ -405,9 +413,7 @@ def evaluate_expect(resp, expect: Dict[str, Any]) -> Tuple[bool, List[str]]:
                 failures.append(f"header '{hk}': expected '{hv}', got '{av}'")
 
     # ----- Headers (regex) -----
-    want_hdrs_re = expect.get("headers_regex") or {}
     if want_hdrs_re:
-        actual_hdrs = _to_lower_headers(getattr(resp, "headers", {}) or {})
         for hk, pat in want_hdrs_re.items():
             ak = hk.lower()
             av = actual_hdrs.get(ak)

@@ -39,20 +39,27 @@ async def list_test_cases_for_file_api(
 
         api, file_node = fa.api, fa.node
 
-        # Step 2: Build the filtered query and a count over the SAME filter
+        # Step 2: Fetch only the needed case columns; the list is unpaginated,
+        # so its length IS the total — no separate count query needed
         conditions = [ApiCase.api_id == api.id]
         if search:
             conditions.append(ApiCase.name.ilike(f"%{search}%"))
 
-        count_result = await db.execute(
-            select(func.count()).select_from(ApiCase).where(*conditions)
-        )
-        total_cases = count_result.scalar()
-
         cases_result = await db.execute(
-            select(ApiCase).where(*conditions).order_by(func.lower(ApiCase.name))
+            select(
+                ApiCase.id,
+                ApiCase.api_id,
+                ApiCase.name,
+                ApiCase.headers,
+                ApiCase.params,
+                ApiCase.body,
+                ApiCase.expected,
+                ApiCase.created_at,
+            )
+            .where(*conditions)
+            .order_by(func.lower(ApiCase.name))
         )
-        cases = cases_result.scalars().all()
+        test_cases = [dict(row) for row in cases_result.mappings()]
 
         # Step 3: Build the response payload
         data = {
@@ -63,20 +70,8 @@ async def list_test_cases_for_file_api(
             "api_name": api.name,
             "api_method": api.method,
             "api_endpoint": api.endpoint,
-            "test_cases": [
-                {
-                    "id": case.id,
-                    "api_id": case.api_id,
-                    "name": case.name,
-                    "headers": case.headers,
-                    "params": case.params,
-                    "body": case.body,
-                    "expected": case.expected,
-                    "created_at": case.created_at,
-                }
-                for case in cases
-            ],
-            "total_cases": total_cases,
+            "test_cases": test_cases,
+            "total_cases": len(test_cases),
         }
 
         return create_response(200, data, ApiCaseListResponse)

@@ -3,19 +3,14 @@ What this file does: Exposes GET /{folder_id}/headers/complete and /inheritance-
 """
 
 from fastapi import APIRouter, Depends, Header as FastAPIHeader
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List, Dict, Any
 
 from config import get_db
-from common_querys import get_user_by_username, can_access_workspace, get_headers
-from models import Node, Header
+from common_querys import resolve_node_access, has_min_role, get_headers
 from schema import CompleteHeadersResponse, HeaderInheritancePreviewResponse
 from utils import ExceptionHandler, create_response, value_correction
 
 router = APIRouter()
-
-
 
 
 @router.get("/{folder_id}/headers/complete")
@@ -23,29 +18,25 @@ async def get_complete_folder_headers(
     folder_id: int,
     username: str = FastAPIHeader(...),
     include_inheritance_details: bool = FastAPIHeader(False, alias="include-details"),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """GET /{folder_id}/headers/complete — return merged headers inherited from all ancestor folders, with child headers taking priority."""
     try:
-        # Get user
-        user = await get_user_by_username(db, username)
-        if not user:
+        access = await resolve_node_access(db, username, folder_id)
+        if not access.user:
             return create_response(400, error_message="User not found")
-
-        # Fetch folder, then require at least viewer access
-        folder_result = await db.execute(select(Node).where(Node.id == folder_id))
-        target_folder = folder_result.scalar_one_or_none()
-        if not target_folder:
+        if not access.node:
             return create_response(404, error_message="Folder not found")
-        if not await can_access_workspace(db, target_folder.workspace_id, user.id, min_role="viewer"):
+        if not has_min_role(access, "viewer"):
             return create_response(403, error_message="Access denied")
 
-        # Get path from root to target folder
+        target_folder = access.node
+
         folder_path, folder_ids, headers_map, merge_result = await get_headers(db, folder_id)
         if not folder_path:
             return create_response(404, error_message="Folder not found")
 
-        # Prepare response data
+        all_node_ids = folder_ids.get("folder", []) + folder_ids.get("file", [])
         data = {
             "folder_id": folder_id,
             "folder_name": target_folder.name,
@@ -56,19 +47,19 @@ async def get_complete_folder_headers(
                 {
                     "id": folder["id"],
                     "name": folder["name"],
-                    "has_headers": folder["id"] in headers_map
-                } for folder in folder_path
+                    "has_headers": folder["id"] in headers_map,
+                }
+                for folder in folder_path
             ],
-            "folders_with_headers": len([f_id for f_id in folder_ids if f_id in headers_map])
+            "folders_with_headers": len([f_id for f_id in all_node_ids if f_id in headers_map]),
         }
 
-        # Add detailed inheritance information if requested
         if include_inheritance_details:
             data["inheritance_details"] = merge_result["inheritance_info"]
             data["raw_headers_by_folder"] = {
-                str(folder_id): headers_map.get(folder_id, {}).get("content", {})
-                for folder_id in folder_ids
-                if folder_id in headers_map
+                str(fid): headers_map.get(fid, {}).get("content", {})
+                for fid in all_node_ids
+                if fid in headers_map
             }
 
         return create_response(200, value_correction(data), CompleteHeadersResponse)
@@ -77,34 +68,28 @@ async def get_complete_folder_headers(
         return ExceptionHandler(e)
 
 
-# Bonus: Get inheritance preview (useful for UI)
 @router.get("/{folder_id}/headers/inheritance-preview")
 async def get_headers_inheritance_preview(
     folder_id: int,
     username: str = FastAPIHeader(...),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """GET /{folder_id}/headers/inheritance-preview — return per-folder header contributions along the ancestor path without merging."""
     try:
-        # Get user
-        user = await get_user_by_username(db, username)
-        if not user:
+        access = await resolve_node_access(db, username, folder_id)
+        if not access.user:
             return create_response(400, error_message="User not found")
-
-        # Fetch folder, then require at least viewer access
-        folder_result = await db.execute(select(Node).where(Node.id == folder_id))
-        target_folder = folder_result.scalar_one_or_none()
-        if not target_folder:
+        if not access.node:
             return create_response(404, error_message="Folder not found")
-        if not await can_access_workspace(db, target_folder.workspace_id, user.id, min_role="viewer"):
+        if not has_min_role(access, "viewer"):
             return create_response(403, error_message="Access denied")
 
-        # Get path from root to target folder
+        target_folder = access.node
+
         folder_path, folder_ids, headers_map, merge_result = await get_headers(db, folder_id)
         if not folder_path:
             return create_response(404, error_message="Folder not found")
 
-        # Build inheritance preview
         inheritance_preview = []
         for i, folder_info in enumerate(folder_path):
             folder_id_iter = folder_info["id"]
@@ -114,7 +99,7 @@ async def get_headers_inheritance_preview(
                 "folder_name": folder_info["name"],
                 "has_headers": folder_id_iter in headers_map,
                 "headers": {},
-                "headers_count": 0
+                "headers_count": 0,
             }
 
             if folder_id_iter in headers_map:
@@ -131,7 +116,7 @@ async def get_headers_inheritance_preview(
             "target_folder_name": target_folder.name,
             "inheritance_path": inheritance_preview,
             "total_levels": len(folder_path),
-            "folders_with_headers": len([f for f in inheritance_preview if f["has_headers"]])
+            "folders_with_headers": len([f for f in inheritance_preview if f["has_headers"]]),
         }
 
         return create_response(200, value_correction(data), HeaderInheritancePreviewResponse)

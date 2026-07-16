@@ -14,7 +14,7 @@ from datetime import datetime
 from routers.runner import run_case, execute_direct, bulk_run_cases
 from routers.runner import graphql_introspect, ws_proxy, sse_proxy
 from routers.workspace import list_workspace_tree
-from routers.sso import create_user, forget_password, login, logout, otp_generation, update_user, delete_user, user_profile
+from routers.sso import create_user, forget_password, login, logout, otp_generation, update_user, delete_user, user_profile, pat
 from routers.workspace import create_workspace, update_workspace, list_workspace, list_workspace_tree, delete_workspace
 from routers.workspace import members as workspace_members
 from routers.node import create_node, update_node, list_node, delete_node, move_node, copy_node
@@ -50,15 +50,65 @@ FASTAPI_CONFIG = {
     'tzinfo': pytz.timezone('Asia/Kolkata')
 }
 
+import os as _os
+from contextlib import asynccontextmanager
+from utils import logs as _logs
+
+# --- Embedded remote MCP server (single-service mode) ----------------------
+# The MCP server runs INSIDE this app, mounted at /mcp-server, so one process/
+# one port serves both the API and the MCP endpoint (e.g. one Render web
+# service). The import is guarded: if the `mcp` package or the mcp_server
+# sources are absent, the API still boots and simply doesn't expose /mcp-server.
+_os.environ["MCP_TRANSPORT"] = "http"
+_MCP_MOUNT_PATH = "/mcp-server"
+_self_url = f"http://localhost:{_os.environ.get('PORT', '8000')}"
+# Public URL clients reach (OAuth issuer + token-page config). Override on deploy,
+# e.g. MCP_PUBLIC_URL=https://your-host/mcp-oauth. PLATFORM_BASE_URL is the API the
+# MCP calls — itself, over loopback, in this embedded mode.
+_os.environ.setdefault("MCP_PUBLIC_URL", f"{_self_url}{_MCP_MOUNT_PATH}")
+_os.environ.setdefault("PLATFORM_BASE_URL", _self_url)
+try:
+    from mcp_server.server import mcp as _apipilot_mcp
+    _mcp_asgi = _apipilot_mcp.streamable_http_app()
+except Exception as _mcp_err:  # missing dep/sources → API still serves
+    _apipilot_mcp = None
+    _mcp_asgi = None
+    _logs(f"Embedded MCP server not mounted: {_mcp_err}", type="error")
+
+
+@asynccontextmanager
+async def lifespan(app):
+    """Startup: env check, table creation, DB connectivity, and — when present — the
+    embedded MCP session manager. Shutdown: drain the outbound HTTP pool."""
+    if not _os.environ.get("SECRET_ENC_KEY"):
+        raise RuntimeError(
+            "SECRET_ENC_KEY env var is not set. "
+            "Generate one: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
+        )
+    datetime.now(pytz.timezone('Asia/Kolkata'))
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    await check_db_connection()
+
+    # The MCP streamable-http transport needs its session manager running for the
+    # lifetime of the app; mounted sub-apps don't get their lifespan run automatically.
+    if _apipilot_mcp is not None:
+        async with _apipilot_mcp.session_manager.run():
+            yield
+    else:
+        yield
+
+    await close_http_client()
+
+
 # Swagger at /swagger
-app = FastAPI(docs_url="/swagger", redoc_url=None, openapi_url="/openapi.json")
+app = FastAPI(docs_url="/swagger", redoc_url=None, openapi_url="/openapi.json", lifespan=lifespan)
 
 
 
 app.add_middleware(AuthMiddleware)
 
 
-import os as _os
 _cors_raw = _os.environ.get("CORS_ORIGINS", "*")
 _cors_origins = [o.strip() for o in _cors_raw.split(",") if o.strip()] if _cors_raw != "*" else ["*"]
 
@@ -69,27 +119,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Run DB table creation and connectivity check on application startup."""
-    import os
-    if not os.environ.get("SECRET_ENC_KEY"):
-        raise RuntimeError(
-            "SECRET_ENC_KEY env var is not set. "
-            "Generate one: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
-        )
-    datetime.now(pytz.timezone('Asia/Kolkata'))
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    await check_db_connection()
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Drain the shared outbound HTTP client connection pool on shutdown."""
-    await close_http_client()
 
 
 @app.get("/health")
@@ -162,6 +191,7 @@ app.include_router(delete_user.router, prefix="", tags=["sso"])
 app.include_router(user_profile.router, prefix="", tags=["sso"])
 app.include_router(forget_password.router, prefix="", tags=["sso"])
 app.include_router(otp_generation.router, prefix="", tags=["sso"])
+app.include_router(pat.router, prefix="", tags=["sso"])
 
 # workspace
 app.include_router(create_workspace.router, prefix="/workspace", tags=["workspace"])
@@ -272,3 +302,9 @@ app.include_router(create_theme.router,    prefix="/themes", tags=["themes"])
 app.include_router(update_theme.router,    prefix="/themes", tags=["themes"])
 app.include_router(delete_theme.router,    prefix="/themes", tags=["themes"])
 app.include_router(activate_theme.router,  prefix="/themes", tags=["themes"])
+
+# Embedded MCP server — mounted last so API routes take precedence. Reachable at
+# /mcp-server/mcp (endpoint) and /mcp-server/ (token page). Auth for this subtree is handled
+# by the MCP app's own PAT bearer middleware; AuthMiddleware skips it.
+if _mcp_asgi is not None:
+    app.mount(_MCP_MOUNT_PATH, _mcp_asgi)

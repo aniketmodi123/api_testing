@@ -614,14 +614,13 @@ export const apiSlice = createApi({
 
     saveTestCase: builder.mutation({
       query: ({ fileId, caseId, ...testCaseData }) => {
-        const endpoint = caseId
-          ? `/api/cases/${caseId}`
-          : `/file/${fileId}/api/cases`;
-        const method = caseId ? 'PUT' : 'POST';
+        const url = caseId
+          ? `/file/${fileId}/api/cases/save?case_id=${caseId}`
+          : `/file/${fileId}/api/cases/save`;
 
         return {
-          url: endpoint,
-          method,
+          url,
+          method: 'POST',
           body: testCaseData,
         };
       },
@@ -789,14 +788,24 @@ export const apiSlice = createApi({
 
     // Test execution
     runTest: builder.mutation({
-      query: ({ fileId, caseId = null }) => ({
-        url: '/run',
-        method: 'POST',
-        body: {
-          file_id: fileId,
-          case_id: caseId,
-        },
-      }),
+      query: ({ fileId, caseId = null }) => {
+        // Backend expects case_id as Optional[list[int]]; coerce any scalar
+        // caller (e.g. per-card Run button) into a list, null runs all cases.
+        let case_id = null;
+        if (Array.isArray(caseId)) {
+          case_id = caseId;
+        } else if (caseId != null) {
+          case_id = [caseId];
+        }
+        return {
+          url: '/run',
+          method: 'POST',
+          body: {
+            file_id: fileId,
+            case_id,
+          },
+        };
+      },
       // Unify the differing backend shapes into { test_cases: [...] } here so every
       // caller reads one normalized result (was store/api.jsx runTest mapCase).
       transformResponse: normalizeRunResult,

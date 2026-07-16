@@ -190,7 +190,9 @@ async def contract_test(
             return create_response(403, error_message="Access denied")
 
         # Step 2: load spec
-        spec = (await db.execute(select(ApiSpec).where(ApiSpec.id == spec_id))).scalar_one_or_none()
+        spec = (await db.execute(
+            select(ApiSpec.workspace_id, ApiSpec.parsed, ApiSpec.raw).where(ApiSpec.id == spec_id)
+        )).one_or_none()
         if not spec:
             return create_response(404, error_message="Spec not found")
         if spec.workspace_id != payload.workspace_id:
@@ -215,15 +217,14 @@ async def contract_test(
 
         # Step 4: load workspace APIs keyed by (method, endpoint)
         apis_q = (
-            select(Api)
+            select(Api.method, Api.endpoint)
             .join(Node, Api.file_id == Node.id)
             .where(and_(Node.workspace_id == payload.workspace_id, Api.is_active == True))
         )
-        all_apis = (await db.execute(apis_q)).scalars().all()
-        api_map: Dict[tuple, Any] = {}
-        for api in all_apis:
-            key = (api.method.upper(), api.endpoint)
-            api_map[key] = api
+        api_map: Dict[tuple, Any] = {
+            (row.method.upper(), row.endpoint): row
+            for row in (await db.execute(apis_q)).fetchall()
+        }
 
         # Step 5: concurrent requests with semaphore
         sem = asyncio.Semaphore(_SEMAPHORE_LIMIT)

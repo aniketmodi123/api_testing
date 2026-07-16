@@ -3,16 +3,12 @@ What this file does: Exposes the DELETE /themes/{theme_id} route for permanently
 """
 
 from fastapi import APIRouter, Depends, Header
-from sqlalchemy import select, and_
+from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_db
-from common_querys import get_user_by_username
-from models import UserTheme
-from utils import (
-    ExceptionHandler,
-    create_response
-)
+from models import UserTheme, User
+from utils import create_response
 
 router = APIRouter()
 
@@ -24,31 +20,18 @@ async def delete_theme(
     db: AsyncSession = Depends(get_db)
 ):
     """DELETE /themes/{theme_id} — permanently delete a custom theme owned by the caller."""
-    try:
-        # Get user
-        user = await get_user_by_username(db, username)
-        if not user:
-            return create_response(400, error_message="User not found")
+    user_id = (await db.execute(select(User.id).where(User.email == username))).scalar_one_or_none()
+    if user_id is None:
+        return create_response(400, error_message="User not found")
 
-        # Get theme, guarding ownership
-        result = await db.execute(
-            select(UserTheme).where(
-                and_(
-                    UserTheme.id == theme_id,
-                    UserTheme.user_id == user.id,
-                )
-            )
+    result = await db.execute(
+        delete(UserTheme).where(
+            UserTheme.id == theme_id,
+            UserTheme.user_id == user_id,
         )
-        theme = result.scalar_one_or_none()
+    )
+    if result.rowcount == 0:
+        return create_response(404, error_message="Theme not found or access denied")
 
-        if not theme:
-            return create_response(404, error_message="Theme not found or access denied")
-
-        await db.delete(theme)
-        await db.commit()
-
-        return create_response(204)
-
-    except Exception as e:
-        await db.rollback()
-        return ExceptionHandler(e)
+    await db.commit()
+    return create_response(204)

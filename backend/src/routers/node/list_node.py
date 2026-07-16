@@ -5,60 +5,47 @@ What this file does: Exposes GET /node/{node_id} for retrieving a node's details
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from config import get_db
-from common_querys import get_node_path, get_user_by_username, can_access_workspace
+from common_querys import get_node_path, resolve_node_access
 from models import Node
-from utils import (
-    ExceptionHandler,
-    create_response,
-    value_correction
-)
+from utils import ExceptionHandler, create_response, value_correction
 
 router = APIRouter()
+
 
 @router.get("/{node_id}")
 async def get_node_with_children(
     node_id: int,
     username: str = Header(...),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """GET /node/{node_id} — return node metadata, direct children list, and ancestor breadcrumb path."""
     try:
-        # Get user
-        user = await get_user_by_username(db, username)
-        if not user:
+        na = await resolve_node_access(db, username, node_id)
+        if na.user is None:
             return create_response(400, error_message="User not found")
-
-        # Fetch node with children
-        result = await db.execute(
-            select(Node).options(selectinload(Node.children)).where(Node.id == node_id)
-        )
-        node = result.scalar_one_or_none()
-
-        if not node:
+        if na.node is None:
             return create_response(404, error_message="Node not found")
-
-        # Verify the caller has at least viewer access to the node's workspace
-        if not await can_access_workspace(db, node.workspace_id, user.id, min_role="viewer"):
+        if not na.can_access:
             return create_response(403, error_message="Access denied")
 
-        # Get breadcrumb path
-        path = await get_node_path(db, node_id)
+        node = na.node
 
-        # Prepare children data
-        children = []
-        if hasattr(node, 'children') and node.children:
-            for child in node.children:
-                children.append({
-                    "id": child.id,
-                    "workspace_id": child.workspace_id,
-                    "name": child.name,
-                    "type": child.type,
-                    "parent_id": child.parent_id,
-                    "created_at": child.created_at
-                })
+        # Fetch children with only needed columns — avoids full-model selectinload
+        children_result = await db.execute(
+            select(
+                Node.id,
+                Node.workspace_id,
+                Node.name,
+                Node.type,
+                Node.parent_id,
+                Node.created_at,
+            ).where(Node.parent_id == node_id)
+        )
+        children = [dict(row) for row in children_result.mappings()]
+
+        path = await get_node_path(db, node_id)
 
         data = {
             "id": node.id,
@@ -69,11 +56,10 @@ async def get_node_with_children(
             "created_at": node.created_at,
             "path": path,
             "children": children,
-            "children_count": len(children)
+            "children_count": len(children),
         }
 
         return create_response(200, value_correction(data))
 
     except Exception as e:
         return ExceptionHandler(e)
-

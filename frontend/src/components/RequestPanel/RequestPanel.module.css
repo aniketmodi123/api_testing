@@ -567,6 +567,29 @@
   gap: var(--space-3);
 }
 
+/* Test results rendered inside the response panel (bulk run) */
+.responseTestResults {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.responseTestResults .testResultsHeader {
+  flex-shrink: 0;
+  height: 32px;
+  padding: 0 var(--space-3);
+  margin-bottom: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-1);
+}
+
+.responseTestResultsBody {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 var(--space-3) var(--space-3);
+}
+
 .spinner {
   width: 24px;
   height: 24px;
@@ -849,24 +872,16 @@
 }
 
 /* Test Results */
-.testResultsSummary {
-  margin: var(--space-4) 0;
-  padding: var(--space-3);
-  background: var(--surface-1);
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
-}
 .testResultsHeader {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: var(--space-3);
-  padding-bottom: var(--space-2);
-  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--space-2);
 }
 .testResultsHeader h4 {
   margin: 0;
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
+  font-weight: 600;
   color: var(--text);
 }
 .testResultsActions {

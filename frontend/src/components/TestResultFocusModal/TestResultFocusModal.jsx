@@ -137,8 +137,14 @@ export default function TestResultFocusModal({
                 }
 
                 // Save logic: parse editor and build payload matching ApiCaseCreateRequest
+                let parsedRequest;
                 try {
-                  let parsedRequest = JSON.parse(editableRequest);
+                  parsedRequest = JSON.parse(editableRequest);
+                } catch (jsonErr) {
+                  alert('Invalid JSON format. Please check your syntax.');
+                  return;
+                }
+                try {
 
                   // Normalize parsedRequest to an object shape
                   if (
@@ -324,7 +330,13 @@ export default function TestResultFocusModal({
 
                   setIsEditing(false);
                 } catch (error) {
-                  alert('Invalid JSON format. Please check your syntax.');
+                  const msg =
+                    error?.data?.error_message ||
+                    error?.data?.message ||
+                    error?.error ||
+                    error?.message ||
+                    'Failed to save test case.';
+                  alert(`Save failed: ${msg}`);
                 }
               }}
             >

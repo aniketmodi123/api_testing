@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 from schema import GraphQLIntrospectResponse
 from ssrf import assert_safe_url
-from utils import ExceptionHandler, create_response, handle_http_error
+from utils import create_response, handle_http_error
 
 router = APIRouter()
 
@@ -64,7 +64,6 @@ async def graphql_introspect(body: GraphQLIntrospectRequest):
     """
     try:
         assert_safe_url(body.url)
-
         req_headers = {**(body.headers or {}), "Content-Type": "application/json"}
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.post(
@@ -80,5 +79,3 @@ async def graphql_introspect(body: GraphQLIntrospectRequest):
         return create_response(400, error_message=str(e))
     except (httpx.HTTPError, httpx.ConnectError, httpx.TimeoutException) as e:
         return handle_http_error(e, url=body.url, method="POST", headers=body.headers or {})
-    except Exception as e:
-        return ExceptionHandler(e)

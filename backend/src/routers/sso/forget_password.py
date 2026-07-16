@@ -12,11 +12,10 @@ from common_querys import log_failed_attempt
 from models import User, OTPAttempt
 from schema import ChangePassword, ForgotPassword, MessageResponse
 from utils import (
-    ExceptionHandler,
     blacklist_token,
     create_response,
     get_password_hash,
-    verify_password
+    verify_password,
 )
 
 
@@ -26,7 +25,7 @@ MAX_ATTEMPTS = 2
 LOCK_DURATION = 10
 
 
-async def verify_and_consume_otp(db, username: str, otp: int) -> None:
+async def verify_and_consume_otp(db: AsyncSession, username: str, otp: int) -> None:
     """
     What it does: Validate the OTP for a user and consume it on success, enforcing attempt limits and expiry.
     Raises:
@@ -79,72 +78,54 @@ async def change_password(
     db: AsyncSession = Depends(get_db),
 ):
     """POST /change-password — verify old password, hash and save the new one, then blacklist the current token."""
-    try:
-        if request.new_password != request.new_password_again:
-            return create_response(400, error_message="please enter same passwords")
+    if request.new_password != request.new_password_again:
+        return create_response(400, error_message="please enter same passwords")
 
-        if request.new_password == request.old_password:
-            return create_response(400, error_message="Please enter a new password.")
+    if request.new_password == request.old_password:
+        return create_response(400, error_message="Please enter a new password.")
 
-        res = await db.execute(select(User).where(User.email == username))
-        _user = res.scalar_one_or_none()
+    res = await db.execute(select(User).where(User.email == username))
+    _user = res.scalar_one_or_none()
 
-        if not _user:
-            return create_response(404, error_message="User not found")
+    if not _user:
+        return create_response(404, error_message="User not found")
 
-        if not _user.is_active:
-            # if your log_failed_attempt is sync, remove await
-            await log_failed_attempt(db, username)
-            return create_response(403, error_message="User account is not active")
+    if not _user.is_active:
+        await log_failed_attempt(db, username)
+        return create_response(403, error_message="User account is not active")
 
-        if not verify_password(request.old_password, _user.password):
-            await log_failed_attempt(db, username)
-            return create_response(400, error_message="old password is incorrect")
+    if not verify_password(request.old_password, _user.password):
+        await log_failed_attempt(db, username)
+        return create_response(400, error_message="old password is incorrect")
 
-        _user.password = get_password_hash(request.new_password)
-
-        # blacklist the current token for this user (keep as-is; if async, add await)
-        await blacklist_token(username)
-
-        await db.commit()
-        return create_response(200, {"message": "Password updated successfully"}, MessageResponse)
-
-    except Exception as e:
-        await db.rollback()
-        return ExceptionHandler(e)
+    _user.password = get_password_hash(request.new_password)
+    await blacklist_token(username)
+    await db.commit()
+    return create_response(200, {"message": "Password updated successfully"}, MessageResponse)
 
 
 @router.post("/forgot-password")
 async def forgot_password(
     request: ForgotPassword,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """POST /forgot-password — verify and consume OTP, then reset the user's password."""
-    try:
-        await verify_and_consume_otp(db, request.email, request.otp)
-        if request.new_password != request.new_password_again:
-            return create_response(400, error_message="Please enter the same passwords")
+    await verify_and_consume_otp(db, request.email, request.otp)
 
-        user_name = request.email
+    if request.new_password != request.new_password_again:
+        return create_response(400, error_message="Please enter the same passwords")
 
-        result = await db.execute(select(User).where(User.email == user_name))
+    result = await db.execute(select(User).where(User.email == request.email))
+    _user = result.scalars().first()
 
-        _user = result.scalars().first()
+    if not _user:
+        return create_response(404, error_message="User not found")
 
-        if not _user:
-            return create_response(404, error_message="User not found")
+    if not _user.is_active:
+        await log_failed_attempt(db, request.email)
+        return create_response(403, error_message="User account is not active")
 
-        if not _user.is_active:
-            await log_failed_attempt(db, user_name)
-            return create_response(403, error_message="User account is not active")
-
-        _user.password = get_password_hash(request.new_password)
-
-        await blacklist_token(user_name)
-
-        await db.commit()
-        return create_response(200, {"message": "Password updated successfully"}, MessageResponse)
-
-    except Exception as e:
-        await db.rollback()
-        return ExceptionHandler(e)
+    _user.password = get_password_hash(request.new_password)
+    await blacklist_token(request.email)
+    await db.commit()
+    return create_response(200, {"message": "Password updated successfully"}, MessageResponse)

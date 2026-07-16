@@ -5,13 +5,14 @@ What this file does: Exposes POST routes for resolving {{variable}} placeholders
 from fastapi import APIRouter, Depends, Header as FastAPIHeader
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
 from config import get_db
-from common_querys import get_user_by_username, can_access_workspace
-from models import Environment, Workspace
-from utils import resolve_api_variables, get_variables_from_api_data, ExceptionHandler, create_response, value_correction, get_environment_variables
+from common_querys import resolve_workspace_access, has_min_role
+from models import Environment
+from schema import ApiDataResolveResponse
+from utils import get_variables_from_api_data, create_response, value_correction, resolve_variables
 
 router = APIRouter()
 
@@ -63,65 +64,46 @@ async def resolve_api_data_variables(
     db: AsyncSession = Depends(get_db)
 ):
     """POST /environment/workspace/{workspace_id}/environments/resolve-api — substitute {{variable}} placeholders in all fields of api_data using the specified environment."""
-    try:
-        # Get user
-        user = await get_user_by_username(db, username)
-        if not user:
-            return create_response(400, error_message="User not found")
+    access = await resolve_workspace_access(db, username, workspace_id)
+    if not access.user:
+        return create_response(400, error_message="User not found")
+    if access.workspace_id is None:
+        return create_response(404, error_message="Workspace not found")
+    if not has_min_role(access, "viewer"):
+        return create_response(403, error_message="Access denied")
 
-        # Verify workspace exists and user has at least viewer access
-        workspace_result = await db.execute(select(Workspace.id).where(Workspace.id == workspace_id))
-        if workspace_result.scalar_one_or_none() is None:
-            return create_response(404, error_message="Workspace not found")
+    variables_found: List[str] = list(get_variables_from_api_data(request_data.api_data))
 
-        if not await can_access_workspace(db, workspace_id, user.id, min_role="viewer"):
-            return create_response(403, error_message="Access denied")
+    if not request_data.environment_id:
+        return create_response(400, error_message="environment_id is required")
 
-        # Extract variables found in the API data
-        variables_found = list(get_variables_from_api_data(request_data.api_data))
-
-        if not request_data.environment_id:
-            return create_response(400, error_message="environment_id is required")
-
-        # Verify the environment belongs to this workspace (prevents resolving another
-        # workspace's variables by passing an arbitrary environment_id)
-        environment_id = request_data.environment_id
-        env_check = await db.execute(
-            select(Environment.id).where(
-                Environment.id == environment_id,
-                Environment.workspace_id == workspace_id
-            )
+    # Verify the environment belongs to this workspace and fetch variables in one query.
+    env_row = (await db.execute(
+        select(Environment.id, Environment.variables).where(
+            Environment.id == request_data.environment_id,
+            Environment.workspace_id == workspace_id,
         )
-        if env_check.scalar_one_or_none() is None:
-            return create_response(404, error_message="Environment not found in this workspace")
+    )).first()
+    if env_row is None:
+        return create_response(404, error_message="Environment not found in this workspace")
 
-        resolved_api_data = await resolve_api_variables(
-            environment_id=environment_id,
-            api_data=request_data.api_data
-        )
+    env_variables: Dict[str, Any] = env_row.variables or {}
+    resolved_api_data = resolve_variables(request_data.api_data, env_variables)
 
-        # Get environment variables to determine which were resolved
-        environment_variables = await get_environment_variables(environment_id)
+    variables_resolved = [v for v in variables_found if v in env_variables]
+    variables_missing = [v for v in variables_found if v not in env_variables]
 
-        # Determine resolved and missing variables
-        variables_resolved = [var for var in variables_found if var in environment_variables]
-        variables_missing = [var for var in variables_found if var not in environment_variables]
-
-        data = {
-            "original_api_data": request_data.api_data,
-            "resolved_api_data": resolved_api_data,
-            "variables_found": variables_found,
-            "variables_resolved": variables_resolved,
-            "variables_missing": variables_missing,
-            "total_variables": len(variables_found),
-            "resolved_count": len(variables_resolved),
-            "missing_count": len(variables_missing)
-        }
-
-        return create_response(200, value_correction(data))
-
-    except Exception as e:
-        return ExceptionHandler(e)
+    data = {
+        "original_api_data": request_data.api_data,
+        "resolved_api_data": resolved_api_data,
+        "variables_found": variables_found,
+        "variables_resolved": variables_resolved,
+        "variables_missing": variables_missing,
+        "total_variables": len(variables_found),
+        "resolved_count": len(variables_resolved),
+        "missing_count": len(variables_missing),
+    }
+    return create_response(200, value_correction(data), ApiDataResolveResponse)
 
 
 @router.post("/workspace/{workspace_id}/environments/{environment_id}/resolve-api")
@@ -133,16 +115,5 @@ async def resolve_api_data_with_specific_environment(
     db: AsyncSession = Depends(get_db)
 ):
     """POST /environment/workspace/{workspace_id}/environments/{environment_id}/resolve-api — inject environment_id into request and delegate to resolve_api_data_variables."""
-    try:
-        # Override environment_id in request
-        request_data.environment_id = environment_id
-
-        return await resolve_api_data_variables(
-            workspace_id,
-            request_data,
-            username,
-            db
-        )
-
-    except Exception as e:
-        return ExceptionHandler(e)
+    request_data.environment_id = environment_id
+    return await resolve_api_data_variables(workspace_id, request_data, username, db)

@@ -2,7 +2,6 @@
 What this file does: Exposes POST /flow/{id}/run (async fire-and-forget), GET /flow/{id}/runs (history list), and GET /flow/run/{run_id} (single run detail with step results).
 """
 
-import asyncio
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header
@@ -10,10 +9,10 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from common_querys import can_access_workspace, get_user_by_username
+from common_querys import has_min_role, resolve_workspace_access
 from config import get_db
 from models import Flow, FlowRun, FlowStepResult
-from utils import ExceptionHandler, create_response
+from utils import create_response
 
 router = APIRouter()
 
@@ -98,7 +97,7 @@ class FlowRunDetailResponse(FlowRunSummaryResponse):
     steps: List[FlowStepResultOut]
 
 
-def _run_to_dict(run: FlowRun, steps: Optional[List[FlowStepResult]] = None) -> Dict[str, Any]:
+def _run_to_dict(run: Any, steps: Optional[List[Any]] = None) -> Dict[str, Any]:
     """What it does: Serialize a FlowRun (and optionally its step results) to a response dict."""
     d: Dict[str, Any] = {
         "id": run.id,
@@ -122,19 +121,19 @@ def _run_to_dict(run: FlowRun, steps: Optional[List[FlowStepResult]] = None) -> 
                 "error_message": s.error_message,
                 "created_at": str(s.created_at),
             }
-            for s in sorted(steps, key=lambda x: x.step_order)
+            for s in steps
         ]
     return d
 
 
-async def _background_execute(flow_id: int, username: str, input_vars: Optional[Dict[str, Any]]) -> None:
-    """What it does: Run the flow engine in a background task; errors are logged by the engine itself."""
+async def _background_execute(flow_id: int, username: str, input_vars: Optional[Dict[str, Any]], run_id: int) -> None:
+    """What it does: Run the flow engine in a background task against the stub FlowRun already returned to the caller; errors are logged by the engine itself."""
     from routers.flow.engine import execute_flow
     try:
-        await execute_flow(flow_id, username, input_vars)
+        await execute_flow(flow_id, username, input_vars, run_id=run_id)
     except Exception as e:
         from utils import logs
-        logs(f"Background flow execution failed flow={flow_id}: {e}", type="error")
+        logs(f"Background flow execution failed flow={flow_id} run={run_id}: {e}", type="error")
 
 
 @router.post("/flow/{flow_id}/run")
@@ -146,34 +145,29 @@ async def run_flow(
     db: AsyncSession = Depends(get_db),
 ):
     """POST /flow/{flow_id}/run — trigger async flow execution; return run_id immediately; requires editor role."""
-    try:
-        user = await get_user_by_username(db, username)
-        if not user:
-            return create_response(401, error_message="User not found")
+    flow_row = (await db.execute(
+        select(Flow.id, Flow.workspace_id).where(Flow.id == flow_id)
+    )).first()
+    if not flow_row:
+        return create_response(404, error_message="Flow not found")
 
-        flow_result = await db.execute(select(Flow).where(Flow.id == flow_id))
-        flow = flow_result.scalar_one_or_none()
-        if not flow:
-            return create_response(404, error_message="Flow not found")
+    access = await resolve_workspace_access(db, username, flow_row.workspace_id)
+    if not access.user:
+        return create_response(401, error_message="User not found")
+    if not has_min_role(access, "editor"):
+        return create_response(403, error_message="Access denied")
 
-        ok = await can_access_workspace(db, flow.workspace_id, user.id, min_role="editor")
-        if not ok:
-            return create_response(403, error_message="Access denied")
+    # Create a stub FlowRun so we can return run_id immediately
+    run = FlowRun(flow_id=flow_id, status="running", context=payload.input_vars or {})
+    db.add(run)
+    await db.flush()
+    run_id = run.id
+    await db.commit()
 
-        # Create a stub FlowRun so we can return run_id immediately
-        run = FlowRun(flow_id=flow_id, status="running", context=payload.input_vars or {})
-        db.add(run)
-        await db.flush()
-        run_id = run.id
-        await db.commit()
+    # Fire engine in background; engine opens its own session and writes into the stub run
+    background_tasks.add_task(_background_execute, flow_id, username, payload.input_vars, run_id)
 
-        # Fire engine in background; engine opens its own session
-        background_tasks.add_task(_background_execute, flow_id, username, payload.input_vars)
-
-        return create_response(202, data={"run_id": run_id, "status": "running"}, schema=FlowRunAcceptedResponse)
-    except Exception as e:
-        await db.rollback()
-        return ExceptionHandler(e)
+    return create_response(202, data={"run_id": run_id, "status": "running"}, schema=FlowRunAcceptedResponse)
 
 
 @router.get("/flow/{flow_id}/runs")
@@ -183,28 +177,29 @@ async def list_flow_runs(
     db: AsyncSession = Depends(get_db),
 ):
     """GET /flow/{flow_id}/runs — list past runs for a flow ordered newest first; requires viewer role."""
-    try:
-        user = await get_user_by_username(db, username)
-        if not user:
-            return create_response(401, error_message="User not found")
+    flow_row = (await db.execute(
+        select(Flow.id, Flow.workspace_id).where(Flow.id == flow_id)
+    )).first()
+    if not flow_row:
+        return create_response(404, error_message="Flow not found")
 
-        flow_result = await db.execute(select(Flow).where(Flow.id == flow_id))
-        flow = flow_result.scalar_one_or_none()
-        if not flow:
-            return create_response(404, error_message="Flow not found")
+    access = await resolve_workspace_access(db, username, flow_row.workspace_id)
+    if not access.user:
+        return create_response(401, error_message="User not found")
+    if not has_min_role(access, "viewer"):
+        return create_response(403, error_message="Access denied")
 
-        ok = await can_access_workspace(db, flow.workspace_id, user.id, min_role="viewer")
-        if not ok:
-            return create_response(403, error_message="Access denied")
-
-        runs_result = await db.execute(
-            select(FlowRun).where(FlowRun.flow_id == flow_id).order_by(FlowRun.started_at.desc()).limit(50)
+    runs = (await db.execute(
+        select(
+            FlowRun.id, FlowRun.flow_id, FlowRun.status,
+            FlowRun.started_at, FlowRun.finished_at, FlowRun.error_message,
         )
-        runs = runs_result.scalars().all()
+        .where(FlowRun.flow_id == flow_id)
+        .order_by(FlowRun.started_at.desc())
+        .limit(50)
+    )).all()
 
-        return create_response(200, data=[_run_to_dict(r) for r in runs], schema=FlowRunSummaryResponse)
-    except Exception as e:
-        return ExceptionHandler(e)
+    return create_response(200, data=[_run_to_dict(r) for r in runs], schema=FlowRunSummaryResponse)
 
 
 @router.get("/flow/run/{run_id}")
@@ -214,31 +209,26 @@ async def get_flow_run(
     db: AsyncSession = Depends(get_db),
 ):
     """GET /flow/run/{run_id} — return a single flow run with all step results; requires viewer role."""
-    try:
-        user = await get_user_by_username(db, username)
-        if not user:
-            return create_response(401, error_message="User not found")
+    # Join FlowRun + Flow.workspace_id in one query to avoid a separate Flow lookup
+    join_row = (await db.execute(
+        select(FlowRun, Flow.workspace_id)
+        .join(Flow, Flow.id == FlowRun.flow_id)
+        .where(FlowRun.id == run_id)
+    )).first()
+    if not join_row:
+        return create_response(404, error_message="Run not found")
+    run, workspace_id = join_row
 
-        run_result = await db.execute(select(FlowRun).where(FlowRun.id == run_id))
-        run = run_result.scalar_one_or_none()
-        if not run:
-            return create_response(404, error_message="Run not found")
+    access = await resolve_workspace_access(db, username, workspace_id)
+    if not access.user:
+        return create_response(401, error_message="User not found")
+    if not has_min_role(access, "viewer"):
+        return create_response(403, error_message="Access denied")
 
-        # Load parent flow to check workspace access
-        flow_result = await db.execute(select(Flow).where(Flow.id == run.flow_id))
-        flow = flow_result.scalar_one_or_none()
-        if not flow:
-            return create_response(404, error_message="Flow not found")
+    steps = (await db.execute(
+        select(FlowStepResult)
+        .where(FlowStepResult.run_id == run_id)
+        .order_by(FlowStepResult.step_order)
+    )).scalars().all()
 
-        ok = await can_access_workspace(db, flow.workspace_id, user.id, min_role="viewer")
-        if not ok:
-            return create_response(403, error_message="Access denied")
-
-        steps_result = await db.execute(
-            select(FlowStepResult).where(FlowStepResult.run_id == run_id)
-        )
-        steps = steps_result.scalars().all()
-
-        return create_response(200, data=_run_to_dict(run, steps), schema=FlowRunDetailResponse)
-    except Exception as e:
-        return ExceptionHandler(e)
+    return create_response(200, data=_run_to_dict(run, steps), schema=FlowRunDetailResponse)

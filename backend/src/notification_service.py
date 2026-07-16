@@ -22,11 +22,13 @@ from utils import logs
 # ── Helpers ─────────────────────────────────────────────────────────────────
 
 def _execution_status_label(execution: BulkTestExecution) -> str:
-    """What it does: Map execution.status to a display label — PASSED, PARTIAL, or FAILED."""
+    """What it does: Map execution.status to a display label — PASSED, PARTIAL, TIMED OUT, or FAILED."""
     if execution.status == "success":
         return "PASSED"
     if execution.status == "partial":
         return "PARTIAL"
+    if execution.status == "timed_out":
+        return "TIMED OUT"
     return "FAILED"
 
 
@@ -147,14 +149,14 @@ async def dispatch_alerts(
         if not schedule:
             return
 
-        status = execution.status  # "success" | "partial" | "failed"
+        status = execution.status  # "success" | "partial" | "failed" | "timed_out"
 
         tasks = []
         for alert in alerts:
             should_fire = (
                 (status == "success" and alert.on_success) or
                 (status == "partial" and alert.on_partial) or
-                (status == "failed" and alert.on_failure)
+                (status in ("failed", "timed_out") and alert.on_failure)
             )
             if not should_fire:
                 continue

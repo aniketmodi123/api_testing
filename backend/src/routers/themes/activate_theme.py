@@ -3,17 +3,13 @@ What this file does: Exposes the PUT /themes/{theme_id}/activate route for switc
 """
 
 from fastapi import APIRouter, Depends, Header
-from sqlalchemy import select, update, and_
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_db
-from common_querys import get_user_by_username
-from models import UserTheme
+from models import UserTheme, User
 from schema import UserThemeResponse
-from utils import (
-    ExceptionHandler,
-    create_response
-)
+from utils import create_response
 
 router = APIRouter()
 
@@ -25,41 +21,26 @@ async def activate_theme(
     db: AsyncSession = Depends(get_db)
 ):
     """PUT /themes/{theme_id}/activate — make this theme the caller's sole active custom theme."""
-    try:
-        # Get user
-        user = await get_user_by_username(db, username)
-        if not user:
-            return create_response(400, error_message="User not found")
+    user_id = (await db.execute(select(User.id).where(User.email == username))).scalar_one_or_none()
+    if user_id is None:
+        return create_response(400, error_message="User not found")
 
-        # Get the target theme, guarding ownership, before touching any other rows
-        result = await db.execute(
-            select(UserTheme).where(
-                and_(
-                    UserTheme.id == theme_id,
-                    UserTheme.user_id == user.id,
-                )
-            )
+    result = await db.execute(
+        select(UserTheme).where(
+            UserTheme.id == theme_id,
+            UserTheme.user_id == user_id,
         )
-        theme = result.scalar_one_or_none()
+    )
+    theme = result.scalar_one_or_none()
+    if not theme:
+        return create_response(404, error_message="Theme not found or access denied")
 
-        if not theme:
-            await db.rollback()
-            return create_response(404, error_message="Theme not found or access denied")
+    await db.execute(
+        update(UserTheme)
+        .where(UserTheme.user_id == user_id)
+        .values(is_active=False)
+    )
+    theme.is_active = True
+    await db.commit()
 
-        # Deactivate all of the user's other themes, then activate this one
-        await db.execute(
-            update(UserTheme)
-            .where(UserTheme.user_id == user.id)
-            .values(is_active=False)
-        )
-        theme.is_active = True
-
-        await db.commit()
-        await db.refresh(theme)
-
-        data = UserThemeResponse.model_validate(theme).model_dump()
-        return create_response(200, data, UserThemeResponse)
-
-    except Exception as e:
-        await db.rollback()
-        return ExceptionHandler(e)
+    return create_response(200, UserThemeResponse.model_validate(theme).model_dump(), UserThemeResponse)

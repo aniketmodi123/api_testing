@@ -1,34 +1,32 @@
-﻿"""
+"""
 What this file does: Core runner engine — provides run_from_list_api for executing test cases concurrently against an API definition, and bulk_run_cases for scheduler-driven bulk execution.
 """
 
 import httpx, time, asyncio
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional, TypedDict
 from routers.runner.validator import evaluate_expect
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_
-from sqlalchemy.orm import selectinload
 from config import get_db
-from models import Api, Workspace, Node, WorkspaceMember
-from utils import ExceptionHandler, resolve_variables
+from models import Api, ApiCase, Workspace, Node, WorkspaceMember
+from utils import resolve_variables
 from common_querys import get_user_by_username, get_headers, resolve_auth, build_scope_chain
 from auth_strategies import apply_auth
 
 
 
-async def verify_nodes(db: AsyncSession, node_id: list[int], user_id: int):
+async def verify_nodes(db: AsyncSession, node_id: list[int], user_id: int) -> List[Any]:
     """
-    What it does: Return the Node rows for the given IDs whose workspace the user can access
+    What it does: Return the column-pruned rows (id, type, workspace_id) for the given node IDs whose workspace the user can access
     (owner or joined member — running tests is a viewer-level action).
     Returns:
-        list[Node]: Nodes whose workspace the user owns or is a joined member of; excludes
-                    any IDs belonging to workspaces the user has no access to.
+        list[Row]: Rows with .id, .type, .workspace_id; excludes IDs whose workspace the user cannot access.
     """
     if not node_id:
         return []
     result = await db.execute(
-        select(Node)
+        select(Node.id, Node.type, Node.workspace_id)
         .join(Workspace, Node.workspace_id == Workspace.id)
         .outerjoin(
             WorkspaceMember,
@@ -45,7 +43,7 @@ async def verify_nodes(db: AsyncSession, node_id: list[int], user_id: int):
             )
         )
     )
-    return result.scalars().all()
+    return result.all()
 
 
 def resolve_docker_url(url: str) -> str:
@@ -70,12 +68,23 @@ async def _run_case(
             async with sem:
                 method = (case.get("method") or "GET").upper()
                 url = case.get("endpoint", "")
-                merged_headers = {**headers, **case.get("headers", {})}
-                merged_headers = {str(k): str(v) for k, v in merged_headers.items()}
+                merged_headers = {**headers, **(case.get("headers") or {})}
+                # None value = "remove this header" (missing-header test cases); str(None)
+                # would otherwise leak the literal string "None" onto the wire.
+                merged_headers = {str(k): str(v) for k, v in merged_headers.items() if v is not None}
 
                 body = case.get("body")
                 params = case.get("params")
                 resolved_url = resolve_docker_url(url)
+                if params and isinstance(params, dict):
+                    remaining_params = {}
+                    for k, v in params.items():
+                        placeholder = f"{{{k}}}"
+                        if placeholder in resolved_url:
+                            resolved_url = resolved_url.replace(placeholder, str(v))
+                        else:
+                            remaining_params[k] = v
+                    params = remaining_params if remaining_params else None
 
                 t0 = time.perf_counter()
                 resp = await client.request(
@@ -220,177 +229,160 @@ async def run_from_list_api(data: dict, concurrency: int = 5) -> Dict[str, Any]:
     }
 
 
+class ApiRunData(TypedDict):
+    """Resolved run data for one API file, produced by prepare_bulk_run and consumed by execute_bulk_run."""
+    id: int
+    file_id: int
+    name: str
+    method: str
+    endpoint: str
+    headers: Dict[str, Any]
+    description: Optional[str]
+    is_active: bool
+    extra_meta: Dict[str, Any]
+    test_cases: List[Dict[str, Any]]
+    total_cases: int
 
-async def bulk_run_cases(
-    data,
-    db: AsyncSession = Depends(get_db),
-):
+
+async def prepare_bulk_run(db: AsyncSession, data: Any) -> Dict[str, Any]:
+    """Resolve all DB data needed for a bulk run — user, nodes, APIs, cases, headers, variables, auth.
+
+    Returns:
+        ``{"record": Dict[int, ApiRunData]}`` on success.
+        Error dict with ``response_code`` on failure (caller checks for ``"record"`` key).
     """
-    What it does: Run bulk test cases from a scheduler payload — resolve headers/variables, execute APIs concurrently, and return a results dict keyed by file_id.
-    Notes:
-        - Used by the scheduler, not a route handler; accepts a structured payload object instead of HTTP request parameters.
-        - Returns a plain dict (not a JSONResponse) so the scheduler can post-process results before persisting.
-    """
-    try:
-        req = data.payload
-        username = data.username
-        workspace_id = data.workspace_id
-        # ---- Verify User ----
-        user = await get_user_by_username(db, username)
-        if not user:
-            return {
-                    "response_code": 206,
-                    "data": {},
-                    "error_message": "user not found"
-                }
+    req = data.payload
+    username = data.username
 
-        # ---- Collect File IDs ----
-        file_ids, api_requests = [], {}
-        if req["type"] == "api":
-            file_ids = req["apis"]
-            api_requests = {fid: None for fid in req["apis"]}
-        elif req["type"] == "selected":
-            file_ids = [api["file_id"] for api in req["apis"]]  # type: ignore
-            api_requests = {api["file_id"]: api["cases"] for api in req["apis"]}  # type: ignore
+    user = await get_user_by_username(db, username)
+    if not user:
+        return {"response_code": 206, "data": {}, "error_message": "user not found"}
 
-        file_nodes = await verify_nodes(db, file_ids, user.id)
-        if not file_nodes:
-            return {
-                "response_code": 206,
-                "data": {},
-                "error_message": "File not found or access denied"
+    file_ids: List[int] = []
+    api_requests: Dict[int, Any] = {}
+    if req["type"] == "api":
+        file_ids = req["apis"]
+        api_requests = {fid: None for fid in req["apis"]}
+    elif req["type"] == "selected":
+        file_ids = [api["file_id"] for api in req["apis"]]  # type: ignore[index]
+        api_requests = {api["file_id"]: api["cases"] for api in req["apis"]}  # type: ignore[index]
+
+    file_nodes = await verify_nodes(db, file_ids, user.id)
+    if not file_nodes:
+        return {"response_code": 206, "data": {}, "error_message": "File not found or access denied"}
+
+    verified_file_ids = [f.id for f in file_nodes if f.type == "file"]
+    apis_by_file: Dict[int, Any] = {}
+    cases_by_api: Dict[int, List] = {}
+    if verified_file_ids:
+        apis = (await db.execute(select(Api).where(Api.file_id.in_(verified_file_ids)))).scalars().all()
+        apis_by_file = {api.file_id: api for api in apis}
+        api_ids = [api.id for api in apis]
+        if api_ids:
+            cases_rows = (await db.execute(
+                select(
+                    ApiCase.id, ApiCase.api_id, ApiCase.name,
+                    ApiCase.headers, ApiCase.params, ApiCase.body,
+                    ApiCase.expected, ApiCase.created_at,
+                ).where(ApiCase.api_id.in_(api_ids))
+            )).all()
+            for row in cases_rows:
+                cases_by_api.setdefault(row.api_id, []).append(row)
+
+    record: Dict[int, ApiRunData] = {}
+    for file in file_nodes:
+        if file.type != "file":
+            continue
+
+        api = apis_by_file.get(file.id)
+        if not api:
+            continue
+
+        folder_path, folder_ids, headers_map, merge_result = await get_headers(db, api.file_id)
+        if not folder_path:
+            continue
+
+        workspace_variables = await build_scope_chain(
+            db, file_id=file.id, username=username, workspace_id=file.workspace_id
+        )
+        resolved_endpoint = resolve_variables(api.endpoint, workspace_variables)
+        resolved_headers: Dict[str, Any] = dict(merge_result.get("merged_headers", {}))
+        resolved_extra_meta = resolve_variables(api.extra_meta or {}, workspace_variables)
+
+        auth_config = await resolve_auth(db, api.file_id)
+        if auth_config:
+            auth_headers, _ = apply_auth(
+                auth_config,
+                method=api.method.upper(),
+                url=resolved_endpoint,
+                existing_headers=resolved_headers,
+            )
+            for k, v in auth_headers.items():
+                if k not in resolved_headers:
+                    resolved_headers[k] = v
+
+        cases_data: List[Dict[str, Any]] = []
+        selected_cases = api_requests.get(file.id)
+        for case in cases_by_api.get(api.id, []):
+            if selected_cases and case.id not in selected_cases:
+                continue
+            merged_headers = {**resolved_headers, **(case.headers or {})}
+            cases_data.append({
+                "id": case.id,
+                "name": case.name,
+                "headers": resolve_variables(merged_headers, workspace_variables),
+                "params": resolve_variables(case.params or {}, workspace_variables),
+                "body": resolve_variables(case.body, workspace_variables),
+                "expected": case.expected,
+                "created_at": case.created_at,
+            })
+
+        if cases_data:
+            record[file.id] = {
+                "id": api.id,
+                "file_id": api.file_id,
+                "name": api.name,
+                "method": api.method,
+                "endpoint": resolved_endpoint,
+                "headers": resolved_headers,
+                "description": api.description,
+                "is_active": api.is_active,
+                "extra_meta": resolved_extra_meta,
+                "test_cases": cases_data,
+                "total_cases": len(cases_data),
             }
 
-        # ---- Batch Query APIs for all files ----
-        query = select(Api).where(Api.file_id.in_(file_ids)).options(selectinload(Api.cases))
-        apis = (await db.execute(query)).scalars().all()
-        apis_by_file = {api.file_id: api for api in apis}
+    return {"record": record}
 
-        # ---- Build Run Records ----
-        record = {}
-        for file in file_nodes:
-            if file.type != "file":
-                continue
 
-            api = apis_by_file.get(file.id)
-            if not api:
-                continue
+async def execute_bulk_run(record: Dict[int, ApiRunData]) -> Dict[str, Any]:
+    """Execute prepared bulk run data concurrently — no DB access.
 
-            folder_path, folder_ids, headers_map, merge_result = await get_headers(db, api.file_id)
-            if not folder_path:
-                continue
+    Args:
+        record: Mapping of file_id → ApiRunData produced by prepare_bulk_run.
 
-            workspace_variables = await build_scope_chain(db, file_id=file.id, username=username, workspace_id=file.workspace_id)
-            resolved_endpoint = resolve_variables(api.endpoint, workspace_variables)
-            resolved_headers = dict(merge_result.get("merged_headers", {}))
-            resolved_extra_meta = resolve_variables(api.extra_meta or {}, workspace_variables)
+    Returns:
+        ``{"response_code": 200, "data": {file_id: run_result}}``
+    """
+    async def _run_one(file_id: int, api_data: ApiRunData) -> tuple[int, Any]:
+        return file_id, await run_from_list_api(api_data)  # type: ignore[arg-type]
 
-            # Inject per-API auth into API-level headers so every case inherits it.
-            auth_config = await resolve_auth(db, api.file_id)
-            if auth_config:
-                auth_headers, _ = apply_auth(
-                    auth_config,
-                    method=api.method.upper(),
-                    url=resolved_endpoint,
-                    existing_headers=resolved_headers,
-                )
-                for k, v in auth_headers.items():
-                    if k not in resolved_headers:
-                        resolved_headers[k] = v
+    results = await asyncio.gather(*[_run_one(fid, d) for fid, d in record.items()])
+    return {"response_code": 200, "data": {fid: result for fid, result in results}}
 
-            cases_data = []
-            selected_cases = api_requests.get(file.id)
-            for case in api.cases:
-                if selected_cases and case.id not in selected_cases:
-                    continue
 
-                merged_headers = {**resolved_headers, **(case.headers or {})}
-                cases_data.append({
-                    "id": case.id,
-                    "name": case.name,
-                    "headers": resolve_variables(merged_headers, workspace_variables),
-                    "params": resolve_variables(case.params or {}, workspace_variables),
-                    "body": resolve_variables(case.body, workspace_variables),
-                    "expected": case.expected,
-                    "created_at": case.created_at
-                })
+async def bulk_run_cases(
+    data: Any,
+    db: AsyncSession = Depends(get_db),
+) -> Dict[str, Any]:
+    """Thin wrapper used by the scheduler engine — prepare DB data then execute HTTP.
 
-            if cases_data:
-                record[file.id] = {
-                    "id": api.id,
-                    "file_id": api.file_id,
-                    "name": api.name,
-                    "method": api.method,
-                    "endpoint": resolved_endpoint,
-                    "headers": resolved_headers,
-                    "description": api.description,
-                    "is_active": api.is_active,
-                    "extra_meta": resolved_extra_meta,
-                    "test_cases": cases_data,
-                    "total_cases": len(cases_data),
-                }
-
-        # ---- Run APIs concurrently ----
-        async def run_api(file_id, data):
-            return file_id, await run_from_list_api(data)
-
-        results = await asyncio.gather(*[run_api(fid, data) for fid, data in record.items()])
-        results_dict = {fid: result for fid, result in results}
-        return {
-            "response_code": 200,
-            "data": results_dict
-        }
-
-        # # ---- Fetch Workspace and Nodes ----
-        # result = await db.execute(
-        #     select(Workspace).options(selectinload(Workspace.nodes)).where(Workspace.id == workspace_id)
-        # )
-        # workspace = result.scalar_one_or_none()
-        # if not workspace:
-        #     return {
-        #         "response_code": 206,
-        #         "data": {},
-        #         "error_message": "Workspace not found"
-        #     }
-
-        # node_dict = {
-        #     node.id: {
-        #         "id": node.id,
-        #         "name": node.name,
-        #         "type": node.type,
-        #         "parent_id": node.parent_id,
-        #         "created_at": node.created_at,
-        #     }
-        #     for node in workspace.nodes
-        # }
-
-        # # ---- Build Tree with Inline Pruning ----
-        # def build_tree(node_id: int):
-        #     node = node_dict[node_id]
-        #     children = [build_tree(cid) for cid in node_dict if node_dict[cid]["parent_id"] == node_id]
-        #     children = [c for c in children if c]
-
-        #     if node["type"] == "file":
-        #         run_data = results_dict.get(node_id)
-        #         if run_data:
-        #             return {"file_id": node_id, **run_data}
-        #         return None
-        #     else:
-        #         if children:
-        #             return {**node, "children": children}
-        #         return None
-
-        # root_nodes = [build_tree(nid) for nid, n in node_dict.items() if n["parent_id"] is None]
-        # root_nodes = [n for n in root_nodes if n]
-
-        # return {
-        #     "response_code": 200,
-        #     "data": {
-        #         "created_at": datetime.now(),
-        #         "file_tree": root_nodes,
-        #         "total_nodes": len(workspace.nodes) if workspace.nodes else 0,
-        #     }
-        # }
-
-    except Exception as e:
-        ExceptionHandler(e)
+    Notes:
+        - Not a route handler; the engine passes db explicitly.
+        - Returns plain dict (not JSONResponse) so the engine can inspect response_code.
+        - Batch 4 engine will call prepare_bulk_run + execute_bulk_run directly with proper session lifecycle.
+    """
+    result = await prepare_bulk_run(db, data)
+    if "record" not in result:
+        return result
+    return await execute_bulk_run(result["record"])

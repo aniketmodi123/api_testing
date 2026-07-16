@@ -99,6 +99,36 @@ class Cache(Base):
     timestamp: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
 
 
+class PersonalAccessToken(Base):
+    """A long-lived, revocable credential a user pastes into any MCP/agent client.
+
+    The raw token is shown once at creation and never stored — only its SHA-256 hex is kept
+    (full-entropy token, so a fast deterministic hash is safe and indexable for lookup, unlike a
+    salted password hash). Exchanged for a short-lived JWT at POST /pat/token.
+
+    Attributes:
+        id: Primary key.
+        username: Owner (user email), matching the JWT ``username`` claim.
+        name: User-supplied label to identify the token.
+        token_hash: SHA-256 hex of the raw token; unique, used for O(1) lookup on exchange.
+        created_at: Creation time.
+        last_used_at: Last successful exchange; ``None`` until first use.
+        revoked: ``True`` once revoked; revoked tokens never exchange.
+        expires_at: Optional hard expiry; ``None`` means it never expires (until revoked).
+    """
+
+    __tablename__ = "sso_personal_access_token"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True, index=True)
+    username: Mapped[str] = mapped_column(String(150), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, default=datetime.now, server_default=func.now())
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
+    revoked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text('FALSE'))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
+
+
 # ---------------------------
 # Workspace Model
 # ---------------------------
@@ -356,6 +386,18 @@ class ScheduleType(str, Enum):
     hourly = "hourly"
 
 
+# Execution status constants — single source of truth for engine, CRUD, and notification service
+EXEC_STATUS_QUEUED = "queued"
+EXEC_STATUS_RUNNING = "running"
+EXEC_STATUS_SUCCESS = "success"
+EXEC_STATUS_PARTIAL = "partial"
+EXEC_STATUS_FAILED = "failed"
+EXEC_STATUS_TIMED_OUT = "timed_out"
+
+ACTIVE_STATUSES: frozenset[str] = frozenset({EXEC_STATUS_QUEUED, EXEC_STATUS_RUNNING})
+TERMINAL_STATUSES: frozenset[str] = frozenset({EXEC_STATUS_SUCCESS, EXEC_STATUS_PARTIAL, EXEC_STATUS_FAILED, EXEC_STATUS_TIMED_OUT})
+
+
 # ---------- Models ----------
 class BulkTestSchedule(Base):
     """Define a recurring or one-shot schedule that triggers a bulk API test run.
@@ -374,6 +416,7 @@ class BulkTestSchedule(Base):
         time: ``"HH:MM"`` used by hourly/daily/weekly/monthly to align within the period; ``None`` for once/minutely.
         days_of_week: List of day abbreviations (e.g. ``["Mon", "Thu"]``) for weekly; ``None`` otherwise.
         day_of_month: Day number 1–31 for monthly schedules; ``None`` otherwise.
+        timezone: IANA timezone name (e.g. ``"America/New_York"``) used to interpret wall-clock times; ``None`` defaults to UTC.
         enabled: ``True`` when the scheduler should process this schedule; ``False`` to pause it.
         payload: Original bulk run payload JSON (API IDs and case selection).
         last_run: Timestamp of the most recent execution; ``None`` if never run.
@@ -415,6 +458,7 @@ class BulkTestSchedule(Base):
     time: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)  # "HH:MM"
     days_of_week: Mapped[Optional[List[str]]] = mapped_column(JSON, nullable=True)
     day_of_month: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    timezone: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
 
@@ -500,7 +544,7 @@ class BulkTestExecution(Base):
     Attributes:
         id: Primary key.
         schedule_id: FK to the owning BulkTestSchedule; cascade-deleted with the schedule.
-        status: Current run state — ``"queued"``, ``"running"``, ``"completed"``, or ``"failed"``.
+        status: Current run state — ``"queued"`` → ``"running"`` → ``"success"`` | ``"partial"`` | ``"failed"``.
         started_at: Timestamp when execution began; ``None`` while still queued.
         finished_at: Timestamp when execution ended; ``None`` while in progress.
         total_cases: Number of test cases included in this run.

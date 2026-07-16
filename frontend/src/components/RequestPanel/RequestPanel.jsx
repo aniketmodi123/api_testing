@@ -98,18 +98,31 @@ function buildCurlCommand(req) {
   if (!req || !req.url) return 'N/A';
 
   const method = req.method?.toUpperCase() || 'GET';
-  const headers = req.headers
-    ? Object.entries(req.headers)
-        .map(([k, v]) => `-H "${k}: ${v}"`)
-        .join(' \\\n  ')
-    : '';
 
-  const body =
-    req.body && Object.keys(req.body).length
-      ? `-H "Content-Type: application/json" \\\n  -d '${JSON.stringify(req.body)}'`
+  const qs =
+    req.params && typeof req.params === 'object' && Object.keys(req.params).length
+      ? '?' + Object.entries(req.params).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&')
       : '';
 
-  return `curl -X ${method} "${req.url}" \\\n  ${headers}${body ? ' \\\n  ' + body : ''}`;
+  const parts = [`curl -X ${method} "${req.url}${qs}"`];
+
+  if (req.headers && typeof req.headers === 'object') {
+    Object.entries(req.headers).forEach(([k, v]) => {
+      // escape double-quotes inside value so the shell string stays valid
+      parts.push(`-H "${k}: ${String(v).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`);
+    });
+  }
+
+  const hasBody = req.body != null && (typeof req.body !== 'object' || Object.keys(req.body).length > 0);
+  if (hasBody) {
+    const bodyStr = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+    // $'...' ANSI-C quoting: escape backslashes and single quotes so any payload works
+    const escaped = bodyStr.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    parts.push('-H "Content-Type: application/json"');
+    parts.push(`-d $'${escaped}'`);
+  }
+
+  return parts.join(' \\\n  ');
 }
 
 // 🔹 Transform test results into simplified table
@@ -421,8 +434,23 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
   }, [workspaceTree, nodes, selectedNode, activeApi]);
 
   // runTest result persists on the mutation; reset() clears it on file switch.
-  const [runTest, { data: testResults, reset: clearTestResults }] =
-    useRunTestMutation();
+  const [
+    runTest,
+    {
+      data: testResults,
+      isLoading: isRunningTests,
+      error: runTestError,
+      reset: clearTestResults,
+    },
+  ] = useRunTestMutation();
+
+  // Surface the run mutation's failure as a plain message. Without this the results
+  // block below never renders on error (data stays undefined) — the run just fails silently.
+  const runTestErrorMessage = runTestError
+    ? runTestError?.data?.error_message ||
+      runTestError?.error ||
+      'Test execution failed'
+    : null;
   const [saveApi] = useSaveApiMutation();
   const [saveTestCase] = useSaveTestCaseMutation();
   const [deleteTestCase] = useDeleteTestCaseMutation();
@@ -444,6 +472,9 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
   const setBodyTypeDirty = v => { setBodyType(v); setIsDirty(true); };
   const [isUpdatingConfig, setIsUpdatingConfig] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  // Which run action is active: 'selected' | 'all' | 'single' | null.
+  // Distinguishes the shared runTest mutation loading flag per button.
+  const [runningMode, setRunningMode] = useState(null);
   const [showTestCaseForm, setShowTestCaseForm] = useState(false);
   const [editingTestCaseId, setEditingTestCaseId] = useState(null);
   const [bodyContent, setBodyContent] = useState('');
@@ -515,6 +546,44 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
       document.removeEventListener('click', closeDropdowns);
     };
   }, []);
+
+  // Runs BEFORE the activeApi effect below (declaration order): tree file nodes
+  // carry no url/endpoint, so this clears the request line on file switch and the
+  // activeApi effect then fills it. When the api record is already in the RTK
+  // cache both effects fire in the same commit — the activeApi effect must run
+  // last or the cached endpoint gets wiped and the URL box stays blank.
+  useEffect(() => {
+    if (selectedNode) {
+      setMethod(selectedNode.method || 'GET');
+      setIsDirty(false);
+
+      // Clear test results when switching files
+      clearTestResults();
+
+      // Set URL directly from node without modifications
+      if (selectedNode.url) {
+        setUrl(selectedNode.url);
+      } else if (selectedNode.endpoint) {
+        // Use endpoint directly if URL is not available
+        setUrl(selectedNode.endpoint);
+      } else {
+        // Leave URL empty if no URL or endpoint is available
+        setUrl('');
+      }
+
+      // File-node api record + test cases load via useGetApiQuery; the
+      // [activeApi] effect mirrors endpoint/method onto the request line.
+      if (selectedNode.type === 'file' && selectedNode.id) {
+        setSelectedTestCases([]);
+      }
+    }
+    // Key on the node id ONLY. clearTestResults (RTK mutation reset) gets a new
+    // reference every time the mutation fires — with it in the deps this effect
+    // re-ran right after runTest() and wiped the in-flight mutation state, so
+    // test results never rendered. selectedNode object identity can also churn
+    // on tree refetches without the selection actually changing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedNode?.id]);
 
   // Initialize the body content and type when the activeApi changes
   useEffect(() => {
@@ -640,33 +709,6 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeApi?.id, activeApi?.updated_at]);
 
-  useEffect(() => {
-    if (selectedNode) {
-      setMethod(selectedNode.method || 'GET');
-      setIsDirty(false);
-
-      // Clear test results when switching files
-      clearTestResults();
-
-      // Set URL directly from node without modifications
-      if (selectedNode.url) {
-        setUrl(selectedNode.url);
-      } else if (selectedNode.endpoint) {
-        // Use endpoint directly if URL is not available
-        setUrl(selectedNode.endpoint);
-      } else {
-        // Leave URL empty if no URL or endpoint is available
-        setUrl('');
-      }
-
-      // File-node api record + test cases load via useGetApiQuery; the
-      // [activeApi] effect mirrors endpoint/method onto the request line.
-      if (selectedNode.type === 'file' && selectedNode.id) {
-        setSelectedTestCases([]);
-      }
-    }
-  }, [selectedNode, clearTestResults]);
-
   const [activeTab, setActiveTab] = useState('api');
   const [responseTab, setResponseTab] = useState('body');
   const [response, setResponse] = useState(null);
@@ -725,6 +767,7 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
     }
 
     setIsSending(true);
+    setRunningMode('selected');
     try {
       await runTest({ fileId: selectedNode.id, caseId: selectedTestCases }).unwrap();
       setActiveTab('apiTests');
@@ -732,6 +775,7 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
       console.error('Error running selected tests:', error);
     } finally {
       setIsSending(false);
+      setRunningMode(null);
     }
   };
 
@@ -743,6 +787,7 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
     }
 
     setIsSending(true);
+    setRunningMode('single');
     try {
       // Extract test case ID from the test result
       const testCaseId = testResult.id || testResult.case_id;
@@ -757,6 +802,7 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
       console.error('Error running single test:', error);
     } finally {
       setIsSending(false);
+      setRunningMode(null);
     }
   };
 
@@ -2159,27 +2205,34 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
                       variant="secondary"
                       className={styles.runSelectedTestsButton}
                       onClick={handleRunSelectedTests}
-                      disabled={isSending || selectedTestCases.length === 0}
+                      disabled={isRunningTests || selectedTestCases.length === 0}
                     >
-                      {isSending
+                      {runningMode === 'selected'
                         ? 'Running...'
                         : `Run Selected (${selectedTestCases.length})`}
                     </Button>
                     <Button
                       variant="primary"
                       className={styles.runAllTestsButton}
-                      onClick={() => {
+                      onClick={async () => {
                         if (!selectedNode?.id) {
                           console.error(
                             'No selected node ID available for running all tests'
                           );
                           return;
                         }
-                        runTest({ fileId: selectedNode.id });
+                        setRunningMode('all');
+                        try {
+                          await runTest({ fileId: selectedNode.id }).unwrap();
+                        } catch (error) {
+                          console.error('Error running all tests:', error);
+                        } finally {
+                          setRunningMode(null);
+                        }
                       }}
-                      disabled={isSending}
+                      disabled={isRunningTests}
                     >
-                      {isSending ? 'Running...' : 'Run All Tests'}
+                      {runningMode === 'all' ? 'Running...' : 'Run All Tests'}
                     </Button>
                   </>
                 )}
@@ -2322,75 +2375,6 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
                 </p>
               </div>
             )}
-
-            {testResults && (
-              <div className={styles.testResultsSummary}>
-                <div className={styles.testResultsHeader}>
-                  <h4>Test Results</h4>
-                  <div className={styles.testResultsActions}>
-                    <Button
-                      variant="primary"
-                      size="small"
-                      className={styles.copyExcelButton}
-                      onClick={async () => {
-                        try {
-                          const excelData =
-                            transformTestResultsToExcel(testResults);
-                          await copyTableToClipboard(excelData);
-                          setExcelCopied(true);
-                          setTimeout(() => setExcelCopied(false), 2000);
-                        } catch (err) {
-                          console.error('Error creating Excel data:', err);
-                          alert(
-                            'Error preparing data for Excel. Please try again.'
-                          );
-                        }
-                      }}
-                    >
-                      {excelCopied ? '✓ Copied!' : '📋 Copy Excel'}
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      size="small"
-                      className={styles.clearResultsButton}
-                      onClick={clearTestResults}
-                    >
-                      Clear Results
-                    </Button>
-                  </div>
-                </div>
-
-                <TestResultsGrid
-                  testResults={(() => {
-                    // Handle different result formats based on your API response structure
-                    let resultsArray = [];
-
-                    if (Array.isArray(testResults)) {
-                      // If testResults is directly an array (like your sample data)
-                      resultsArray = testResults;
-                    } else if (testResults.test_cases) {
-                      // If wrapped in test_cases property
-                      resultsArray = testResults.test_cases;
-                    } else if (testResults.data) {
-                      // If wrapped in data property
-                      resultsArray = Array.isArray(testResults.data)
-                        ? testResults.data
-                        : [testResults.data];
-                    } else if (testResults) {
-                      // Single result object
-                      resultsArray = [testResults];
-                    }
-
-                    return resultsArray;
-                  })()}
-                  title=""
-                  loading={isSending}
-                  error={testResults.error}
-                  onSaveTestCase={handleSaveTestCaseFromCard}
-                  onRunTest={handleRunSingleTest}
-                />
-              </div>
-            )}
           </div>
         )}
 
@@ -2420,6 +2404,9 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
                         url,
                         headers: Object.fromEntries(
                           headers.filter(h => h.key).map(h => [h.key, h.value])
+                        ),
+                        params: Object.fromEntries(
+                          params.filter(p => p.key).map(p => [p.key, p.value])
                         ),
                         body: bodyType === 'JSON' && bodyContent ? (() => { try { return JSON.parse(bodyContent); } catch { return null; } })() : null,
                       })}
@@ -2481,6 +2468,67 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
                   )}
                 </div>
               </>
+            ) : activeTab === 'apiTests' &&
+              (testResults || isRunningTests || runTestErrorMessage) ? (
+              <div className={styles.responseTestResults}>
+                <div className={styles.testResultsHeader}>
+                  <h4>Test Results</h4>
+                  <div className={styles.testResultsActions}>
+                    <Button
+                      variant="primary"
+                      size="small"
+                      className={styles.copyExcelButton}
+                      onClick={async () => {
+                        try {
+                          const excelData =
+                            transformTestResultsToExcel(testResults);
+                          await copyTableToClipboard(excelData);
+                          setExcelCopied(true);
+                          setTimeout(() => setExcelCopied(false), 2000);
+                        } catch (err) {
+                          console.error('Error creating Excel data:', err);
+                          alert(
+                            'Error preparing data for Excel. Please try again.'
+                          );
+                        }
+                      }}
+                    >
+                      {excelCopied ? '✓ Copied!' : '📋 Copy Excel'}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="small"
+                      className={styles.clearResultsButton}
+                      onClick={clearTestResults}
+                    >
+                      Clear Results
+                    </Button>
+                  </div>
+                </div>
+                <div className={styles.responseTestResultsBody}>
+                  <TestResultsGrid
+                    testResults={(() => {
+                      // Handle different result formats based on API response shape.
+                      // Guard against undefined: block also renders during loading/error,
+                      // when testResults has not been populated yet.
+                      if (!testResults) return [];
+                      if (Array.isArray(testResults)) return testResults;
+                      if (testResults.test_cases) return testResults.test_cases;
+                      if (testResults.data) {
+                        return Array.isArray(testResults.data)
+                          ? testResults.data
+                          : [testResults.data];
+                      }
+                      return [testResults];
+                    })()}
+                    title=""
+                    loading={isRunningTests}
+                    error={runTestErrorMessage}
+                    onSaveTestCase={handleSaveTestCaseFromCard}
+                    onRunTest={handleRunSingleTest}
+                  />
+                </div>
+              </div>
             ) : (
               <div className={styles.emptyResponse}>
                 <div>

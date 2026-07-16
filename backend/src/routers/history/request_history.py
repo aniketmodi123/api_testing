@@ -8,10 +8,9 @@ from pydantic import BaseModel
 from sqlalchemy import delete, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from common_querys import get_user_by_username
 from config import get_db
-from models import RequestHistory
-from utils import ExceptionHandler, create_response
+from models import RequestHistory, User
+from utils import create_response
 
 router = APIRouter(prefix="/history", tags=["history"])
 
@@ -116,32 +115,27 @@ async def save_history(
     db: AsyncSession = Depends(get_db),
 ):
     """POST /history — persist a request/response history entry for the authenticated user."""
-    try:
-        user = await get_user_by_username(db, x_username)
-        if not user:
-            return create_response(401, error_message="User not found")
+    user_exists = (await db.execute(select(User.id).where(User.email == x_username))).scalar_one_or_none()
+    if user_exists is None:
+        return create_response(401, error_message="User not found")
 
-        entry = RequestHistory(
-            file_id=payload.file_id,
-            workspace_id=payload.workspace_id,
-            username=x_username,
-            method=payload.method.upper(),
-            url=payload.url,
-            headers=payload.headers,
-            params=payload.params,
-            body=payload.body,
-            response_status=payload.response_status,
-            response_body=_truncate_body(payload.response_body),
-            response_headers=payload.response_headers,
-            execution_time_ms=payload.execution_time_ms,
-        )
-        db.add(entry)
-        await db.commit()
-        await db.refresh(entry)
-        return create_response(201, data={"id": entry.id}, schema=HistorySaveResponse)
-    except Exception as e:
-        await db.rollback()
-        return ExceptionHandler(e)
+    entry = RequestHistory(
+        file_id=payload.file_id,
+        workspace_id=payload.workspace_id,
+        username=x_username,
+        method=payload.method.upper(),
+        url=payload.url,
+        headers=payload.headers,
+        params=payload.params,
+        body=payload.body,
+        response_status=payload.response_status,
+        response_body=_truncate_body(payload.response_body),
+        response_headers=payload.response_headers,
+        execution_time_ms=payload.execution_time_ms,
+    )
+    db.add(entry)
+    await db.commit()
+    return create_response(201, data={"id": entry.id}, schema=HistorySaveResponse)
 
 
 @router.get("")
@@ -153,40 +147,45 @@ async def list_history(
     db: AsyncSession = Depends(get_db),
 ):
     """GET /history — return paginated history entries for the user, optionally filtered by file_id, capped at 200 per page."""
-    try:
-        user = await get_user_by_username(db, x_username)
-        if not user:
-            return create_response(401, error_message="User not found")
+    user_exists = (await db.execute(select(User.id).where(User.email == x_username))).scalar_one_or_none()
+    if user_exists is None:
+        return create_response(401, error_message="User not found")
 
-        stmt = (
-            select(RequestHistory)
-            .where(RequestHistory.username == x_username)
-            .order_by(desc(RequestHistory.created_at))
-            .limit(min(limit, MAX_PAGE_SIZE))
-            .offset(offset)
+    stmt = (
+        select(
+            RequestHistory.id,
+            RequestHistory.file_id,
+            RequestHistory.workspace_id,
+            RequestHistory.method,
+            RequestHistory.url,
+            RequestHistory.response_status,
+            RequestHistory.execution_time_ms,
+            RequestHistory.created_at,
         )
-        if file_id is not None:
-            stmt = stmt.where(RequestHistory.file_id == file_id)
+        .where(RequestHistory.username == x_username)
+        .order_by(desc(RequestHistory.created_at))
+        .limit(min(limit, MAX_PAGE_SIZE))
+        .offset(offset)
+    )
+    if file_id is not None:
+        stmt = stmt.where(RequestHistory.file_id == file_id)
 
-        result = await db.execute(stmt)
-        entries = result.scalars().all()
+    entries = (await db.execute(stmt)).fetchall()
 
-        data = [
-            {
-                "id": e.id,
-                "file_id": e.file_id,
-                "workspace_id": e.workspace_id,
-                "method": e.method,
-                "url": e.url,
-                "response_status": e.response_status,
-                "execution_time_ms": e.execution_time_ms,
-                "created_at": e.created_at.isoformat() if e.created_at else None,
-            }
-            for e in entries
-        ]
-        return create_response(200, data=data, schema=HistoryListItem)
-    except Exception as e:
-        return ExceptionHandler(e)
+    data = [
+        {
+            "id": e.id,
+            "file_id": e.file_id,
+            "workspace_id": e.workspace_id,
+            "method": e.method,
+            "url": e.url,
+            "response_status": e.response_status,
+            "execution_time_ms": e.execution_time_ms,
+            "created_at": e.created_at.isoformat() if e.created_at else None,
+        }
+        for e in entries
+    ]
+    return create_response(200, data=data, schema=HistoryListItem)
 
 
 @router.get("/{history_id}")
@@ -196,38 +195,35 @@ async def get_history_entry(
     db: AsyncSession = Depends(get_db),
 ):
     """GET /history/{history_id} — return the full detail of a single history entry including request body and response body."""
-    try:
-        user = await get_user_by_username(db, x_username)
-        if not user:
-            return create_response(401, error_message="User not found")
+    user_exists = (await db.execute(select(User.id).where(User.email == x_username))).scalar_one_or_none()
+    if user_exists is None:
+        return create_response(401, error_message="User not found")
 
-        result = await db.execute(
-            select(RequestHistory).where(
-                RequestHistory.id == history_id,
-                RequestHistory.username == x_username,
-            )
+    result = await db.execute(
+        select(RequestHistory).where(
+            RequestHistory.id == history_id,
+            RequestHistory.username == x_username,
         )
-        entry = result.scalar_one_or_none()
-        if not entry:
-            return create_response(404, error_message="History entry not found")
+    )
+    entry = result.scalar_one_or_none()
+    if not entry:
+        return create_response(404, error_message="History entry not found")
 
-        return create_response(200, data={
-            "id": entry.id,
-            "file_id": entry.file_id,
-            "workspace_id": entry.workspace_id,
-            "method": entry.method,
-            "url": entry.url,
-            "headers": entry.headers,
-            "params": entry.params,
-            "body": entry.body,
-            "response_status": entry.response_status,
-            "response_body": entry.response_body,
-            "response_headers": entry.response_headers,
-            "execution_time_ms": entry.execution_time_ms,
-            "created_at": entry.created_at.isoformat() if entry.created_at else None,
-        }, schema=HistoryDetailResponse)
-    except Exception as e:
-        return ExceptionHandler(e)
+    return create_response(200, data={
+        "id": entry.id,
+        "file_id": entry.file_id,
+        "workspace_id": entry.workspace_id,
+        "method": entry.method,
+        "url": entry.url,
+        "headers": entry.headers,
+        "params": entry.params,
+        "body": entry.body,
+        "response_status": entry.response_status,
+        "response_body": entry.response_body,
+        "response_headers": entry.response_headers,
+        "execution_time_ms": entry.execution_time_ms,
+        "created_at": entry.created_at.isoformat() if entry.created_at else None,
+    }, schema=HistoryDetailResponse)
 
 
 @router.delete("/{history_id}")
@@ -237,27 +233,21 @@ async def delete_history_entry(
     db: AsyncSession = Depends(get_db),
 ):
     """DELETE /history/{history_id} — delete a single history entry owned by the authenticated user."""
-    try:
-        user = await get_user_by_username(db, x_username)
-        if not user:
-            return create_response(401, error_message="User not found")
+    user_exists = (await db.execute(select(User.id).where(User.email == x_username))).scalar_one_or_none()
+    if user_exists is None:
+        return create_response(401, error_message="User not found")
 
-        result = await db.execute(
-            select(RequestHistory).where(
-                RequestHistory.id == history_id,
-                RequestHistory.username == x_username,
-            )
+    result = await db.execute(
+        delete(RequestHistory).where(
+            RequestHistory.id == history_id,
+            RequestHistory.username == x_username,
         )
-        entry = result.scalar_one_or_none()
-        if not entry:
-            return create_response(404, error_message="History entry not found")
+    )
+    if result.rowcount == 0:
+        return create_response(404, error_message="History entry not found")
 
-        await db.delete(entry)
-        await db.commit()
-        return create_response(200, message="History entry deleted")
-    except Exception as e:
-        await db.rollback()
-        return ExceptionHandler(e)
+    await db.commit()
+    return create_response(200, message="History entry deleted")
 
 
 @router.delete("/file/{file_id}")
@@ -267,19 +257,15 @@ async def clear_file_history(
     db: AsyncSession = Depends(get_db),
 ):
     """DELETE /history/file/{file_id} — delete all history entries for a file owned by the authenticated user."""
-    try:
-        user = await get_user_by_username(db, x_username)
-        if not user:
-            return create_response(401, error_message="User not found")
+    user_exists = (await db.execute(select(User.id).where(User.email == x_username))).scalar_one_or_none()
+    if user_exists is None:
+        return create_response(401, error_message="User not found")
 
-        result = await db.execute(
-            delete(RequestHistory).where(
-                RequestHistory.file_id == file_id,
-                RequestHistory.username == x_username,
-            )
+    result = await db.execute(
+        delete(RequestHistory).where(
+            RequestHistory.file_id == file_id,
+            RequestHistory.username == x_username,
         )
-        await db.commit()
-        return create_response(200, message=f"Cleared {result.rowcount} history entries")
-    except Exception as e:
-        await db.rollback()
-        return ExceptionHandler(e)
+    )
+    await db.commit()
+    return create_response(200, message=f"Cleared {result.rowcount} history entries")

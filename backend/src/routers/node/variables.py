@@ -3,15 +3,17 @@ What this file does: Exposes GET/PUT/DELETE endpoints for collection-scoped vari
 """
 
 import re as _re
-from fastapi import APIRouter, Depends, Header
-from sqlalchemy import select, delete
-from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
+
+from fastapi import APIRouter, Depends, Header
+from sqlalchemy import delete, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, field_validator
 
 from config import get_db
-from common_querys import get_user_by_username, verify_node_ownership, can_access_workspace, write_audit
-from models import CollectionVariable, Node
+from common_querys import has_min_role, resolve_node_access, write_audit
+from models import CollectionVariable
 from utils import ExceptionHandler, create_response, logs
 from vault import encrypt as enc_secret, decrypt as dec_secret
 
@@ -55,12 +57,6 @@ class CollectionVariablesBulkSet(BaseModel):
     variables: List[CollectionVariableItem]
 
 
-async def _get_workspace_id(db: AsyncSession, node_id: int) -> Optional[int]:
-    """What it does: Return the workspace_id for a node, or None if not found."""
-    result = await db.execute(select(Node.workspace_id).where(Node.id == node_id))
-    return result.scalar_one_or_none()
-
-
 @router.get("/node/{node_id}/variables")
 async def list_collection_variables(
     node_id: int,
@@ -69,17 +65,25 @@ async def list_collection_variables(
 ):
     """GET /node/{node_id}/variables — list all collection variables for the node; secrets masked as ***."""
     try:
-        user = await get_user_by_username(db, username)
-        if not user:
+        na = await resolve_node_access(db, username, node_id)
+        if na.user is None:
             return create_response(401, error_message="User not found")
-
-        node = await verify_node_ownership(db, node_id, user.id)
-        if not node:
+        if not na.can_access:
             return create_response(403, error_message="Access denied")
 
-        stmt = select(CollectionVariable).where(CollectionVariable.node_id == node_id).order_by(CollectionVariable.key)
-        result = await db.execute(stmt)
-        rows = result.scalars().all()
+        result = await db.execute(
+            select(
+                CollectionVariable.id,
+                CollectionVariable.key,
+                CollectionVariable.value,
+                CollectionVariable.is_secret,
+                CollectionVariable.description,
+                CollectionVariable.created_at,
+            )
+            .where(CollectionVariable.node_id == node_id)
+            .order_by(CollectionVariable.key)
+        )
+        rows = result.all()
 
         data = [
             {
@@ -106,41 +110,39 @@ async def upsert_collection_variables(
 ):
     """PUT /node/{node_id}/variables — bulk upsert collection variables; requires editor role."""
     try:
-        user = await get_user_by_username(db, username)
-        if not user:
+        na = await resolve_node_access(db, username, node_id)
+        if na.user is None:
             return create_response(401, error_message="User not found")
-
-        workspace_id = await _get_workspace_id(db, node_id)
-        if workspace_id is None:
+        if na.node is None:
             return create_response(404, error_message="Node not found")
-
-        ok = await can_access_workspace(db, workspace_id, user.id, min_role="editor")
-        if not ok:
+        # Role already in joined result — no extra query needed
+        if not has_min_role(na, "editor"):
             return create_response(403, error_message="Access denied")
 
-        for item in payload.variables:
-            stmt = select(CollectionVariable).where(
-                CollectionVariable.node_id == node_id,
-                CollectionVariable.key == item.key,
-            )
-            result = await db.execute(stmt)
-            existing = result.scalar_one_or_none()
+        if not payload.variables:
+            return create_response(200, message="Collection variables saved")
 
-            stored_value = enc_secret(item.value) if item.is_secret else item.value
-
-            if existing:
-                existing.value = stored_value
-                existing.is_secret = item.is_secret
-                existing.description = item.description
-            else:
-                db.add(CollectionVariable(
-                    node_id=node_id,
-                    key=item.key,
-                    value=stored_value,
-                    is_secret=item.is_secret,
-                    description=item.description,
-                ))
-
+        # Single ON CONFLICT DO UPDATE per batch replaces the N+1 SELECT+INSERT loop
+        rows = [
+            {
+                "node_id": node_id,
+                "key": item.key,
+                "value": enc_secret(item.value) if item.is_secret else item.value,
+                "is_secret": item.is_secret,
+                "description": item.description,
+            }
+            for item in payload.variables
+        ]
+        stmt = pg_insert(CollectionVariable).values(rows)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["node_id", "key"],
+            set_={
+                "value": stmt.excluded.value,
+                "is_secret": stmt.excluded.is_secret,
+                "description": stmt.excluded.description,
+            },
+        )
+        await db.execute(stmt)
         await db.commit()
         return create_response(200, message="Collection variables saved")
     except Exception as e:
@@ -157,23 +159,20 @@ async def delete_collection_variable(
 ):
     """DELETE /node/{node_id}/variables/{key} — delete a single collection variable; 404 when key not found."""
     try:
-        user = await get_user_by_username(db, username)
-        if not user:
+        na = await resolve_node_access(db, username, node_id)
+        if na.user is None:
             return create_response(401, error_message="User not found")
-
-        workspace_id = await _get_workspace_id(db, node_id)
-        if workspace_id is None:
+        if na.node is None:
             return create_response(404, error_message="Node not found")
-
-        ok = await can_access_workspace(db, workspace_id, user.id, min_role="editor")
-        if not ok:
+        if not has_min_role(na, "editor"):
             return create_response(403, error_message="Access denied")
 
-        stmt = delete(CollectionVariable).where(
-            CollectionVariable.node_id == node_id,
-            CollectionVariable.key == key,
+        result = await db.execute(
+            delete(CollectionVariable).where(
+                CollectionVariable.node_id == node_id,
+                CollectionVariable.key == key,
+            )
         )
-        result = await db.execute(stmt)
         await db.commit()
 
         if result.rowcount == 0:
@@ -193,20 +192,25 @@ async def reveal_collection_variable(
 ):
     """GET /node/{node_id}/variables/{key}/reveal — return decrypted value for a secret variable; audit-logged."""
     try:
-        user = await get_user_by_username(db, username)
-        if not user:
+        na = await resolve_node_access(db, username, node_id)
+        if na.user is None:
             return create_response(401, error_message="User not found")
-
-        node = await verify_node_ownership(db, node_id, user.id)
-        if not node:
+        if not na.can_access:
             return create_response(403, error_message="Access denied")
 
-        stmt = select(CollectionVariable).where(
-            CollectionVariable.node_id == node_id,
-            CollectionVariable.key == key,
+        result = await db.execute(
+            select(
+                CollectionVariable.id,
+                CollectionVariable.key,
+                CollectionVariable.value,
+                CollectionVariable.is_secret,
+            )
+            .where(
+                CollectionVariable.node_id == node_id,
+                CollectionVariable.key == key,
+            )
         )
-        result = await db.execute(stmt)
-        row = result.scalar_one_or_none()
+        row = result.one_or_none()
 
         if row is None:
             return create_response(404, error_message="Variable not found")
@@ -223,7 +227,7 @@ async def reveal_collection_variable(
             action="collection_variable.reveal",
             entity_type="collection_variable",
             entity_id=row.id,
-            workspace_id=node.workspace_id,
+            workspace_id=na.node.workspace_id,
             metadata={"node_id": node_id, "key": key},
         )
         await db.commit()

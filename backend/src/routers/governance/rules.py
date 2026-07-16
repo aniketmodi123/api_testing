@@ -3,17 +3,17 @@ What this file does: Provides CRUD for per-workspace governance rules and a lint
 that evaluates all active APIs in a workspace against those rules, returning a violations report.
 """
 import re
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, Header
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from common_querys import can_access_workspace, get_user_by_username, write_audit
+from common_querys import has_min_role, resolve_workspace_access, write_audit
 from config import get_db
 from models import Api, ApiCase as ApiCaseModel, GovernanceRule, Node
-from utils import ExceptionHandler, create_response
+from utils import create_response
 
 router = APIRouter()
 
@@ -30,6 +30,7 @@ class GovernanceRuleBody(BaseModel):
         value: Regex pattern (naming) or expected value / status code string.
         enabled: ``True`` to include in lint runs; ``False`` to skip without deleting.
     """
+
     name: str
     rule_type: str
     target: str
@@ -48,6 +49,7 @@ class LintViolation(BaseModel):
         rule_name: Display name of that rule.
         message: Human-readable description of what failed.
     """
+
     api_id: int
     api_name: str
     endpoint: str
@@ -68,6 +70,7 @@ class GovernanceRuleResponse(BaseModel):
         enabled: ``True`` when the rule is included in lint runs.
         created_at: ISO timestamp the rule was created.
     """
+
     id: int
     name: str
     rule_type: str
@@ -85,6 +88,7 @@ class LintReport(BaseModel):
         violations_count: Total number of rule violations found.
         violations: List of individual violation details.
     """
+
     total_apis: int
     violations_count: int
     violations: List[LintViolation]
@@ -94,36 +98,39 @@ _VALID_RULE_TYPES = {"naming", "required_field", "status_code"}
 _VALID_TARGETS = {"path", "name", "header", "param"}
 
 
-def _check_rule(rule: GovernanceRule, api: Api, cases: list) -> Optional[str]:
-    """What it does: Evaluate one rule against one Api+cases and return a violation message or None."""
+def _check_rule(
+    rule: Any, api: Any, cases: list, pattern: Optional[re.Pattern] = None
+) -> Optional[str]:
+    """Evaluate one rule against one Api+cases; return a violation message or None."""
     if rule.rule_type == "naming":
         subject = api.endpoint if rule.target == "path" else api.name
-        if not re.search(rule.value, subject):
+        match_fn = pattern.search if pattern else lambda s: re.search(rule.value, s)
+        if not match_fn(subject):
             return f"{rule.target} '{subject}' does not match pattern '{rule.value}'"
 
     elif rule.rule_type == "required_field":
         if rule.target == "header":
-            missing = all(
-                not (c.headers or {}).get(rule.value)
-                for c in cases
-            ) if cases else True
+            missing = (
+                all(not (c.headers or {}).get(rule.value) for c in cases)
+                if cases
+                else True
+            )
             if missing:
                 return f"No case includes required header '{rule.value}'"
         elif rule.target == "param":
-            missing = all(
-                not (c.params or {}).get(rule.value)
-                for c in cases
-            ) if cases else True
+            missing = (
+                all(not (c.params or {}).get(rule.value) for c in cases)
+                if cases
+                else True
+            )
             if missing:
                 return f"No case includes required param '{rule.value}'"
 
     elif rule.rule_type == "status_code":
         expected = rule.value
-        found = any(
-            str((c.expected or {}).get("status_code", "")) == expected
-            for c in cases
-        )
-        if not found:
+        if not any(
+            str((c.expected or {}).get("status_code", "")) == expected for c in cases
+        ):
             return f"No case expects status code {expected}"
 
     return None
@@ -136,21 +143,31 @@ async def list_governance_rules(
     db: AsyncSession = Depends(get_db),
 ):
     """GET /workspace/{workspace_id}/governance/rules — list all governance rules for a workspace."""
-    try:
-        user = await get_user_by_username(db, username)
-        if not user:
-            return create_response(400, error_message="User not found")
+    access = await resolve_workspace_access(db, username, workspace_id)
+    if not access.user:
+        return create_response(400, error_message="User not found")
+    if not has_min_role(access, "viewer"):
+        return create_response(403, error_message="Access denied")
 
-        access = await can_access_workspace(db, workspace_id, user.id, min_role="viewer")
-        if not access:
-            return create_response(403, error_message="Access denied")
-
-        rows = (await db.execute(
-            select(GovernanceRule).where(GovernanceRule.workspace_id == workspace_id)
+    rows = (
+        await db.execute(
+            select(
+                GovernanceRule.id,
+                GovernanceRule.name,
+                GovernanceRule.rule_type,
+                GovernanceRule.target,
+                GovernanceRule.value,
+                GovernanceRule.enabled,
+                GovernanceRule.created_at,
+            )
+            .where(GovernanceRule.workspace_id == workspace_id)
             .order_by(GovernanceRule.id)
-        )).scalars().all()
+        )
+    ).all()
 
-        return create_response(200, [
+    return create_response(
+        200,
+        [
             {
                 "id": r.id,
                 "name": r.name,
@@ -161,9 +178,9 @@ async def list_governance_rules(
                 "created_at": str(r.created_at),
             }
             for r in rows
-        ], GovernanceRuleResponse)
-    except Exception as e:
-        return ExceptionHandler(e)
+        ],
+        GovernanceRuleResponse,
+    )
 
 
 @router.post("/workspace/{workspace_id}/governance/rules")
@@ -174,46 +191,50 @@ async def create_governance_rule(
     db: AsyncSession = Depends(get_db),
 ):
     """POST /workspace/{workspace_id}/governance/rules — create a governance rule; admin only."""
-    try:
-        user = await get_user_by_username(db, username)
-        if not user:
-            return create_response(400, error_message="User not found")
+    access = await resolve_workspace_access(db, username, workspace_id)
+    if not access.user:
+        return create_response(400, error_message="User not found")
+    if not has_min_role(access, "admin"):
+        return create_response(403, error_message="Admin role required")
 
-        access = await can_access_workspace(db, workspace_id, user.id, min_role="admin")
-        if not access:
-            return create_response(403, error_message="Admin role required")
-
-        if payload.rule_type not in _VALID_RULE_TYPES:
-            return create_response(400, error_message=f"rule_type must be one of {sorted(_VALID_RULE_TYPES)}")
-
-        if payload.target not in _VALID_TARGETS:
-            return create_response(400, error_message=f"target must be one of {sorted(_VALID_TARGETS)}")
-
-        if payload.rule_type == "naming":
-            try:
-                re.compile(payload.value)
-            except re.error as exc:
-                return create_response(400, error_message=f"Invalid regex pattern: {exc}")
-
-        rule = GovernanceRule(
-            workspace_id=workspace_id,
-            name=payload.name,
-            rule_type=payload.rule_type,
-            target=payload.target,
-            value=payload.value,
-            enabled=payload.enabled,
+    if payload.rule_type not in _VALID_RULE_TYPES:
+        return create_response(
+            400, error_message=f"rule_type must be one of {sorted(_VALID_RULE_TYPES)}"
         )
-        db.add(rule)
-        await db.flush()
-        rule_id = rule.id
-        await write_audit(
-            db, username, "governance_rule.create", "governance_rule", rule_id,
-            workspace_id=workspace_id, metadata={"name": payload.name},
+    if payload.target not in _VALID_TARGETS:
+        return create_response(
+            400, error_message=f"target must be one of {sorted(_VALID_TARGETS)}"
         )
-        await db.commit()
-        await db.refresh(rule)
+    if payload.rule_type == "naming":
+        try:
+            re.compile(payload.value)
+        except re.error as exc:
+            return create_response(400, error_message=f"Invalid regex pattern: {exc}")
 
-        return create_response(201, {
+    rule = GovernanceRule(
+        workspace_id=workspace_id,
+        name=payload.name,
+        rule_type=payload.rule_type,
+        target=payload.target,
+        value=payload.value,
+        enabled=payload.enabled,
+    )
+    db.add(rule)
+    await db.flush()
+    await write_audit(
+        db,
+        username,
+        "governance_rule.create",
+        "governance_rule",
+        rule.id,
+        workspace_id=workspace_id,
+        metadata={"name": payload.name},
+    )
+    await db.commit()
+
+    return create_response(
+        201,
+        {
             "id": rule.id,
             "name": rule.name,
             "rule_type": rule.rule_type,
@@ -221,10 +242,9 @@ async def create_governance_rule(
             "value": rule.value,
             "enabled": rule.enabled,
             "created_at": str(rule.created_at),
-        }, GovernanceRuleResponse)
-    except Exception as e:
-        await db.rollback()
-        return ExceptionHandler(e)
+        },
+        GovernanceRuleResponse,
+    )
 
 
 @router.put("/governance/rules/{rule_id}")
@@ -235,58 +255,73 @@ async def update_governance_rule(
     db: AsyncSession = Depends(get_db),
 ):
     """PUT /governance/rules/{rule_id} — update a governance rule; admin only."""
-    try:
-        user = await get_user_by_username(db, username)
-        if not user:
-            return create_response(400, error_message="User not found")
-
-        rule = (await db.execute(
-            select(GovernanceRule).where(GovernanceRule.id == rule_id)
-        )).scalar_one_or_none()
-
-        if not rule:
-            return create_response(404, error_message="Rule not found")
-
-        access = await can_access_workspace(db, rule.workspace_id, user.id, min_role="admin")
-        if not access:
-            return create_response(403, error_message="Admin role required")
-
-        if payload.rule_type not in _VALID_RULE_TYPES:
-            return create_response(400, error_message=f"rule_type must be one of {sorted(_VALID_RULE_TYPES)}")
-
-        if payload.target not in _VALID_TARGETS:
-            return create_response(400, error_message=f"target must be one of {sorted(_VALID_TARGETS)}")
-
-        if payload.rule_type == "naming":
-            try:
-                re.compile(payload.value)
-            except re.error as exc:
-                return create_response(400, error_message=f"Invalid regex pattern: {exc}")
-
-        rule.name = payload.name
-        rule.rule_type = payload.rule_type
-        rule.target = payload.target
-        rule.value = payload.value
-        rule.enabled = payload.enabled
-        await write_audit(
-            db, username, "governance_rule.update", "governance_rule", rule_id,
-            workspace_id=rule.workspace_id, metadata={"name": payload.name},
+    rule_row = (
+        await db.execute(
+            select(
+                GovernanceRule.id,
+                GovernanceRule.workspace_id,
+                GovernanceRule.created_at,
+            ).where(GovernanceRule.id == rule_id)
         )
-        await db.commit()
-        await db.refresh(rule)
+    ).one_or_none()
+    if not rule_row:
+        return create_response(404, error_message="Rule not found")
 
-        return create_response(200, {
-            "id": rule.id,
-            "name": rule.name,
-            "rule_type": rule.rule_type,
-            "target": rule.target,
-            "value": rule.value,
-            "enabled": rule.enabled,
-            "created_at": str(rule.created_at),
-        }, GovernanceRuleResponse)
-    except Exception as e:
-        await db.rollback()
-        return ExceptionHandler(e)
+    access = await resolve_workspace_access(db, username, rule_row.workspace_id)
+    if not access.user:
+        return create_response(400, error_message="User not found")
+    if not has_min_role(access, "admin"):
+        return create_response(403, error_message="Admin role required")
+
+    if payload.rule_type not in _VALID_RULE_TYPES:
+        return create_response(
+            400, error_message=f"rule_type must be one of {sorted(_VALID_RULE_TYPES)}"
+        )
+    if payload.target not in _VALID_TARGETS:
+        return create_response(
+            400, error_message=f"target must be one of {sorted(_VALID_TARGETS)}"
+        )
+    if payload.rule_type == "naming":
+        try:
+            re.compile(payload.value)
+        except re.error as exc:
+            return create_response(400, error_message=f"Invalid regex pattern: {exc}")
+
+    await db.execute(
+        update(GovernanceRule)
+        .where(GovernanceRule.id == rule_id)
+        .values(
+            name=payload.name,
+            rule_type=payload.rule_type,
+            target=payload.target,
+            value=payload.value,
+            enabled=payload.enabled,
+        )
+    )
+    await write_audit(
+        db,
+        username,
+        "governance_rule.update",
+        "governance_rule",
+        rule_id,
+        workspace_id=rule_row.workspace_id,
+        metadata={"name": payload.name},
+    )
+    await db.commit()
+
+    return create_response(
+        200,
+        {
+            "id": rule_id,
+            "name": payload.name,
+            "rule_type": payload.rule_type,
+            "target": payload.target,
+            "value": payload.value,
+            "enabled": payload.enabled,
+            "created_at": str(rule_row.created_at),
+        },
+        GovernanceRuleResponse,
+    )
 
 
 @router.delete("/governance/rules/{rule_id}")
@@ -296,33 +331,34 @@ async def delete_governance_rule(
     db: AsyncSession = Depends(get_db),
 ):
     """DELETE /governance/rules/{rule_id} — remove a governance rule; admin only."""
-    try:
-        user = await get_user_by_username(db, username)
-        if not user:
-            return create_response(400, error_message="User not found")
-
-        rule = (await db.execute(
-            select(GovernanceRule).where(GovernanceRule.id == rule_id)
-        )).scalar_one_or_none()
-
-        if not rule:
-            return create_response(404, error_message="Rule not found")
-
-        access = await can_access_workspace(db, rule.workspace_id, user.id, min_role="admin")
-        if not access:
-            return create_response(403, error_message="Admin role required")
-
-        await db.delete(rule)
-        await write_audit(
-            db, username, "governance_rule.delete", "governance_rule", rule_id,
-            workspace_id=rule.workspace_id,
+    rule_row = (
+        await db.execute(
+            select(GovernanceRule.id, GovernanceRule.workspace_id).where(
+                GovernanceRule.id == rule_id
+            )
         )
-        await db.commit()
+    ).one_or_none()
+    if not rule_row:
+        return create_response(404, error_message="Rule not found")
 
-        return create_response(200, message="Rule deleted")
-    except Exception as e:
-        await db.rollback()
-        return ExceptionHandler(e)
+    access = await resolve_workspace_access(db, username, rule_row.workspace_id)
+    if not access.user:
+        return create_response(400, error_message="User not found")
+    if not has_min_role(access, "admin"):
+        return create_response(403, error_message="Admin role required")
+
+    await db.execute(delete(GovernanceRule).where(GovernanceRule.id == rule_id))
+    await write_audit(
+        db,
+        username,
+        "governance_rule.delete",
+        "governance_rule",
+        rule_id,
+        workspace_id=rule_row.workspace_id,
+    )
+    await db.commit()
+
+    return create_response(200, message="Rule deleted")
 
 
 @router.post("/workspace/{workspace_id}/governance/lint")
@@ -332,65 +368,90 @@ async def lint_workspace(
     db: AsyncSession = Depends(get_db),
 ):
     """POST /workspace/{workspace_id}/governance/lint — run all enabled rules against every active API; returns a violations report."""
-    try:
-        user = await get_user_by_username(db, username)
-        if not user:
-            return create_response(400, error_message="User not found")
+    access = await resolve_workspace_access(db, username, workspace_id)
+    if not access.user:
+        return create_response(400, error_message="User not found")
+    if not has_min_role(access, "viewer"):
+        return create_response(403, error_message="Access denied")
 
-        access = await can_access_workspace(db, workspace_id, user.id, min_role="viewer")
-        if not access:
-            return create_response(403, error_message="Access denied")
-
-        rules = (await db.execute(
-            select(GovernanceRule).where(
+    rules = (
+        await db.execute(
+            select(
+                GovernanceRule.id,
+                GovernanceRule.name,
+                GovernanceRule.rule_type,
+                GovernanceRule.target,
+                GovernanceRule.value,
+            ).where(
                 GovernanceRule.workspace_id == workspace_id,
                 GovernanceRule.enabled.is_(True),
             )
-        )).scalars().all()
+        )
+    ).all()
 
-        if not rules:
-            return create_response(200, {"total_apis": 0, "violations_count": 0, "violations": []}, LintReport)
+    if not rules:
+        return create_response(
+            200, {"total_apis": 0, "violations_count": 0, "violations": []}, LintReport
+        )
 
-        # load all active apis in workspace via node join
-        apis = (await db.execute(
-            select(Api)
+    apis = (
+        await db.execute(
+            select(Api.id, Api.name, Api.endpoint)
             .join(Node, Node.id == Api.file_id)
             .where(Node.workspace_id == workspace_id, Api.is_active.is_(True))
-        )).scalars().all()
+        )
+    ).all()
 
-        if not apis:
-            return create_response(200, {"total_apis": 0, "violations_count": 0, "violations": []}, LintReport)
+    if not apis:
+        return create_response(
+            200, {"total_apis": 0, "violations_count": 0, "violations": []}, LintReport
+        )
 
-        api_ids = [a.id for a in apis]
+    api_ids = [a.id for a in apis]
 
-        # build api_id → cases map in one query
-        case_rows = (await db.execute(
-            select(ApiCaseModel).where(ApiCaseModel.api_id.in_(api_ids))
-        )).scalars().all()
+    case_rows = (
+        await db.execute(
+            select(
+                ApiCaseModel.api_id,
+                ApiCaseModel.headers,
+                ApiCaseModel.params,
+                ApiCaseModel.expected,
+            ).where(ApiCaseModel.api_id.in_(api_ids))
+        )
+    ).all()
 
-        cases_by_api: dict = {}
-        for c in case_rows:
-            cases_by_api.setdefault(c.api_id, []).append(c)
+    cases_by_api: dict = {}
+    for c in case_rows:
+        cases_by_api.setdefault(c.api_id, []).append(c)
 
-        violations = []
-        for api in apis:
-            api_cases = cases_by_api.get(api.id, [])
-            for rule in rules:
-                msg = _check_rule(rule, api, api_cases)
-                if msg:
-                    violations.append({
+    # pre-compile naming rule patterns once per lint run; eliminates per-api re.compile calls
+    compiled: dict[int, re.Pattern] = {
+        r.id: re.compile(r.value) for r in rules if r.rule_type == "naming"
+    }
+
+    violations = []
+    for api in apis:
+        api_cases = cases_by_api.get(api.id, [])
+        for rule in rules:
+            msg = _check_rule(rule, api, api_cases, compiled.get(rule.id))
+            if msg:
+                violations.append(
+                    {
                         "api_id": api.id,
                         "api_name": api.name,
                         "endpoint": api.endpoint,
                         "rule_id": rule.id,
                         "rule_name": rule.name,
                         "message": msg,
-                    })
+                    }
+                )
 
-        return create_response(200, {
+    return create_response(
+        200,
+        {
             "total_apis": len(apis),
             "violations_count": len(violations),
             "violations": violations,
-        }, LintReport)
-    except Exception as e:
-        return ExceptionHandler(e)
+        },
+        LintReport,
+    )

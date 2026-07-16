@@ -3,17 +3,19 @@ What this file does: Async flow execution engine — iterates ordered FlowStep r
 """
 
 import asyncio
+import datetime as _dt
+import json as _json
 import time as _time
 from typing import Any, Dict, Optional
 
 from sqlalchemy import select
 
-from common_querys import build_scope_chain, write_audit
+from auth_strategies import apply_auth
+from common_querys import build_scope_chain, resolve_auth, write_audit
 from config import SessionLocal
 from models import Api, Flow, FlowRun, FlowStep, FlowStepResult, Node
 from routers.runner.execute_direct import send_request
 from utils import logs, merge_scopes, resolve_variables
-from vault import decrypt as dec_secret
 
 MAX_STEPS = 100
 _SECRET_PLACEHOLDER = "***"
@@ -31,14 +33,6 @@ def _jsonpath_extract(data: Any, path: str) -> Any:
         pass
     return None
 
-
-def _mask_secrets(obj: Any, secret_keys: set) -> Any:
-    """What it does: Recursively replace values for keys in secret_keys with *** in a dict/list/str structure."""
-    if isinstance(obj, dict):
-        return {k: (_SECRET_PLACEHOLDER if k in secret_keys else _mask_secrets(v, secret_keys)) for k, v in obj.items()}
-    if isinstance(obj, list):
-        return [_mask_secrets(i, secret_keys) for i in obj]
-    return obj
 
 
 def _eval_condition(condition: Dict[str, Any], context: Dict[str, Any]) -> bool:
@@ -66,39 +60,57 @@ def _eval_condition(condition: Dict[str, Any], context: Dict[str, Any]) -> bool:
     return False
 
 
-async def execute_flow(flow_id: int, username: str, input_vars: Optional[Dict[str, Any]] = None) -> int:
+async def execute_flow(flow_id: int, username: str, input_vars: Optional[Dict[str, Any]] = None, run_id: Optional[int] = None) -> int:
     """
     What it does: Execute all steps of a flow in order within its own DB session; return the FlowRun.id.
     Args:
         flow_id: Id of the flow to execute.
         username: Email of the triggering user; used for auth resolution and audit.
         input_vars: Optional caller-supplied local variables injected as the initial run context.
+        run_id: Existing FlowRun to execute into (the stub the trigger route created so it could
+            return an id immediately); ``None`` creates a fresh FlowRun.
     Returns:
-        int: The FlowRun.id created for this execution.
+        int: The FlowRun.id this execution wrote its results to.
     Steps:
-        - Step 1: Open own DB session; load flow + steps; create FlowRun with status running
-        - Step 2: For each step in order, resolve variables against full scope chain + run context
-        - Step 3: Execute step action (request / condition / delay / set_var)
-        - Step 4: On request: extract jsonpath vars into context; mask secrets; persist FlowStepResult
-        - Step 5: On condition: evaluate; skip remaining steps when condition fails with no on_false handler
-        - Step 6: Mark FlowRun completed or failed; write audit row; return run_id
+        - Step 1: Open own DB session; load flow + steps; reuse the stub FlowRun or create one
+        - Step 2: Pre-load all Apis needed by request steps in a single batch join query
+        - Step 3: For each step in order, resolve variables against full scope chain + run context
+        - Step 4: Execute step action (request / condition / delay / set_var)
+        - Step 5: On request: extract jsonpath vars into context; mask secrets; persist FlowStepResult
+        - Step 6: On condition: evaluate; skip remaining steps when condition fails with no on_false handler
+        - Step 7: Mark FlowRun completed or failed; write audit row; return run_id
     """
     async with SessionLocal() as db:
-        # Step 1: Load flow and create run
-        flow_result = await db.execute(select(Flow).where(Flow.id == flow_id))
-        flow = flow_result.scalar_one_or_none()
-        if not flow:
+        # Step 1: Load flow (workspace_id only — graph JSON skipped) and resolve the run row
+        flow_row = (await db.execute(
+            select(Flow.id, Flow.workspace_id).where(Flow.id == flow_id)
+        )).first()
+        if not flow_row:
             raise ValueError(f"Flow {flow_id} not found")
 
-        steps_result = await db.execute(
+        steps = (await db.execute(
             select(FlowStep).where(FlowStep.flow_id == flow_id).order_by(FlowStep.step_order)
-        )
-        steps = steps_result.scalars().all()
+        )).scalars().all()
 
-        run = FlowRun(flow_id=flow_id, status="running", context=input_vars or {})
-        db.add(run)
-        await db.flush()
+        run = None
+        if run_id is not None:
+            run = (await db.execute(select(FlowRun).where(FlowRun.id == run_id))).scalar_one_or_none()
+        if run is None:
+            run = FlowRun(flow_id=flow_id, status="running", context=input_vars or {})
+            db.add(run)
+            await db.flush()
         run_id = run.id
+
+        # Step 2: Pre-load all Apis for request steps in one batch join (eliminates N Api+Node queries)
+        request_api_ids = [s.api_id for s in steps if s.type == "request" and s.api_id]
+        api_lookup: Dict[int, Any] = {}
+        if request_api_ids:
+            api_rows = (await db.execute(
+                select(Api.id, Api.method, Api.endpoint, Api.extra_meta, Api.file_id, Node.workspace_id)
+                .join(Node, Node.id == Api.file_id)
+                .where(Api.id.in_(request_api_ids))
+            )).all()
+            api_lookup = {r.id: r for r in api_rows}
 
         context: Dict[str, Any] = dict(input_vars or {})
         run_error: Optional[str] = None
@@ -142,26 +154,20 @@ async def execute_flow(flow_id: int, username: str, input_vars: Optional[Dict[st
                                 break  # stop flow — condition not met
 
                     elif step.type == "request":
-                        # Load api for this step
                         if not step.api_id:
                             raise ValueError("Request step missing api_id")
 
-                        api_result = await db.execute(select(Api).where(Api.id == step.api_id))
-                        api = api_result.scalar_one_or_none()
-                        if not api:
+                        api_row = api_lookup.get(step.api_id)
+                        if not api_row:
                             raise ValueError(f"Api {step.api_id} not found")
 
-                        # Load workspace_id via file node
-                        node_result = await db.execute(select(Node.workspace_id).where(Node.id == api.file_id))
-                        workspace_id = node_result.scalar_one_or_none()
-
                         # Build merged scope: global < collection < env < local context
-                        scope = await build_scope_chain(db, api.file_id, username, workspace_id, context)
+                        scope = await build_scope_chain(db, api_row.file_id, username, api_row.workspace_id, context)
 
                         # Resolve request parts
-                        resolved_url = resolve_variables(api.endpoint, scope)
-                        resolved_headers = resolve_variables(api.extra_meta.get("headers", {}) if api.extra_meta else {}, scope)
-                        resolved_body = resolve_variables(api.extra_meta.get("body") if api.extra_meta else None, scope)
+                        resolved_url = resolve_variables(api_row.endpoint, scope)
+                        resolved_headers = resolve_variables(api_row.extra_meta.get("headers", {}) if api_row.extra_meta else {}, scope)
+                        resolved_body = resolve_variables(api_row.extra_meta.get("body") if api_row.extra_meta else None, scope)
                         step_config = step.config or {}
 
                         # Step-level overrides from config
@@ -169,23 +175,17 @@ async def execute_flow(flow_id: int, username: str, input_vars: Optional[Dict[st
                             resolved_headers = merge_scopes(resolved_headers, resolve_variables(step_config["headers"], scope))
                         if step_config.get("body") is not None:
                             resolved_body = resolve_variables(step_config["body"], scope)
-                        if step_config.get("params"):
-                            resolved_params = resolve_variables(step_config["params"], scope)
-                        else:
-                            resolved_params = {}
+                        resolved_params = resolve_variables(step_config["params"], scope) if step_config.get("params") else {}
 
                         # Auth injection (sync apply_auth only — oauth2 deferred per known constraint)
-                        from auth_strategies import apply_auth
-                        from common_querys import resolve_auth
-                        auth_config = await resolve_auth(db, api.file_id)
+                        auth_config = await resolve_auth(db, api_row.file_id)
                         if auth_config:
                             body_bytes = None
                             if resolved_body is not None:
-                                import json as _json
                                 body_bytes = _json.dumps(resolved_body).encode() if isinstance(resolved_body, (dict, list)) else str(resolved_body).encode()
                             auth_headers, auth_params = apply_auth(
                                 auth_config,
-                                method=api.method.upper(),
+                                method=api_row.method.upper(),
                                 url=resolved_url,
                                 existing_headers=resolved_headers,
                                 body_bytes=body_bytes,
@@ -196,7 +196,7 @@ async def execute_flow(flow_id: int, username: str, input_vars: Optional[Dict[st
                             resolved_params = {**auth_params, **resolved_params}
 
                         send_result = await send_request(
-                            method=api.method,
+                            method=api_row.method,
                             url=resolved_url,
                             headers=resolved_headers,
                             params=resolved_params,
@@ -217,11 +217,8 @@ async def execute_flow(flow_id: int, username: str, input_vars: Optional[Dict[st
                                 else:
                                     logs(f"Flow step {step.step_order}: jsonpath '{path}' no match for var '{var_name}'", type="warning")
 
-                        # Mask secrets before persist
-                        # Collect secret keys from scope (keys whose raw value differs from global/collection encrypted store)
-                        # Simple heuristic: mask Authorization header value in request snapshot
                         request_snapshot = {
-                            "method": api.method.upper(),
+                            "method": api_row.method.upper(),
                             "url": resolved_url,
                             "headers": {k: ("***" if k.lower() == "authorization" else v) for k, v in resolved_headers.items()},
                             "body": resolved_body,
@@ -253,21 +250,19 @@ async def execute_flow(flow_id: int, username: str, input_vars: Optional[Dict[st
                 db.add(FlowStepResult(**result_kwargs))
                 await db.flush()
 
-            # Step 6: Finalise run
+            # Step 7: Finalise run
             run.status = "failed" if run_error else "completed"
             run.context = context
-            import datetime as _dt
             run.finished_at = _dt.datetime.now()
             if run_error:
                 run.error_message = run_error
 
-            await write_audit(db, username, "flow.run", "flow", flow_id, flow.workspace_id, {"run_id": run_id, "status": run.status})
+            await write_audit(db, username, "flow.run", "flow", flow_id, flow_row.workspace_id, {"run_id": run_id, "status": run.status})
             await db.commit()
 
         except Exception as engine_err:
             run.status = "failed"
             run.error_message = str(engine_err)
-            import datetime as _dt
             run.finished_at = _dt.datetime.now()
             await db.commit()
             logs(f"Flow engine fatal error flow={flow_id} run={run_id}: {engine_err}", type="error")

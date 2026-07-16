@@ -7,13 +7,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_db
-from common_querys import get_user_by_username
-from models import UserTheme
+from models import UserTheme, User
 from schema import UserThemeListResponse, UserThemeResponse
-from utils import (
-    ExceptionHandler,
-    create_response
-)
+from utils import create_response
 
 router = APIRouter()
 
@@ -24,25 +20,19 @@ async def list_themes(
     db: AsyncSession = Depends(get_db)
 ):
     """GET /themes — return all custom themes saved by the authenticated user, newest first."""
-    try:
-        # Get user
-        user = await get_user_by_username(db, username)
-        if not user:
-            return create_response(400, error_message="User not found")
+    user_id = (await db.execute(select(User.id).where(User.email == username))).scalar_one_or_none()
+    if user_id is None:
+        return create_response(400, error_message="User not found")
 
-        # List themes owned by the user
-        result = await db.execute(
-            select(UserTheme)
-            .where(UserTheme.user_id == user.id)
-            .order_by(UserTheme.created_at.desc())
-        )
-        rows = result.scalars().all()
+    result = await db.execute(
+        select(UserTheme)
+        .where(UserTheme.user_id == user_id)
+        .order_by(UserTheme.created_at.desc())
+    )
+    rows = result.scalars().all()
 
-        data = {
-            "themes": [UserThemeResponse.model_validate(t).model_dump() for t in rows],
-            "total": len(rows),
-        }
-        return create_response(200, data, UserThemeListResponse)
-
-    except Exception as e:
-        return ExceptionHandler(e)
+    data = {
+        "themes": [UserThemeResponse.model_validate(t).model_dump() for t in rows],
+        "total": len(rows),
+    }
+    return create_response(200, data, UserThemeListResponse)

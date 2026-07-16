@@ -1,7 +1,14 @@
 """
-What this file does: Async HTTP client for the platform backend — owns the auth lifecycle
-(login, JWT cache, re-login on 401) and maps the platform response envelope to clean errors.
-Configured entirely via env vars: PLATFORM_BASE_URL, PLATFORM_EMAIL, PLATFORM_PASSWORD.
+What this file does: Async HTTP client for the platform backend — owns the auth lifecycle and
+maps the platform response envelope to clean errors. Two auth modes, resolved per request:
+
+- OAuth (HTTP transport): the JWT + email come from the current MCP request's access token
+  (set by the OAuth login flow). Each connected user acts as their own platform account.
+- Env creds (stdio transport): lazy login via PLATFORM_EMAIL / PLATFORM_PASSWORD with a single
+  401 re-login retry — the original behavior, unchanged when no OAuth context is present.
+
+Configured via env vars: PLATFORM_BASE_URL always; PLATFORM_EMAIL / PLATFORM_PASSWORD only for
+stdio mode.
 """
 
 import os
@@ -10,6 +17,22 @@ from typing import Any, Dict, Optional
 import httpx
 
 REQUEST_TIMEOUT_SECONDS = 30.0
+
+
+def _context_auth() -> Optional[tuple]:
+    """What it does: Return (platform_jwt, email) for the OAuth user of the current MCP request.
+
+    Delegates to the OAuth provider's context lookup; returns None in stdio mode (no auth
+    middleware) so the env-cred path stays byte-for-byte unchanged.
+    """
+    try:
+        from .oauth_provider import context_auth
+    except ImportError:  # direct `python server.py` without package context
+        try:
+            from oauth_provider import context_auth  # type: ignore
+        except ImportError:
+            return None
+    return context_auth()
 
 
 class PlatformError(Exception):
@@ -143,12 +166,20 @@ class PlatformClient:
         Raises:
             PlatformError: On non-2xx status or an envelope carrying ``error_message``/``errors``.
         """
-        if self._token is None:
-            await self.login()
+        ctx = _context_auth()
+
+        if ctx is not None:
+            # OAuth mode: use the current user's JWT; never fall back to env creds.
+            token, email = ctx
+        else:
+            # stdio mode: lazy env-cred login.
+            if self._token is None:
+                await self.login()
+            token, email = self._token, self.email
 
         headers = {
-            "Authorization": f"Bearer {self._token}",
-            "username": self.email,
+            "Authorization": f"Bearer {token}",
+            "username": email,
         }
         if extra_headers:
             headers.update(extra_headers)
@@ -156,13 +187,21 @@ class PlatformClient:
         client = await self._get_client()
         resp = await client.request(method, path, json=json, params=params, headers=headers)
 
-        # Expired/blacklisted token → one re-login + retry, then give up
-        if resp.status_code == 401 and _retry:
-            self._token = None
-            await self.login()
-            return await self.request(
-                method, path, json=json, params=params, extra_headers=extra_headers, _retry=False
-            )
+        if resp.status_code == 401:
+            if ctx is not None:
+                # No credentials to re-login with — the user's platform session ended elsewhere.
+                raise PlatformError(
+                    401,
+                    "Platform session expired or logged out elsewhere — re-authenticate this "
+                    "MCP server in your client and retry.",
+                )
+            if _retry:
+                # Env-cred mode: one re-login + retry, then give up.
+                self._token = None
+                await self.login()
+                return await self.request(
+                    method, path, json=json, params=params, extra_headers=extra_headers, _retry=False
+                )
 
         return self._parse_envelope(resp)
 

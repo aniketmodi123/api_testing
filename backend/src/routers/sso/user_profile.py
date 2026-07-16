@@ -6,39 +6,32 @@ from fastapi import APIRouter, Depends, Header
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import (
-    get_db
-)
+from config import get_db
 from models import User
 from schema import UserResponse
-from utils import (
-    ExceptionHandler,
-    create_response,
-    value_correction
-)
+from utils import create_response, value_correction
 
 router = APIRouter()
 
 
-@router.get("/me", response_model=UserResponse)
+@router.get("/me")
 async def get_current_user_profile(
-    username: str= Header(...),
-    db: AsyncSession = Depends(get_db)
+    username: str = Header(...),
+    db: AsyncSession = Depends(get_db),
 ):
     """GET /me — return the profile of the currently authenticated user."""
-    try:
-        result = await db.execute(select(User).where(User.email == username))
-        user = result.scalar_one_or_none()
-
-        if user is None:
-            return create_response(404, error_message="User not found")
-        data= {
-            "id": user.id  ,
-            "username": user.username ,
-            "email": user.email ,
-            "god": user.god ,
-            "created_at": user.created_at
-        }
-        return create_response(200, value_correction(data), UserResponse)
-    except Exception as e:
-        return ExceptionHandler(e)
+    result = await db.execute(
+        select(User.id, User.username, User.email, User.god, User.created_at)
+        .where(User.email == username)
+    )
+    row = result.one_or_none()
+    if row is None:
+        return create_response(404, error_message="User not found")
+    data = {
+        "id": row.id,
+        "username": row.username,
+        "email": row.email,
+        "god": row.god,
+        "created_at": row.created_at,
+    }
+    return create_response(200, value_correction(data), UserResponse)

@@ -14,12 +14,16 @@ services:
         image: apipilot
         container_name: apipilot
         ports:
-            - 7005:8000  # API accessible at localhost:7005
+            - 7005:8000  # API + embedded MCP (at /mcp-oauth) accessible at localhost:7005
             - 7006:5000  # Debugger accessible at localhost:7006
         env_file:
         - .env
+        environment:
+            # Public URL clients reach for the embedded MCP server (token page + config snippet).
+            - MCP_PUBLIC_URL=http://localhost:7005/mcp-server
         volumes:
             - ./src:/app
+            - ./mcp_server:/app/mcp_server  # embedded MCP server sources (imported by main.py)
         command: supervisord -n -c /etc/supervisor/api-supervisord.conf
         networks:
             - apipilot_network
@@ -39,6 +43,31 @@ services:
         command: supervisord -n -c /etc/supervisor/scheduler-supervisord.conf
         networks:
             - apipilot_network
+
+    # ALTERNATIVE — two-service mode (separate port/URL for the MCP server). Not needed in
+    # single-service mode above (API serves MCP at :7005/mcp-oauth). Uncomment to run the MCP
+    # server as its own container/URL instead (e.g. a dedicated Render web service).
+    # apipilot_mcp:
+    #     image: apipilot
+    #     container_name: apipilot_mcp
+    #     ports:
+    #         - 7010:7010  # remote MCP server at localhost:7010/mcp
+    #     env_file:
+    #     - .env
+    #     environment:
+    #         - MCP_TRANSPORT=http
+    #         - MCP_HOST=0.0.0.0
+    #         - MCP_PORT=7010
+    #         - MCP_PUBLIC_URL=http://localhost:7010
+    #         - PLATFORM_BASE_URL=http://apipilot:8000  # backend over the docker network
+    #     volumes:
+    #         - ./mcp_server:/mcp/mcp_server
+    #     working_dir: /mcp
+    #     command: sh -c "pip install -q -r mcp_server/requirements.txt && python -m mcp_server"
+    #     depends_on:
+    #         - apipilot
+    #     networks:
+    #         - apipilot_network
 
     # postgres:
     #     image: postgres:15

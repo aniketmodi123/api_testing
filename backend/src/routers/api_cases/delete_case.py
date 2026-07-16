@@ -5,11 +5,11 @@ What this file does: Exposes DELETE /case/{case_id} (single) and DELETE /cases/b
 from typing import List
 
 from fastapi import APIRouter, Depends, Header
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_db
-from common_querys import can_access_workspace, get_user_by_username, resolve_case_access, write_audit
+from common_querys import get_user_by_username, has_min_role, resolve_case_access, write_audit
 from models import Api, ApiCase, Node, Workspace, WorkspaceMember
 from schema import BulkDeleteResponse
 from utils import ExceptionHandler, create_response
@@ -31,7 +31,8 @@ async def delete_test_case(
             return create_response(401, error_message="User not found")
         if ca.case is None or not ca.can_access:
             return create_response(404, error_message="Test case not found or access denied")
-        if not await can_access_workspace(db, ca.node.workspace_id, ca.user.id, min_role="editor"):
+        # Role already joined by resolve_case_access — no extra query needed
+        if not has_min_role(ca, "editor"):
             return create_response(403, error_message="Editor access or higher required")
 
         # Step 2: Audit (workspace_id comes from the resolved node — no extra query) and delete
@@ -69,9 +70,9 @@ async def delete_test_cases_bulk(
         if not user:
             return create_response(401, error_message="User not found")
 
-        # Step 2: Fetch the subset of requested cases the caller owns or has editor+ access to (in_() is guarded above)
+        # Step 2: Fetch only the ids of requested cases the caller owns or has editor+ access to (in_() is guarded above)
         result = await db.execute(
-            select(ApiCase)
+            select(ApiCase.id)
             .join(Api, ApiCase.api_id == Api.id)
             .join(Node, Api.file_id == Node.id)
             .join(Workspace, Node.workspace_id == Workspace.id)
@@ -93,17 +94,23 @@ async def delete_test_cases_bulk(
                 )
             )
         )
-        cases = result.scalars().all()
+        found_ids = list(result.scalars().all())
 
-        if not cases:
+        if not found_ids:
             return create_response(404, error_message="No test cases found or access denied")
 
-        found_ids = [case.id for case in cases]
-        not_found_ids = [cid for cid in case_ids if cid not in found_ids]
+        found_id_set = set(found_ids)
+        not_found_ids = [cid for cid in case_ids if cid not in found_id_set]
 
-        # Step 3: Delete the owned cases and report the outcome
-        for case in cases:
-            await db.delete(case)
+        # Step 3: Delete all owned cases in one statement and report the outcome
+        await db.execute(delete(ApiCase).where(ApiCase.id.in_(found_ids)))
+        await write_audit(
+            db,
+            username=user.username,
+            action="api_case.bulk_delete",
+            entity_type="api_case",
+            metadata={"deleted_ids": found_ids},
+        )
         await db.commit()
 
         data = {

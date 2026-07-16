@@ -1,3 +1,6 @@
 # MCP server deps — separate from the backend app (src/requirements.txt)
-mcp>=1.2
+# 1.28+ required for the OAuth authorization-server provider used by the http transport.
+mcp>=1.28
 httpx>=0.27
+# Pulled in by mcp for the streamable-http transport; listed explicitly for the http server.
+uvicorn>=0.30

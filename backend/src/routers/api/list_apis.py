@@ -3,11 +3,11 @@ What this file does: Exposes GET /file/{file_id}/api for loading a file's API wi
 """
 
 import json
+from typing import Any
 
 from fastapi import APIRouter, Depends, Header
-from sqlalchemy import func, select
+from sqlalchemy import Row, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from config import get_db
 from common_querys import (
@@ -84,24 +84,20 @@ async def get_file_api(
         # Step 3: Load and embed cases, or just count them
         if include_cases:
             cases_result = await db.execute(
-                select(ApiCase)
+                select(
+                    ApiCase.id,
+                    ApiCase.name,
+                    ApiCase.body,
+                    ApiCase.params,
+                    ApiCase.expected,
+                    ApiCase.headers,
+                    ApiCase.created_at,
+                )
                 .where(ApiCase.api_id == api.id)
                 .order_by(func.lower(ApiCase.name))
             )
-            cases = cases_result.scalars().all()
-            data["test_cases"] = [
-                {
-                    "id": case.id,
-                    "name": case.name,
-                    "body": case.body,
-                    "params": getattr(case, "params", None),
-                    "expected": case.expected,
-                    "headers": case.headers,
-                    "created_at": case.created_at,
-                }
-                for case in cases
-            ]
-            data["total_cases"] = len(cases)
+            data["test_cases"] = [dict(row) for row in cases_result.mappings()]
+            data["total_cases"] = len(data["test_cases"])
         else:
             count = await db.execute(
                 select(func.count()).select_from(ApiCase).where(ApiCase.api_id == api.id)
@@ -129,25 +125,49 @@ async def get_bulk_testing_tree(
         if not await verify_workspace_ownership(db, workspace_id, user.id):
             return create_response(404, error_message="Workspace not found or access denied")
 
-        # Step 2: Bulk-load all nodes, then all APIs + cases in two queries
-        nodes_query = select(Node).where(
-            Node.workspace_id == workspace_id
-        ).order_by(Node.parent_id.asc().nullsfirst(), Node.name.asc())
-        nodes_result = await db.execute(nodes_query)
-        all_nodes = nodes_result.scalars().all()
-
-        apis_query = select(Api).options(selectinload(Api.cases)).join(Node).where(
-            (Node.workspace_id == workspace_id) &
-            (Node.type == "file")
+        # Step 2: Bulk-load node columns, then API columns + case columns in three queries
+        nodes_result = await db.execute(
+            select(Node.id, Node.name, Node.type, Node.parent_id)
+            .where(Node.workspace_id == workspace_id)
+            .order_by(Node.parent_id.asc().nullsfirst(), Node.name.asc())
         )
-        apis_result = await db.execute(apis_query)
-        all_apis = apis_result.scalars().all()
+        all_nodes = nodes_result.all()
 
+        apis_result = await db.execute(
+            select(Api.id, Api.file_id, Api.method, Api.endpoint, Api.description, Api.is_active)
+            .join(Node, Api.file_id == Node.id)
+            .where(
+                (Node.workspace_id == workspace_id) &
+                (Node.type == "file")
+            )
+        )
+        all_apis = apis_result.all()
         apis_by_file = {api.file_id: api for api in all_apis}
 
+        # coalesce matches the previous Python sort key (c.name or "").lower()
+        cases_by_api: dict[int, list[Row]] = {}
+        api_ids = [api.id for api in all_apis]
+        if api_ids:
+            cases_result = await db.execute(
+                select(
+                    ApiCase.api_id,
+                    ApiCase.id,
+                    ApiCase.name,
+                    ApiCase.headers,
+                    ApiCase.body,
+                    ApiCase.params,
+                    ApiCase.expected,
+                    ApiCase.created_at,
+                )
+                .where(ApiCase.api_id.in_(api_ids))
+                .order_by(func.lower(func.coalesce(ApiCase.name, "")), ApiCase.id)
+            )
+            for case in cases_result.all():
+                cases_by_api.setdefault(case.api_id, []).append(case)
+
         # Step 3: Build per-node payloads, enriching file nodes with API + cases
-        def build_tree_node(node):
-            node_data = {
+        def build_tree_node(node: Row) -> dict[str, Any]:
+            node_data: dict[str, Any] = {
                 "id": node.id,
                 "name": node.name,
                 "type": node.type,
@@ -162,12 +182,7 @@ async def get_bulk_testing_tree(
                     "endpoint": api.endpoint,
                     "description": api.description,
                     "is_active": api.is_active,
-                    "test_cases": [],
-                })
-
-                if api.cases:
-                    sorted_cases = sorted(api.cases, key=lambda c: (c.name or "").lower())
-                    node_data["test_cases"] = [
+                    "test_cases": [
                         {
                             "id": case.id,
                             "name": case.name,
@@ -175,13 +190,13 @@ async def get_bulk_testing_tree(
                             "endpoint": api.endpoint,
                             "headers": case.headers,
                             "body": case.body,
-                            "params": getattr(case, "params", None),
+                            "params": case.params,
                             "expected": case.expected,
                             "created_at": case.created_at,
                         }
-                        for case in sorted_cases
-                    ]
-
+                        for case in cases_by_api.get(api.id, [])
+                    ],
+                })
                 node_data["total_cases"] = len(node_data["test_cases"])
 
             return node_data

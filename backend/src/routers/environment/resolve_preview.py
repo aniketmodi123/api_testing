@@ -7,18 +7,17 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Header
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from common_querys import (
-    build_scope_chain,
-    get_collection_variables,
-    get_user_by_username,
-    verify_node_ownership,
+    get_collection_variables_with_secrets,
+    resolve_node_access,
 )
 from config import get_db
-from models import Node
-from utils import ExceptionHandler, create_response, resolve_variables
-from vault import decrypt as dec_secret
+from models import Environment, GlobalVariable
+from schema import ResolvePreviewResponse
+from utils import create_response, merge_scopes, resolve_variables, value_correction
 
 router = APIRouter()
 
@@ -46,116 +45,83 @@ async def resolve_preview(
     db: AsyncSession = Depends(get_db),
 ):
     """POST /resolve/preview — resolve text against full scope chain; return resolved text + per-variable scope info; secrets masked."""
-    try:
-        user = await get_user_by_username(db, username)
-        if not user:
-            return create_response(401, error_message="User not found")
+    access = await resolve_node_access(db, username, payload.file_id)
+    if not access.user:
+        return create_response(401, error_message="User not found")
+    if not access.can_access:
+        return create_response(403, error_message="Access denied")
 
-        # Verify user has at least viewer access to the node's workspace
-        node = await verify_node_ownership(db, payload.file_id, user.id)
-        if not node:
-            return create_response(403, error_message="Access denied")
+    workspace_id: int = access.node.workspace_id
 
-        # Resolve workspace_id from node
-        from sqlalchemy import select
-        ws_result = await db.execute(select(Node.workspace_id).where(Node.id == payload.file_id))
-        workspace_id = ws_result.scalar_one_or_none()
+    # Lazy import avoids circular dependency with global_variables module.
+    from routers.variables.global_variables import get_global_variables_for_user
 
-        # Build each individual scope so we can show which scope owns each variable
-        from routers.variables.global_variables import get_global_variables_for_user
-        from utils import get_environment_variables
-        from models import Environment
+    global_vars = await get_global_variables_for_user(username)
 
-        global_vars = await get_global_variables_for_user(username)
-        collection_vars = await get_collection_variables(db, payload.file_id)
+    # Single path walk: fetches collection vars + secret keys in one round trip.
+    collection_vars, cv_secret_keys = await get_collection_variables_with_secrets(db, payload.file_id)
 
-        env_vars: Dict[str, Any] = {}
-        env_result = await db.execute(
-            select(Environment).where(
-                Environment.workspace_id == workspace_id,
-                Environment.is_active == True,
-            )
+    env_vars: Dict[str, Any] = {}
+    env_row = (await db.execute(
+        select(Environment.variables).where(
+            Environment.workspace_id == workspace_id,
+            Environment.is_active == True,
         )
-        active_env = env_result.scalar_one_or_none()
-        if active_env and active_env.variables:
-            env_vars = dict(active_env.variables)
+    )).scalar_one_or_none()
+    if env_row:
+        env_vars = dict(env_row)
 
-        local_vars: Dict[str, Any] = payload.local_context or {}
+    local_vars: Dict[str, Any] = payload.local_context or {}
 
-        # Determine which vars are secret (must not be returned in value)
-        from sqlalchemy import select as sa_select
-        from models import CollectionVariable, GlobalVariable
+    secret_keys: set = set(cv_secret_keys)
 
-        secret_keys: set = set()
-
-        gv_result = await db.execute(
-            sa_select(GlobalVariable.key).where(
-                GlobalVariable.username == username,
-                GlobalVariable.is_secret == True,
-            )
+    gv_result = await db.execute(
+        select(GlobalVariable.key).where(
+            GlobalVariable.username == username,
+            GlobalVariable.is_secret == True,
         )
-        for (k,) in gv_result.fetchall():
-            secret_keys.add(k)
+    )
+    for (k,) in gv_result.fetchall():
+        secret_keys.add(k)
 
-        # Fetch all ancestor node ids for collection var secret check
-        from common_querys import get_folder_path_to_root
-        path = await get_folder_path_to_root(db, payload.file_id)
-        if path:
-            node_ids = [n["id"] for n in path]
-            cv_result = await db.execute(
-                sa_select(CollectionVariable.key).where(
-                    CollectionVariable.node_id.in_(node_ids),
-                    CollectionVariable.is_secret == True,
-                )
-            )
-            for (k,) in cv_result.fetchall():
-                secret_keys.add(k)
+    var_names = _VAR_RE.findall(payload.text)
 
-        # Extract variable names from text
-        var_names = _VAR_RE.findall(payload.text)
+    scope_priority = [
+        ("local", local_vars),
+        ("environment", env_vars),
+        ("collection", collection_vars),
+        ("global", global_vars),
+    ]
 
-        # Build per-variable resolution info
-        scope_priority = [
-            ("local", local_vars),
-            ("environment", env_vars),
-            ("collection", collection_vars),
-            ("global", global_vars),
-        ]
+    var_details: List[Dict[str, Any]] = []
+    seen: set = set()
+    for var_name in var_names:
+        if var_name in seen:
+            continue
+        seen.add(var_name)
 
-        var_details: List[Dict[str, Any]] = []
-        seen: set = set()
-        for var_name in var_names:
-            if var_name in seen:
-                continue
-            seen.add(var_name)
+        winning_scope = None
+        winning_value = None
+        for scope_name, scope_dict in scope_priority:
+            if var_name in scope_dict:
+                winning_scope = scope_name
+                winning_value = scope_dict[var_name]
+                break
 
-            winning_scope = None
-            winning_value = None
-            # Check from highest priority to lowest
-            for scope_name, scope_dict in scope_priority:
-                if var_name in scope_dict:
-                    winning_scope = scope_name
-                    winning_value = scope_dict[var_name]
-                    break
-
-            is_secret = var_name in secret_keys
-            var_details.append({
-                "name": var_name,
-                "scope": winning_scope,
-                "value": "***" if (is_secret and winning_value is not None) else winning_value,
-                "resolved": winning_value is not None,
-                "is_secret": is_secret,
-            })
-
-        # Build full merged scope for substitution (real values, not masked)
-        from utils import merge_scopes
-        full_scope = merge_scopes(global_vars, collection_vars, env_vars, local_vars)
-        resolved_text = resolve_variables(payload.text, full_scope)
-
-        return create_response(200, data={
-            "original_text": payload.text,
-            "resolved_text": resolved_text,
-            "variables": var_details,
+        is_secret = var_name in secret_keys
+        var_details.append({
+            "name": var_name,
+            "scope": winning_scope,
+            "value": "***" if (is_secret and winning_value is not None) else winning_value,
+            "resolved": winning_value is not None,
+            "is_secret": is_secret,
         })
-    except Exception as e:
-        return ExceptionHandler(e)
+
+    full_scope = merge_scopes(global_vars, collection_vars, env_vars, local_vars)
+    resolved_text = resolve_variables(payload.text, full_scope)
+
+    return create_response(200, value_correction({
+        "original_text": payload.text,
+        "resolved_text": resolved_text,
+        "variables": var_details,
+    }), ResolvePreviewResponse)
