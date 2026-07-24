@@ -16,6 +16,7 @@ import ForgotPassword from './features/auth/components/ForgotPassword.jsx';
 import SimpleUserProfile from './features/auth/components/SimpleUserProfile.jsx';
 import UpdateProfile from './features/auth/components/UpdateProfile.jsx';
 import Home from './pages/Home/Home.jsx';
+import McpConnect from './pages/McpConnect/McpConnect.jsx';
 import SignIn from './pages/SignIn.jsx';
 import SignUp from './pages/SignUp.jsx';
 import { EnvironmentProvider } from './store/environment.jsx';
@@ -142,6 +143,14 @@ createRoot(document.getElementById('root')).render(
                         element={
                           <App>
                             <UpdateProfile />
+                          </App>
+                        }
+                      />
+                      <Route
+                        path="/mcp-connect"
+                        element={
+                          <App>
+                            <McpConnect />
                           </App>
                         }
                       />
