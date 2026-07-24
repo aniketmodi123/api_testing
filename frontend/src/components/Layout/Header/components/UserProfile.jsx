@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { FiHome, FiKey, FiLogOut, FiUser, FiUserX } from 'react-icons/fi';
+import { FiHome, FiKey, FiLogOut, FiTerminal, FiUser, FiUserX } from 'react-icons/fi';
 import { Link, useLocation } from 'react-router-dom';
 import styles from './HeaderComponents.module.css';
 
@@ -60,6 +60,13 @@ const UserProfile = ({ username, onLogout }) => {
               <FiHome className={styles.menuIcon} /> Home
             </Link>
           )}
+          <Link
+            to="/mcp-connect"
+            className={styles.dropdownItem}
+            onClick={closeDropdown}
+          >
+            <FiTerminal className={styles.menuIcon} /> Connect MCP
+          </Link>
           <Link
             to="/change-password"
             className={styles.dropdownItem}
