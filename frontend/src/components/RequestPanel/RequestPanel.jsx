@@ -93,33 +93,89 @@ function mapStatusToText(status) {
   return statusMap[code] || code.toString();
 }
 
+// Content-Type curl should declare per body type. form-data is intentionally
+// absent: it uses -F, and curl sets the multipart boundary Content-Type itself.
+const CURL_BODY_CONTENT_TYPE = {
+  JSON: 'application/json',
+  graphql: 'application/json',
+  XML: 'application/xml',
+  'url-encoded': 'application/x-www-form-urlencoded',
+};
+
+// 🔹 Wrap a value as a POSIX single-quoted shell literal.
+// Single quotes are literal in sh/bash/zsh (no $, backtick, or backslash
+// interpretation) AND are understood by Postman's cURL import — unlike bash-only
+// $'...' ANSI-C quoting, which Postman drops. Embedded single quotes are closed,
+// escaped, and reopened via the standard '\'' idiom, so ANY payload is safe.
+function shellQuote(value) {
+  return `'${String(value).replace(/'/g, `'\\''`)}'`;
+}
+
 // 🔹 Build cURL command from request
 function buildCurlCommand(req) {
   if (!req || !req.url) return 'N/A';
 
   const method = req.method?.toUpperCase() || 'GET';
 
-  const qs =
-    req.params && typeof req.params === 'object' && Object.keys(req.params).length
-      ? '?' + Object.entries(req.params).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&')
-      : '';
+  // Append query params, respecting a URL that already carries a query string.
+  let url = req.url;
+  if (
+    req.params &&
+    typeof req.params === 'object' &&
+    Object.keys(req.params).length
+  ) {
+    const qs = Object.entries(req.params)
+      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v ?? '')}`)
+      .join('&');
+    url += (url.includes('?') ? '&' : '?') + qs;
+  }
 
-  const parts = [`curl -X ${method} "${req.url}${qs}"`];
+  const parts = [`curl -X ${method} ${shellQuote(url)}`];
 
+  // Timeout (app models this via options.timeout, seconds) → curl --max-time.
+  const timeout = Number(req.options?.timeout);
+  if (Number.isFinite(timeout) && timeout > 0) {
+    parts.push(`--max-time ${timeout}`);
+  }
+
+  // Track header names case-insensitively so we don't emit a second Content-Type
+  // when the request already declares one (curl would send both, conflicting).
+  const headerNames = new Set();
   if (req.headers && typeof req.headers === 'object') {
     Object.entries(req.headers).forEach(([k, v]) => {
-      // escape double-quotes inside value so the shell string stays valid
-      parts.push(`-H "${k}: ${String(v).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`);
+      headerNames.add(k.toLowerCase());
+      parts.push(`-H ${shellQuote(`${k}: ${v ?? ''}`)}`);
     });
   }
 
-  const hasBody = req.body != null && (typeof req.body !== 'object' || Object.keys(req.body).length > 0);
+  // Normalize body type across the panel (camelCase) and any backend echo (snake).
+  const bodyType = req.bodyType || req.body_type || null;
+
+  const hasBody =
+    bodyType !== 'none' &&
+    req.body != null &&
+    (typeof req.body !== 'object' || Object.keys(req.body).length > 0);
   if (hasBody) {
-    const bodyStr = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
-    // $'...' ANSI-C quoting: escape backslashes and single quotes so any payload works
-    const escaped = bodyStr.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-    parts.push('-H "Content-Type: application/json"');
-    parts.push(`-d $'${escaped}'`);
+    const bodyStr =
+      typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+
+    if (bodyType === 'form-data') {
+      // multipart/form-data — emit one -F per field. curl sets the multipart
+      // Content-Type (with boundary) itself, so never add a manual one here.
+      // Body is stored URL-encoded (KeyValueBodyTable), so decode pairs back.
+      for (const [k, v] of new URLSearchParams(bodyStr)) {
+        parts.push(`-F ${shellQuote(`${k}=${v}`)}`);
+      }
+    } else {
+      // Content-Type per body type. Unknown/raw → don't force one (caller may set
+      // it via a header); missing type → default JSON for backward compatibility.
+      const contentType = CURL_BODY_CONTENT_TYPE[bodyType] ??
+        (bodyType ? null : 'application/json');
+      if (contentType && !headerNames.has('content-type')) {
+        parts.push(`-H ${shellQuote(`Content-Type: ${contentType}`)}`);
+      }
+      parts.push(`-d ${shellQuote(bodyStr)}`);
+    }
   }
 
   return parts.join(' \\\n  ');
@@ -171,6 +227,17 @@ const transformTestResultsToExcel = testResults => {
   });
 };
 
+// 🔹 Escape text for safe embedding inside HTML markup.
+// Without this, curl/header/response values containing <, >, & or " corrupt the
+// table markup, silently dropping cell content (e.g. missing headers on paste).
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 // 🔹 Copy structured table to clipboard (Confluence / Docs compatible)
 async function copyTableToClipboard(excelData) {
   const headers = [
@@ -181,12 +248,18 @@ async function copyTableToClipboard(excelData) {
     'Result',
   ];
 
+  // Cells whose content is multiline / whitespace-sensitive (cURL uses `\`+newline
+  // line continuations; JSON uses indentation). These MUST render in <pre>, else
+  // HTML collapses the newlines — turning `\`+newline into `\ ` (backslash-space),
+  // an invalid shell continuation that mangles the command and drops headers.
+  const preformatted = new Set(['Request', 'Response']);
+
   // Colors below are intentionally hardcoded — this HTML is copied to the OS
   // clipboard for pasting into Confluence/Docs, which has no access to our CSS vars.
   const htmlTable = `
   <table border="1" cellspacing="0" cellpadding="6" style="border-collapse: collapse; width: 100%; border: 1px solid #ccc;">
     <thead style="background-color: #f3f3f3; font-weight: bold;">
-      <tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>
+      <tr>${headers.map(h => `<th>${escapeHtml(h)}</th>`).join('')}</tr>
     </thead>
     <tbody>
       ${excelData
@@ -195,12 +268,11 @@ async function copyTableToClipboard(excelData) {
           return `<tr style="background-color: ${color}; vertical-align: top;">
             ${headers
               .map(h => {
-                let value = row[h] || '';
-                if (h === 'Response') {
-                  // Preserve indentation & line breaks
-                  value = `<pre style="white-space: pre-wrap; font-family: monospace;">${value}</pre>`;
-                }
-                return `<td style="vertical-align: top;">${value}</td>`;
+                const value = escapeHtml(row[h] || '');
+                const cell = preformatted.has(h)
+                  ? `<pre style="white-space: pre-wrap; font-family: monospace; margin: 0;">${value}</pre>`
+                  : value;
+                return `<td style="vertical-align: top;">${cell}</td>`;
               })
               .join('')}
           </tr>`;
@@ -209,10 +281,20 @@ async function copyTableToClipboard(excelData) {
     </tbody>
   </table>`;
 
+  // Plain-text alternative for targets that consume text/plain (terminal, Postman,
+  // plain editors). A per-record block keeps the multiline cURL fully intact and
+  // directly pasteable — pasting raw HTML markup there was the reported corruption.
+  const plainText = excelData
+    .map(row =>
+      headers.map(h => `${h}:\n${row[h] || ''}`).join('\n\n') +
+      '\n\n' + '─'.repeat(60)
+    )
+    .join('\n\n');
+
   await navigator.clipboard.write([
     new ClipboardItem({
       'text/html': new Blob([htmlTable], { type: 'text/html' }),
-      'text/plain': new Blob([htmlTable], { type: 'text/plain' }),
+      'text/plain': new Blob([plainText], { type: 'text/plain' }),
     }),
   ]);
 
@@ -2408,7 +2490,21 @@ export default function RequestPanel({ activeRequest, onMethodChange }) {
                         params: Object.fromEntries(
                           params.filter(p => p.key).map(p => [p.key, p.value])
                         ),
-                        body: bodyType === 'JSON' && bodyContent ? (() => { try { return JSON.parse(bodyContent); } catch { return null; } })() : null,
+                        // Serialize body the same way the app sends it to the
+                        // backend, so the cURL matches the actual request for
+                        // every body type (JSON/XML/raw/form-data/url-encoded/graphql).
+                        body:
+                          method !== 'GET'
+                            ? normalizeBody(
+                                bodyContent,
+                                bodyType,
+                                bodyType === 'graphql'
+                                  ? { query: gqlQuery, variables: gqlVariables }
+                                  : null
+                              )
+                            : null,
+                        bodyType,
+                        options: { timeout: requestTimeout },
                       })}
                       className={styles.copyResponseBtn}
                       label="Copy cURL"
